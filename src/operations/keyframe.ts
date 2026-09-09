@@ -1,6 +1,13 @@
 // Keyframe operations — add, remove, set easing.
 
-import { registerOp, jsxVal, jsxCompLayerPreamble, jsxPropertyLookup } from "../registry.js";
+import {
+  registerOp,
+  jsxFail,
+  jsxVal,
+  jsxCompPreamble,
+  jsxCompLayerPreamble,
+  jsxPropertyLookup,
+} from "../registry.js";
 
 registerOp({
   name: "keyframe.add",
@@ -28,8 +35,106 @@ registerOp({
             ${jsxCompLayerPreamble(args)}
             var _propPath = ${jsxVal(args.property)};
             ${jsxPropertyLookup()}
-            _node.setValueAtTime(${jsxVal(args.time)}, ${jsxVal(args.value)});
-            return { ok: true, numKeys: _node.numKeys, name: _node.name };
+            // Separated dimensions (and __kind-tagged values) are routed by
+            // AE.writeValue — setValueAtTime on a separated leader throws an
+            // error AE never shows.
+            var _wr = AE.writeValue(_node, ${jsxVal(args.value)}, ${jsxVal(args.time)});
+            return { ok: true, numKeys: _wr.separated ? AE.separationFollowers(_node)[0].numKeys : _node.numKeys, name: _node.name, separated: _wr.separated };
+        `;
+  },
+});
+
+registerOp({
+  name: "keyframe.apply",
+  category: "keyframe",
+  description:
+    "Write a whole keyframe list to a property in ONE call, easing included: keys = [{ time, value, interp?, inType?, outType?, inInfluence?, outInfluence?, inSpeed?, outSpeed? }]. interp: linear | ease (both sides bezier) | easeIn (in bezier, out linear) | easeOut | hold (OUT side only — the incoming segment keeps evaluating, unlike keyframe.set_easing's symmetric 'hold') | keep. Handles separated dimensions (X/Y Position followers) and __kind values (Shape, TextDocument). replace=true clears existing keys first. Applies the same list to every matched layer.",
+  params: [
+    { name: "comp", type: "any", description: "Comp name or id", required: true },
+    {
+      name: "layer",
+      type: "any",
+      description: "Layer index, name, { id }, 'selected', 'all', or an array of those",
+      required: true,
+    },
+    {
+      name: "property",
+      type: "array",
+      description: 'Property path, e.g. ["Transform","Position"]',
+      required: true,
+    },
+    {
+      name: "keys",
+      type: "array",
+      description:
+        "[{ time, value, interp?, inType?, outType?, inInfluence?, outInfluence?, inSpeed?, outSpeed? }, …]",
+      required: true,
+    },
+    {
+      name: "interp",
+      type: "string",
+      description:
+        "Default interp for keys that do not set their own (default: AE's default, i.e. keep)",
+      required: false,
+    },
+    {
+      name: "replace",
+      type: "boolean",
+      description: "Remove the property's existing keys first (default false)",
+      required: false,
+      default: false,
+    },
+    {
+      name: "spatialTangents",
+      type: "string",
+      description:
+        "auto | linear — 'linear' zeroes the spatial tangents on Position/Anchor keys so the motion path is straight between keys (default auto = AE's auto-bezier)",
+      required: false,
+      default: "auto",
+    },
+  ],
+  toJsx(args) {
+    const keys = Array.isArray(args.keys) ? (args.keys as unknown[]) : [];
+    if (keys.length === 0) {
+      return jsxFail("keys must be a non-empty array");
+    }
+    for (const [i, k] of keys.entries()) {
+      const key = k as { time?: unknown; value?: unknown };
+      if (
+        !key ||
+        typeof key !== "object" ||
+        typeof key.time !== "number" ||
+        key.value === undefined
+      ) {
+        return jsxFail(`keys[${i}] must be { time: number, value, … }`);
+      }
+    }
+    const spatial = args.spatialTangents ?? "auto";
+    if (spatial !== "auto" && spatial !== "linear") {
+      return jsxFail("spatialTangents must be auto|linear");
+    }
+    return `
+            ${jsxCompPreamble(args)}
+            var _layers = AE.resolveLayers(_comp, ${jsxVal(args.layer)});
+            if (_layers.length === 0) return { ok: false, error: "no layers matched" };
+            var _propPath = ${jsxVal(args.property)};
+            var _specs = ${jsxVal(keys)};
+            var _opts = { replace: ${jsxVal(args.replace === true)}, interp: ${jsxVal(args.interp ?? null)}, spatialTangents: ${jsxVal(spatial)} };
+            var _out = [];
+            var _failed = 0;
+            for (var _li = 0; _li < _layers.length; _li++) {
+                var _l = _layers[_li];
+                var _node = AE.propertyAtPath(_l, _propPath);
+                if (!_node || _node.propertyType !== PropertyType.PROPERTY) { _failed++; _out.push({ index: _l.index, name: _l.name, ok: false, error: "property path not found on this layer" }); continue; }
+                try {
+                    var _r = AE.applyKeySpecs(_node, _specs, _opts);
+                    _out.push({ index: _l.index, name: _l.name, ok: true, numKeys: _r.numKeys, separated: _r.separated, warnings: _r.warnings });
+                } catch (eK) {
+                    _failed++;
+                    _out.push({ index: _l.index, name: _l.name, ok: false, error: AE.errText(eK) });
+                }
+            }
+            return { ok: _failed === 0, error: _failed === 0 ? null : (_failed + " of " + _out.length + " layers failed"), count: _out.length, layers: _out };
         `;
   },
 });
@@ -70,7 +175,7 @@ registerOp({
   name: "keyframe.set_easing",
   category: "keyframe",
   description:
-    "Apply easing to a keyframe. Preset: 'linear', 'ease', 'easeIn', 'easeOut', 'hold'. Or custom bezier with inSpeed/outSpeed/inInfluence/outInfluence.",
+    "Apply easing to a keyframe. Preset: 'linear', 'ease', 'easeIn', 'easeOut', 'hold'. Or custom bezier with inSpeed/outSpeed/inInfluence/outInfluence. NOTE: 'hold' here sets BOTH sides to HOLD, which also freezes the segment BEFORE the key (a fade ending in such a key never fades). For the timeline's Toggle-Hold behaviour (out side only) use keyframe.set_interpolation outType:'hold' or keyframe.apply interp:'hold'.",
   params: [
     { name: "comp", type: "any", description: "Comp name or id", required: true },
     {
@@ -185,8 +290,21 @@ registerOp({
             var _values = ${jsxVal(args.values)};
             if (_times.length === 0) return { ok: false, error: "times is empty" };
             if (_times.length !== _values.length) return { ok: false, error: "times (" + _times.length + ") and values (" + _values.length + ") must have the same length" };
-            _node.setValuesAtTimes(_times, _values);
-            return { ok: true, added: _times.length, numKeys: _node.numKeys };
+            // A separated leader rejects setValuesAtTimes; feed each follower
+            // its own component instead (same routing as AE.writeValue).
+            var _followers = AE.separationFollowers(_node);
+            if (_followers) {
+                for (var _fi = 0; _fi < _followers.length; _fi++) {
+                    var _comp2 = [];
+                    for (var _vi = 0; _vi < _values.length; _vi++) _comp2.push(AE._componentFor(_values[_vi], _fi, _followers.length));
+                    _followers[_fi].setValuesAtTimes(_times, _comp2);
+                }
+                return { ok: true, added: _times.length, numKeys: _followers[0].numKeys, separated: true };
+            }
+            var _native = [];
+            for (var _ni = 0; _ni < _values.length; _ni++) _native.push(AE.nativeValue(_node, _values[_ni]));
+            _node.setValuesAtTimes(_times, _native);
+            return { ok: true, added: _times.length, numKeys: _node.numKeys, separated: false };
         `;
   },
 });

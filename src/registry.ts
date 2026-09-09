@@ -146,6 +146,18 @@ export function jsxVal(v: unknown): string {
     .replace(/\u2029/g, "\\u2029");
 }
 
+/**
+ * A whole operation body that reports a validation failure decided on the
+ * Node side (before anything reaches AE). Use it for early returns from
+ * `toJsx` instead of an inline `return { ok: false, error: \`…\` }` template:
+ * an interpolated message that itself contains braces (`{ layer, ranges }`)
+ * confuses the codegen lint's template scanner, and the message is embedded
+ * through `jsxVal` here exactly once.
+ */
+export function jsxFail(message: string): string {
+  return `return { ok: false, error: ${jsxVal(message)} };`;
+}
+
 /** Build the standard comp lookup preamble (defines `_comp`). */
 export function jsxCompPreamble(args: Record<string, unknown>): string {
   return `

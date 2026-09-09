@@ -80,9 +80,26 @@ AE.findCompByNameOrId = function (nameOrId) {
 
 // ---------- Comp/Layer pattern matching ----------
 
-// Find comps by name, id, or glob pattern ('*' = all, 'review_id_*' = prefix match).
+// Find comps by name, id, or glob pattern ('*' = all, 'review_id_*' = prefix
+// match). An ARRAY of those resolves each entry and unions the results (in
+// entry order, duplicates dropped) — every op that takes a comp pattern
+// therefore also takes a list.
 AE.findComps = function (nameOrIdOrPattern) {
     var proj = app.project;
+    if (nameOrIdOrPattern instanceof Array) {
+        var union = [];
+        var seenIds = {};
+        for (var ai = 0; ai < nameOrIdOrPattern.length; ai++) {
+            var part = AE.findComps(nameOrIdOrPattern[ai]);
+            for (var pi = 0; pi < part.length; pi++) {
+                var key = "k" + part[pi].id;
+                if (seenIds.hasOwnProperty(key)) continue;
+                seenIds[key] = true;
+                union.push(part[pi]);
+            }
+        }
+        return union;
+    }
     if (typeof nameOrIdOrPattern === "number") {
         var c = AE.findItemById(nameOrIdOrPattern);
         return (c && c instanceof CompItem) ? [c] : [];
@@ -157,8 +174,23 @@ AE.findLayerInComp = function (comp, indexOrName) {
 };
 
 // Resolve layer target: number=index, "selected"=selected layers array, string=name match,
-// { id: n }=stable Layer.id. Always returns an array of layers.
+// { id: n }=stable Layer.id, or an ARRAY of those (union in entry order,
+// duplicates dropped). Always returns an array of layers.
 AE.resolveLayers = function (comp, target) {
+    if (target instanceof Array) {
+        var union = [];
+        var seenIdx = {};
+        for (var ai = 0; ai < target.length; ai++) {
+            var part = AE.resolveLayers(comp, target[ai]);
+            for (var pi = 0; pi < part.length; pi++) {
+                var key = "k" + part[pi].index;
+                if (seenIdx.hasOwnProperty(key)) continue;
+                seenIdx[key] = true;
+                union.push(part[pi]);
+            }
+        }
+        return union;
+    }
     if (target !== null && typeof target === "object" && typeof target.id === "number") {
         var byId = AE.findLayerById(comp, target.id);
         return byId ? [byId] : [];

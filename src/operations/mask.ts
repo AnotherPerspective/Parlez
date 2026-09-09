@@ -1,11 +1,63 @@
 // Mask operations — add, set path, set properties.
 
-import { registerOp, jsxVal, jsxCompLayerPreamble } from "../registry.js";
+import { registerOp, jsxFail, jsxVal, jsxCompLayerPreamble } from "../registry.js";
+
+/** Geometric-shape params shared by mask.add and mask.set_path. */
+function maskGeometryParams() {
+  return [
+    {
+      name: "shape",
+      type: "string" as const,
+      description: "ellipse|rect — build the path from center/size instead of vertices",
+      required: false,
+    },
+    {
+      name: "center",
+      type: "array" as const,
+      description:
+        "[x, y] center in layer space (default: source center for footage/solids, [0,0] for shape/text layers)",
+      required: false,
+    },
+    {
+      name: "size",
+      type: "array" as const,
+      description: "[width, height] of the ellipse/rect",
+      required: false,
+    },
+    {
+      name: "roundness",
+      type: "number" as const,
+      description: "Corner radius for rect (default 0)",
+      required: false,
+      default: 0,
+    },
+  ];
+}
+
+/**
+ * JSX that builds `_shape` (a Shape) from the geometric params. Expects
+ * `_layer`. Emits a validation failure when the params are incomplete.
+ */
+function jsxGeometryShape(args: Record<string, unknown>): string {
+  const kind = args.shape;
+  if (kind !== "ellipse" && kind !== "rect") {
+    return jsxFail("shape must be ellipse|rect");
+  }
+  if (!Array.isArray(args.size) || args.size.length !== 2) {
+    return jsxFail("size must be [width, height]");
+  }
+  return `
+            var _center = ${jsxVal(args.center ?? null)};
+            if (_center === null) _center = AE.defaultMaskCenter(_layer);
+            var _shape = AE.geometryShape(${jsxVal(kind)}, _center, ${jsxVal(args.size)}, ${jsxVal(args.roundness ?? 0)});
+        `;
+}
 
 registerOp({
   name: "mask.add",
   category: "mask",
-  description: "Add a new mask to a layer. Returns the mask index.",
+  description:
+    "Add a new mask to a layer. With shape ('ellipse'|'rect') + size (+ center) the mask path is built right away — mode/inverted can be set in the same call. Returns the mask index; animate the path afterwards with mask.set_path { time }.",
   params: [
     { name: "comp", type: "any", description: "Comp name or id", required: true },
     {
@@ -15,13 +67,36 @@ registerOp({
       required: true,
     },
     { name: "name", type: "string", description: "Mask name", required: false },
+    ...maskGeometryParams(),
+    {
+      name: "mode",
+      type: "string",
+      description: "Add|Subtract|Intersect|Lighten|Darken|Difference|None",
+      required: false,
+    },
+    { name: "inverted", type: "boolean", description: "Invert the mask", required: false },
   ],
   toJsx(args) {
+    const geometry =
+      args.shape !== undefined || args.size !== undefined || args.center !== undefined
+        ? `${jsxGeometryShape(args)}
+            _mask.property("ADBE Mask Shape").setValue(_shape);`
+        : "";
+    const modeJsx =
+      args.mode === undefined
+        ? ""
+        : `var _modeMap = { "Add": MaskMode.ADD, "Subtract": MaskMode.SUBTRACT, "Intersect": MaskMode.INTERSECT, "Lighten": MaskMode.LIGHTEN, "Darken": MaskMode.DARKEN, "Difference": MaskMode.DIFFERENCE, "None": MaskMode.NONE };
+            if (!_modeMap.hasOwnProperty(${jsxVal(args.mode)})) return { ok: false, error: "unknown mode " + ${jsxVal(args.mode)} };
+            _mask.maskMode = _modeMap[${jsxVal(args.mode)}];`;
     return `
             ${jsxCompLayerPreamble(args)}
             var _masks = _layer.property("Masks");
+            if (!_masks) return { ok: false, error: "layer cannot carry masks (camera/light?)" };
             var _mask = _masks.addProperty("ADBE Mask Atom");
             ${args.name ? `_mask.name = ${jsxVal(args.name)};` : ""}
+            ${geometry}
+            ${modeJsx}
+            ${args.inverted !== undefined ? `_mask.inverted = ${jsxVal(args.inverted)};` : ""}
             return { ok: true, maskIndex: _mask.propertyIndex, name: _mask.name };
         `;
   },
@@ -31,7 +106,7 @@ registerOp({
   name: "mask.set_path",
   category: "mask",
   description:
-    "Set a mask's shape path from vertices. Vertices are [x,y] pairs relative to the layer.",
+    "Set a mask's path — from vertices (+ tangents), or geometrically from shape ('ellipse'|'rect') + size (+ center, roundness). With `time` the path is written as a keyframe, so two calls (small size at t0, large at t1) make a wipe. Vertices/center are in layer space.",
   params: [
     { name: "comp", type: "any", description: "Comp name or id", required: true },
     {
@@ -41,7 +116,19 @@ registerOp({
       required: true,
     },
     { name: "maskIndex", type: "number", description: "1-based mask index", required: true },
-    { name: "vertices", type: "array", description: "Array of [x,y] points", required: true },
+    {
+      name: "vertices",
+      type: "array",
+      description: "Array of [x,y] points (omit when using shape/size)",
+      required: false,
+    },
+    ...maskGeometryParams(),
+    {
+      name: "time",
+      type: "number",
+      description: "Write the path as a keyframe at this time instead of the static value",
+      required: false,
+    },
     {
       name: "inTangents",
       type: "array",
@@ -125,10 +212,30 @@ registerOp({
     // The read-back proves the feather survived setValue. Hoisted for the same
     // scanner reason as featherJsx.
     const returnJsx = !hasFeather
-      ? `return { ok: true, maskIndex: ${jsxVal(args.maskIndex)} };`
+      ? `return { ok: true, maskIndex: ${jsxVal(args.maskIndex)}, numKeys: _pathProp.numKeys };`
       : `var _fpApplied = null;
             try { _fpApplied = _mask.property("ADBE Mask Shape").value.featherSegLocs.length; } catch (eFp) {}
-            return { ok: true, maskIndex: ${jsxVal(args.maskIndex)}, featherPoints: _fpApplied };`;
+            return { ok: true, maskIndex: ${jsxVal(args.maskIndex)}, numKeys: _pathProp.numKeys, featherPoints: _fpApplied };`;
+    const useGeometry = args.vertices === undefined;
+    if (useGeometry && args.shape === undefined && args.size === undefined) {
+      return jsxFail("give vertices, or shape + size");
+    }
+    if (!useGeometry && args.shape !== undefined) {
+      return jsxFail("give either vertices or shape, not both");
+    }
+    const shapeJsx = useGeometry
+      ? jsxGeometryShape(args)
+      : `
+            var _shape = new Shape();
+            _shape.vertices = ${jsxVal(args.vertices)};
+            _shape.closed = ${jsxVal(args.closed !== false)};
+            ${args.inTangents ? `_shape.inTangents = ${jsxVal(args.inTangents)};` : ""}
+            ${args.outTangents ? `_shape.outTangents = ${jsxVal(args.outTangents)};` : ""}
+        `;
+    const writeJsx =
+      args.time === undefined
+        ? `_pathProp.setValue(_shape);`
+        : `_pathProp.setValueAtTime(${jsxVal(args.time)}, _shape);`;
     const featherJsx = !hasFeather
       ? ""
       : `
@@ -153,15 +260,17 @@ registerOp({
         `;
     return `
             ${jsxCompLayerPreamble(args)}
-            var _mask = _layer.property("Masks").property(${jsxVal(args.maskIndex)});
+            var _masksRoot = _layer.property("Masks");
+            if (!_masksRoot) return { ok: false, error: "layer has no Masks group" };
+            if (${jsxVal(args.maskIndex)} < 1 || ${jsxVal(args.maskIndex)} > _masksRoot.numProperties) {
+                return { ok: false, error: "no mask at index " + ${jsxVal(args.maskIndex)} + " (layer has " + _masksRoot.numProperties + ")" };
+            }
+            var _mask = _masksRoot.property(${jsxVal(args.maskIndex)});
             if (!_mask) return { ok: false, error: "no mask at index " + ${jsxVal(args.maskIndex)} };
-            var _shape = new Shape();
-            _shape.vertices = ${jsxVal(args.vertices)};
-            _shape.closed = ${jsxVal(args.closed !== false)};
-            ${args.inTangents ? `_shape.inTangents = ${jsxVal(args.inTangents)};` : ""}
-            ${args.outTangents ? `_shape.outTangents = ${jsxVal(args.outTangents)};` : ""}
+            ${shapeJsx}
             ${featherJsx}
-            _mask.property("ADBE Mask Shape").setValue(_shape);
+            var _pathProp = _mask.property("ADBE Mask Shape");
+            ${writeJsx}
             ${returnJsx}
         `;
   },

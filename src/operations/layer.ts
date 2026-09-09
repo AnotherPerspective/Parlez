@@ -41,6 +41,45 @@ registerOp({
 });
 
 registerOp({
+  name: "layer.create_adjustment",
+  category: "layer",
+  description:
+    "Create an adjustment layer (a comp-sized solid with adjustmentLayer on) — the carrier for comp-wide effects such as Posterize Time or a color grade. Add effects with effect.add.",
+  params: [
+    { name: "comp", type: "any", description: "Comp name or id", required: true },
+    {
+      name: "name",
+      type: "string",
+      description: "Layer name",
+      required: false,
+      default: "Adjustment Layer",
+    },
+    {
+      name: "width",
+      type: "number",
+      description: "Width in px (default: comp width)",
+      required: false,
+    },
+    {
+      name: "height",
+      type: "number",
+      description: "Height in px (default: comp height)",
+      required: false,
+    },
+  ],
+  toJsx(args) {
+    return `
+            ${jsxCompPreamble(args)}
+            var _w = ${jsxVal(args.width)} || _comp.width;
+            var _h = ${jsxVal(args.height)} || _comp.height;
+            var _layer = _comp.layers.addSolid([1, 1, 1], ${jsxVal(args.name ?? "Adjustment Layer")}, _w, _h, _comp.pixelAspect, _comp.duration);
+            _layer.adjustmentLayer = true;
+            return { ok: true, index: _layer.index, name: _layer.name, adjustmentLayer: _layer.adjustmentLayer };
+        `;
+  },
+});
+
+registerOp({
   name: "layer.create_shape",
   category: "layer",
   description: "Create an empty shape layer.",

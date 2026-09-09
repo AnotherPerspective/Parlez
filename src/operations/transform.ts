@@ -33,9 +33,11 @@ registerOp({
       sets.push(
         `try { _l.threeDLayer = ${jsxVal(args.threeDLayer)}; } catch(e) { _w.push("3D: " + AE.errText(e)); }`,
       );
+    // Position goes through AE.writeValue: after Separate Dimensions (and on
+    // shape layers made from vector layers) setValue on the leader throws.
     if (args.position !== undefined)
       sets.push(
-        `try { _xf.position.setValue(${jsxVal(args.position)}); } catch(e) { _w.push("position: " + AE.errText(e)); }`,
+        `try { AE.writeValue(_xf.position, ${jsxVal(args.position)}); } catch(e) { _w.push("position: " + AE.errText(e)); }`,
       );
     if (args.scale !== undefined)
       sets.push(
@@ -51,7 +53,7 @@ registerOp({
       );
     if (args.anchorPoint !== undefined)
       sets.push(
-        `try { _xf.anchorPoint.setValue(${jsxVal(args.anchorPoint)}); } catch(e) { _w.push("anchorPoint: " + AE.errText(e)); }`,
+        `try { AE.writeValue(_xf.anchorPoint, ${jsxVal(args.anchorPoint)}); } catch(e) { _w.push("anchorPoint: " + AE.errText(e)); }`,
       );
     return `
             ${jsxCompPreamble(args)}

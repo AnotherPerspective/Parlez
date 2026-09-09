@@ -139,6 +139,8 @@ src/                         TypeScript MCP server
 jsx/                         ExtendScript that runs inside After Effects
 ├── dispatcher.jsx           Request/response loop, undo group, error capture
 ├── helpers.jsx              AE.* lookup helpers shared by generated code
+├── toolkit.jsx              Higher-level building blocks (separated-dimension writes,
+│                            key specs, anchor moves, shape bounds/recolor, mask geometry)
 ├── export.jsx / import.jsx  Project JSON export/import
 └── json2.jsx                JSON polyfill for ExtendScript
 ```
@@ -197,7 +199,11 @@ var name = ${jsxVal(args.name)};
 
 Why it matters: the capability policy gates _which_ operation runs, never what its arguments expand to. A raw interpolation turns a comp name into executable ExtendScript and walks straight past `AE_MCP_READONLY` and the `eval.run` opt-in.
 
-Generated code is a function body: end with `return { ok: true, ... };` (or `{ ok: false, error: "..." }` for expected failures) so results serialize cleanly.
+Generated code is a function body: end with `return { ok: true, ... };` (or `{ ok: false, error: "..." }` for expected failures) so results serialize cleanly. A failure decided on the Node side — before codegen, e.g. an argument combination the schema cannot express — is returned as `jsxFail("message")`, a whole body that reports it; an inline `return { ok: false, error: \`…\` }` template whose message contains braces confuses the codegen lint's template scanner.
+
+**Address layers uniformly.** An operation that can sensibly act on several layers takes `layer` in the shared vocabulary — index | name | `{ id }` | `'selected'` | `'all'` | an array of those — and resolves it with `AE.resolveLayers`. Comp patterns (`AE.findComps`) accept the same array form. Do not add a batch-capable op next to a single-target sibling that could just as well take the list.
+
+**Write values through `AE.writeValue`.** Position-style properties can have their dimensions separated (by the user, or by "Create Shapes from Vector Layer", which can arrive separated), and `setValue` on the separated leader then throws an error AE never displays. `AE.writeValue(prop, value, time?)`, `AE.readValue`, `AE.offsetValue` and `AE.applyKeySpecs` in `jsx/toolkit.jsx` route to the followers; they also accept the `__kind`-tagged values of the export format. Every operation that sets a value goes through them.
 
 ## Adding a static MCP tool
 

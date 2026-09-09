@@ -9,8 +9,14 @@ import * as zlib from "node:zlib";
 export interface DecodedPng {
   width: number;
   height: number;
-  /** Row-major RGB triples, values normalized to 0..1. Alpha is dropped. */
+  /** Row-major RGB triples, values normalized to 0..1. */
   rgb: Float64Array;
+  /**
+   * Row-major alpha, 0..1, when the file carried an alpha channel (RGBA /
+   * gray+alpha); absent otherwise. The color pipeline ignores it — frame
+   * analysis is what needs to tell "transparent" from "black".
+   */
+  alpha?: Float64Array;
   bitDepth: 8 | 16;
 }
 
@@ -84,6 +90,8 @@ export function decodePng(buf: Buffer): DecodedPng {
 
   // Unfilter in place into `prev`/`cur` rows.
   const rgb = new Float64Array(width * height * 3);
+  const hasAlpha = channels === 2 || channels === 4;
+  const alpha = hasAlpha ? new Float64Array(width * height) : undefined;
   const maxVal = bitDepth === 16 ? 65535 : 255;
   const prev = Buffer.alloc(stride);
   const cur = Buffer.alloc(stride);
@@ -128,11 +136,18 @@ export function decodePng(buf: Buffer): DecodedPng {
         const v = bitDepth === 16 ? cur.readUInt16BE(off) : cur[off];
         rgb[out + ch] = v / maxVal;
       }
+      if (alpha) {
+        const off = px + (channels - 1) * bytesPerSample;
+        const a = bitDepth === 16 ? cur.readUInt16BE(off) : cur[off];
+        alpha[y * width + x] = a / maxVal;
+      }
     }
     cur.copy(prev);
   }
 
-  return { width, height, rgb, bitDepth: bitDepth as 8 | 16 };
+  return alpha
+    ? { width, height, rgb, alpha, bitDepth: bitDepth as 8 | 16 }
+    : { width, height, rgb, bitDepth: bitDepth as 8 | 16 };
 }
 
 function chunk(type: string, data: Buffer): Buffer {

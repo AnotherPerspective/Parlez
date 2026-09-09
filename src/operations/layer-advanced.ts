@@ -345,29 +345,59 @@ registerOp({
 registerOp({
   name: "layer.copy_to_comp",
   category: "layer",
-  description: "Copy a layer from one comp to another.",
+  description:
+    "Copy a layer into another comp. The copy is identified by its Layer.id (never by assuming it landed on top). Options: timeOffset/startTime to place it in time, bakeAtTime to freeze every animated property at that source time and drop the keys (match-cut copies), name to rename. The copy keeps the source comp's span — use layer.set_timing outPoint:'comp' to extend it.",
   params: [
     { name: "comp", type: "any", description: "Source comp name or id", required: true },
     {
       name: "layer",
       type: "any",
-      description: "1-based layer index (or name) in source comp",
+      description: "1-based layer index, name, or { id } in the source comp",
       required: true,
     },
     { name: "targetComp", type: "any", description: "Target comp name or id", required: true },
+    {
+      name: "timeOffset",
+      type: "number",
+      description: "Seconds added to the copy's startTime",
+      required: false,
+    },
+    {
+      name: "startTime",
+      type: "number",
+      description: "Absolute startTime for the copy (applied after timeOffset)",
+      required: false,
+    },
+    {
+      name: "bakeAtTime",
+      type: "number",
+      description:
+        "Freeze every keyframed property of the copy at this SOURCE-comp time and remove its keys",
+      required: false,
+    },
+    { name: "name", type: "string", description: "Rename the copy", required: false },
   ],
   toJsx(args) {
     return `
             ${jsxCompLayerPreamble(args)}
             var _target = AE.findCompByNameOrId(${jsxVal(args.targetComp)});
             if (!_target) return { ok: false, error: "target comp not found" };
-            var _before = _target.numLayers;
+            var _snap = AE.layerIdSnapshot(_target);
             _layer.copyToComp(_target);
-            if (_target.numLayers !== _before + 1) {
-                return { ok: false, error: "copyToComp did not add a layer to " + _target.name };
+            var _added = AE.layersSince(_target, _snap);
+            if (_added.length !== 1) {
+                return { ok: false, error: "copyToComp added " + _added.length + " layers to " + _target.name + " (expected 1)" };
             }
-            var _newLayer = _target.layer(1);
-            return { ok: true, copied: _layer.name, targetComp: _target.name, newIndex: _newLayer.index, newName: _newLayer.name };
+            var _newLayer = _added[0];
+            var _baked = 0;
+            var _bakeT = ${jsxVal(args.bakeAtTime ?? null)};
+            if (_bakeT !== null) _baked = AE.bakeKeysAtTime(_newLayer, _bakeT);
+            var _off = ${jsxVal(args.timeOffset ?? null)};
+            if (_off !== null) _newLayer.startTime = _newLayer.startTime + _off;
+            var _start = ${jsxVal(args.startTime ?? null)};
+            if (_start !== null) _newLayer.startTime = _start;
+            ${args.name ? `_newLayer.name = ${jsxVal(args.name)};` : ""}
+            return { ok: true, copied: _layer.name, targetComp: _target.name, newIndex: _newLayer.index, newName: _newLayer.name, newId: AE.safeGet(function () { return _newLayer.id; }, null), startTime: _newLayer.startTime, inPoint: _newLayer.inPoint, outPoint: _newLayer.outPoint, bakedProperties: _baked };
         `;
   },
 });

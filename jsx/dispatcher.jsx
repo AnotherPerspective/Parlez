@@ -37,6 +37,7 @@
 #include "helpers.jsx"
 #include "export.jsx"
 #include "import.jsx"
+#include "toolkit.jsx"
 
 (function dispatcherEntry() {
     // --- Talking about exceptions safely -----------------------------------

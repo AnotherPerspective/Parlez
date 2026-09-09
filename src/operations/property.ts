@@ -43,8 +43,10 @@ registerOp({
                         _node = _node.property(_propPath[_pi]);
                         if (!_node) throw new Error("not found: " + _propPath[_pi]);
                     }
-                    _node.setValue(${jsxVal(args.value)});
-                    _results.push({ name: _layer.name, ok: true });
+                    // Separated dimensions and __kind values route through
+                    // AE.writeValue; setValue on a separated leader throws.
+                    var _wr = AE.writeValue(_node, ${jsxVal(args.value)});
+                    _results.push({ name: _layer.name, ok: true, separated: _wr.separated });
                 } catch(e) {
                     _results.push({ name: _layer.name, ok: false, error: AE.errText(e).substring(0, 50) });
                 }

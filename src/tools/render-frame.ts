@@ -5,6 +5,12 @@ import { z } from "zod";
 import { measureCaptureTransfer, calibrationKey } from "../color/calibration.js";
 import { decodePng, encodePngSrgb8 } from "../color/png16.js";
 import { readFileSettled } from "../color/settled-read.js";
+import {
+  analyzeFrame,
+  composeContactSheet,
+  frameLabel,
+  type FrameAnalysis,
+} from "../color/sheet.js";
 import { profileForWorkingSpace, sceneLinearToDisplaySrgb } from "../color/transform.js";
 import { rejectedOutputPath } from "../config.js";
 import { errorResult } from "../errors.js";
@@ -21,6 +27,16 @@ interface RenderedFrame {
   time?: number;
   size?: [number, number];
   captureKind?: "ocio" | "direct";
+  analysis?: FrameAnalysis;
+}
+
+interface ContactSheetReport {
+  writtenTo: string;
+  size: [number, number];
+  columns: number;
+  rows: number;
+  thumbSize: [number, number];
+  frames: number;
 }
 
 interface RenderFramePayload {
@@ -38,6 +54,16 @@ interface RenderFramePayload {
   method?: string;
   colorPipeline?: string;
   colorWarning?: string;
+  analysis?: FrameAnalysis;
+  analysisWarning?: string;
+  contactSheet?: ContactSheetReport;
+  contactSheetWarning?: string;
+}
+
+interface ContactSheetArgs {
+  columns?: number;
+  thumbWidth?: number;
+  outPath?: string;
 }
 
 export const renderFrameTool = defineTool({
@@ -48,6 +74,9 @@ export const renderFrameTool = defineTool({
     "The agent's 'eyes' — pair with mutations for a visual feedback loop. " +
     "Headless and deterministic. Pass `time` for one frame, or `times` for several in ONE call " +
     "(motion checks): files land at <outPath stem>_<index>.png and are listed in `frames`. " +
+    "`contactSheet` tiles every frame into one labelled PNG (<stem>_sheet.png) so a motion check is one image; " +
+    "`analyze` measures each capture (uniform edge bands = black bars / transparent margins, content bounds, coverage) " +
+    "so off-frame elements and letterboxing are caught numerically. " +
     "In color-managed projects (workingSpace != None) the capture applies AE's own " +
     "display transform via a transient OCIO Display Transform adjustment layer, and the PNG comes back " +
     "viewer-accurate and sRGB-tagged. Where that layer cannot be used — read-only mode, an AE without the " +
@@ -100,6 +129,35 @@ export const renderFrameTool = defineTool({
           "'off': raw legacy output (16-bit, untagged, working-space values — dark/wrong-looking in " +
           "color-managed projects).",
       ),
+    analyze: z
+      .boolean()
+      .optional()
+      .describe(
+        "Measure each capture: uniform bands at every edge (width + transparent/color — black bars, " +
+          "letterboxing, empty margins), the bounding box of non-background pixels, coverage, mean RGB. " +
+          "Reported per frame as `analysis` (measured on the capture before color conversion).",
+      ),
+    contactSheet: z
+      .object({
+        columns: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Tiles per row (default ceil(sqrt(n)))."),
+        thumbWidth: z
+          .number()
+          .int()
+          .min(16)
+          .max(2048)
+          .optional()
+          .describe("Tile width in px, never upscaled (default 480)."),
+        outPath: z.string().optional().describe("Sheet path (default <outPath stem>_sheet.png)."),
+      })
+      .optional()
+      .describe(
+        "Tile all rendered frames into ONE labelled PNG (#index + time above each tile). Pass {} for defaults.",
+      ),
   },
   handler: async (args, transport) => {
     if ((args.time === undefined) === (args.times === undefined)) {
@@ -115,9 +173,81 @@ export const renderFrameTool = defineTool({
       });
     }
     const abs = path.resolve(args.outPath).replace(/\\/g, "/");
+    if (args.contactSheet?.outPath !== undefined) {
+      const sheetRejection = rejectedOutputPath(args.contactSheet.outPath);
+      if (sheetRejection !== null) {
+        return errorResult("IO", sheetRejection, {
+          details: { outPath: path.resolve(args.contactSheet.outPath) },
+          hint: "Write the contact sheet to a path outside the mailbox.",
+        });
+      }
+    }
     return nativeFlow(args, abs, transport);
   },
 });
+
+/** Default sheet path: the frame stem plus `_sheet`. */
+function sheetPathFor(abs: string, explicit: string | undefined): string {
+  if (explicit !== undefined) return path.resolve(explicit).replace(/\\/g, "/");
+  const ext = path.extname(abs) || ".png";
+  const stem = abs.slice(0, abs.length - (path.extname(abs).length || 0));
+  return `${stem}_sheet${ext}`;
+}
+
+/**
+ * Measure every written capture. Runs on the raw files — before any color
+ * conversion — because that is where the alpha channel still is, and
+ * "transparent margin" vs "black bar" is the distinction the check exists
+ * for. Failures never fail the render: they are reported as a warning.
+ */
+async function attachAnalysis(
+  payload: RenderFramePayload,
+  frames: RenderedFrame[],
+  written: string[],
+  multi: boolean,
+): Promise<void> {
+  try {
+    for (const [i, file] of written.entries()) {
+      const analysis = analyzeFrame(decodePng(await readFileSettled(file)));
+      if (multi) frames[i].analysis = analysis;
+      else payload.analysis = analysis;
+    }
+  } catch (err) {
+    payload.analysisWarning = `analysis failed: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+/** Tile the FINAL files (after color processing) into one labelled sheet. */
+async function attachContactSheet(
+  payload: RenderFramePayload,
+  frames: RenderedFrame[],
+  written: string[],
+  sheetPath: string,
+  opts: ContactSheetArgs,
+): Promise<void> {
+  try {
+    const images = [];
+    for (const file of written) images.push(decodePng(await readFileSettled(file)));
+    const labels = frames.map((f, i) => frameLabel(i, f.time));
+    const sheet = composeContactSheet(images, {
+      columns: opts.columns,
+      thumbWidth: opts.thumbWidth,
+      labels,
+    });
+    await fs.mkdir(path.dirname(sheetPath), { recursive: true });
+    await fs.writeFile(sheetPath, encodePngSrgb8(sheet.width, sheet.height, sheet.rgb));
+    payload.contactSheet = {
+      writtenTo: sheetPath,
+      size: [sheet.width, sheet.height],
+      columns: sheet.columns,
+      rows: sheet.rows,
+      thumbSize: [sheet.thumbWidth, sheet.thumbHeight],
+      frames: images.length,
+    };
+  } catch (err) {
+    payload.contactSheetWarning = `contact sheet failed: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
 
 /** Per-frame output paths: the single path as-is, or stem_<index><ext> for `times`. */
 function framePaths(abs: string, count: number, multi: boolean): string[] {
@@ -136,6 +266,8 @@ async function nativeFlow(
     times?: number[];
     useDisplayStartTime?: boolean;
     colorManaged?: "auto" | "off";
+    analyze?: boolean;
+    contactSheet?: ContactSheetArgs;
   },
   abs: string,
   transport: AeTransport,
@@ -227,14 +359,42 @@ async function nativeFlow(
     payload.size = frames[0].size;
     delete payload.frames;
   }
-  if (!payload || payload.ok !== true || args.colorManaged === "off") {
+  if (!payload || payload.ok !== true) {
     return toMcpResult(result);
   }
 
-  payload.method = "native";
   const written: string[] = (multi ? frames.map((f) => f.writtenTo) : [payload.writtenTo]).filter(
     (p): p is string => typeof p === "string",
   );
+  // Analysis first: it wants the raw capture, alpha channel included.
+  if (args.analyze) await attachAnalysis(payload, frames, written, multi);
+  if (args.colorManaged !== "off") {
+    payload.method = "native";
+    await colorPostProcess(payload, written, transport);
+  }
+  // The sheet last, from the files as they will be viewed.
+  if (args.contactSheet) {
+    await attachContactSheet(
+      payload,
+      frames,
+      written,
+      sheetPathFor(abs, args.contactSheet.outPath),
+      args.contactSheet,
+    );
+  }
+  return toMcpResult(result);
+}
+
+/**
+ * Convert the captures in place to viewer-accurate, sRGB-tagged 8-bit PNGs
+ * (see the tool description for the three pipelines). Reports through
+ * payload.colorPipeline / payload.colorWarning; never throws.
+ */
+async function colorPostProcess(
+  payload: RenderFramePayload,
+  written: string[],
+  transport: AeTransport,
+): Promise<void> {
   const workingSpace = payload.workingSpace ?? "None";
   try {
     if (workingSpace === "None" || workingSpace === "") {
@@ -245,7 +405,7 @@ async function nativeFlow(
         await fs.writeFile(file, encodePngSrgb8(img.width, img.height, img.rgb));
       }
       payload.colorPipeline = "untagged 16-bit → 8-bit sRGB-tagged (values unchanged)";
-      return toMcpResult(result);
+      return;
     }
 
     const calib = await measureCaptureTransfer(
@@ -261,7 +421,7 @@ async function nativeFlow(
         payload.colorWarning =
           `AE applied its display transform, but the capture scale could not be measured (${"error" in calib ? calib.error : "non-linear transfer"}) — ` +
           "the file is uniformly dark by that unknown scale. Verify colors against the AE viewer manually.";
-        return toMcpResult(result);
+        return;
       }
       for (const file of written) {
         const img = decodePng(await readFileSettled(file));
@@ -271,7 +431,7 @@ async function nativeFlow(
       payload.colorPipeline =
         "AE OCIO display transform (viewer-exact, any working space)" +
         (gain !== 1 ? ` + capture scale 1/${gain.toFixed(2)} restored` : "");
-      return toMcpResult(result);
+      return;
     }
 
     // Direct capture of a color-managed project (read-only mode, or an AE
@@ -282,13 +442,13 @@ async function nativeFlow(
       payload.colorWarning =
         `working space '${workingSpace}' has no built-in conversion — the file contains raw working-space ` +
         "values and will not match the viewer. Verify colors against the AE viewer manually if they matter here.";
-      return toMcpResult(result);
+      return;
     }
     if (calibFailed) {
       payload.colorWarning =
         `could not characterize this AE version's capture transfer (${"error" in calib ? calib.error : "non-linear transfer"}) — ` +
         "the file contains raw working-space values. Verify colors against the AE viewer manually if they matter here.";
-      return toMcpResult(result);
+      return;
     }
     for (const file of written) {
       const img = decodePng(await readFileSettled(file));
@@ -298,11 +458,9 @@ async function nativeFlow(
     }
     payload.colorPipeline =
       `${profile.note}` + (gain !== 1 ? ` (capture scale 1/${gain.toFixed(2)} restored)` : "");
-    return toMcpResult(result);
   } catch (err) {
     payload.colorWarning = `color post-processing failed, file left as raw capture: ${
       err instanceof Error ? err.message : String(err)
     }`;
-    return toMcpResult(result);
   }
 }

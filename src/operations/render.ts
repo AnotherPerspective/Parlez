@@ -1,6 +1,6 @@
 // Render queue operations.
 
-import { registerOp, jsxVal, jsxCompPreamble } from "../registry.js";
+import { registerOp, jsxFail, jsxVal, jsxCompPreamble } from "../registry.js";
 
 registerOp({
   name: "render.add_to_queue",
@@ -524,6 +524,151 @@ registerOp({
             if (!_can) return { ok: false, error: "cannot queue in AME — is Adobe Media Encoder installed and at least one item queued?" };
             rq.queueInAME(${jsxVal(!!args.renderImmediately)});
             return { ok: true, sent: rq.numItems, renderImmediately: ${jsxVal(!!args.renderImmediately)} };
+        `;
+  },
+});
+
+registerOp({
+  name: "render.variants",
+  category: "render",
+  description:
+    "Render the same comp several times with different property values — a slider that switches a state, a text that changes per version — in ONE call. Each variant sets its values (static properties only; keyed ones are refused), renders through a temporary queue item to outputPath with {name}/{index} substituted, then the original values are restored. Other queue items are not rendered. Blocks until done: raise timeoutMs.",
+  params: [
+    { name: "comp", type: "any", description: "Comp name or id", required: true },
+    {
+      name: "variants",
+      type: "array",
+      description:
+        '[{ name, sets: [{ layer, property, value }, …] }, …] — e.g. [{ name: "A", sets: [{ layer: "Ctrl", property: ["Effects","Slider Control","Slider"], value: 1 }] }]',
+      required: true,
+    },
+    {
+      name: "outputPath",
+      type: "string",
+      description: "Output file path template; {name} and {index} are replaced per variant",
+      required: true,
+    },
+    {
+      name: "renderTemplate",
+      type: "string",
+      description: "Render settings template name",
+      required: false,
+    },
+    {
+      name: "outputTemplate",
+      type: "string",
+      description: "Output module template name",
+      required: false,
+    },
+    {
+      name: "timeSpanStart",
+      type: "number",
+      description: "Render span start in seconds",
+      required: false,
+    },
+    {
+      name: "timeSpanDuration",
+      type: "number",
+      description: "Render span duration in seconds",
+      required: false,
+    },
+  ],
+  toJsx(args) {
+    const variants = Array.isArray(args.variants) ? (args.variants as unknown[]) : [];
+    if (variants.length === 0) {
+      return jsxFail("variants must be a non-empty array");
+    }
+    for (const [i, v] of variants.entries()) {
+      const variant = v as { name?: unknown; sets?: unknown };
+      if (!variant || typeof variant !== "object" || typeof variant.name !== "string") {
+        return jsxFail(`variants[${i}] needs a string name`);
+      }
+      if (!Array.isArray(variant.sets)) {
+        return jsxFail(`variants[${i}].sets must be an array of { layer, property, value }`);
+      }
+      for (const [j, s] of (variant.sets as unknown[]).entries()) {
+        const set = s as { layer?: unknown; property?: unknown; value?: unknown };
+        if (
+          !set ||
+          typeof set !== "object" ||
+          set.layer === undefined ||
+          !Array.isArray(set.property) ||
+          set.value === undefined
+        ) {
+          return jsxFail(`variants[${i}].sets[${j}] must be { layer, property: [path], value }`);
+        }
+      }
+    }
+    const template = String(args.outputPath);
+    if (variants.length > 1 && !template.includes("{name}") && !template.includes("{index}")) {
+      return jsxFail(
+        "outputPath must contain {name} or {index} when rendering more than one variant, or every render overwrites the last",
+      );
+    }
+    return `
+            ${jsxCompPreamble(args)}
+            var _variants = ${jsxVal(variants)};
+            var _tpl = ${jsxVal(template)};
+            var rq = app.project.renderQueue;
+            // Only the temporary item may render: park every existing item.
+            var _parked = [];
+            for (var _pi = 1; _pi <= rq.numItems; _pi++) {
+                var _ex = rq.item(_pi);
+                var _was = false;
+                try { _was = _ex.render; } catch (eR) {}
+                _parked.push(_was);
+                if (_was) { try { _ex.render = false; } catch (eP) {} }
+            }
+            var _results = [];
+            var _failed = 0;
+            try {
+                for (var _vi = 0; _vi < _variants.length; _vi++) {
+                    var _v = _variants[_vi];
+                    var _entry = { name: _v.name, ok: true, warnings: [] };
+                    var _restore = [];
+                    var _rqi = null;
+                    try {
+                        for (var _si = 0; _si < _v.sets.length; _si++) {
+                            var _s = _v.sets[_si];
+                            var _layer = AE.findLayerInComp(_comp, _s.layer);
+                            if (!_layer) throw new Error("no layer matching " + String(_s.layer));
+                            var _prop = AE.propertyAtPath(_layer, _s.property);
+                            if (!_prop || _prop.propertyType !== PropertyType.PROPERTY) throw new Error("property " + _s.property.join("/") + " not found on '" + _layer.name + "'");
+                            if (AE.hasKeys(_prop)) throw new Error("property " + _s.property.join("/") + " on '" + _layer.name + "' has keyframes — variants switch static values only");
+                            _restore.push({ prop: _prop, value: AE.readValue(_prop) });
+                            AE.writeValue(_prop, _s.value);
+                        }
+                        var _safe = String(_v.name).replace(/[\\\\\\/:*?"<>|]/g, "_");
+                        var _path = _tpl.replace(/\\{name\\}/g, _safe).replace(/\\{index\\}/g, String(_vi));
+                        _rqi = rq.items.add(_comp);
+                        ${args.renderTemplate !== undefined ? `var _wr = AE.applyTemplate(_rqi, ${jsxVal(args.renderTemplate)}, "renderTemplate"); if (_wr) _entry.warnings.push(_wr);` : ""}
+                        var _om = _rqi.outputModule(1);
+                        ${args.outputTemplate !== undefined ? `var _wo = AE.applyTemplate(_om, ${jsxVal(args.outputTemplate)}, "outputTemplate"); if (_wo) _entry.warnings.push(_wo);` : ""}
+                        _om.file = AE.ensureParentDir(_path);
+                        ${args.timeSpanStart !== undefined ? `_rqi.timeSpanStart = ${jsxVal(args.timeSpanStart)};` : ""}
+                        ${args.timeSpanDuration !== undefined ? `_rqi.timeSpanDuration = ${jsxVal(args.timeSpanDuration)};` : ""}
+                        rq.render();
+                        _entry.status = String(_rqi.status);
+                        _entry.outputPath = _om.file ? _om.file.fsName.replace(/\\\\/g, "/") : _path;
+                        if (_rqi.status === RQItemStatus.ERR_STOPPED || _rqi.status === RQItemStatus.USER_STOPPED) { _entry.ok = false; _entry.error = "render stopped (" + _entry.status + ")"; }
+                    } catch (eV) {
+                        _entry.ok = false;
+                        _entry.error = AE.errText(eV);
+                    } finally {
+                        if (_rqi) { try { _rqi.remove(); } catch (eRm) {} }
+                        for (var _ri = _restore.length - 1; _ri >= 0; _ri--) {
+                            try { AE.writeValue(_restore[_ri].prop, _restore[_ri].value); } catch (eRs) { _entry.warnings.push("restore failed: " + AE.errText(eRs)); }
+                        }
+                    }
+                    if (!_entry.ok) _failed++;
+                    _results.push(_entry);
+                }
+            } finally {
+                for (var _ui = 0; _ui < _parked.length && _ui < rq.numItems; _ui++) {
+                    if (_parked[_ui]) { try { rq.item(_ui + 1).render = true; } catch (eU) {} }
+                }
+            }
+            return { ok: _failed === 0, error: _failed === 0 ? null : (_failed + " of " + _results.length + " variants failed"), rendered: _results.length - _failed, variants: _results };
         `;
   },
 });
