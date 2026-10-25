@@ -9,6 +9,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 
+import { readFileSettled } from "../color/settled-read.js";
 import { validateOpArgs } from "../opschema.js";
 import { executeOp } from "../recipes/execute.js";
 import type { Plan } from "../recipes/generate.js";
@@ -60,6 +61,36 @@ const FRAMES_PARAM = {
     "Absolute folder for the acceptance frames (PNG). Default: the OS temp folder, subfolder parlez-ricette.",
   required: false,
 };
+
+/** Per frame, the same budget ae_render_frame gives saveFrameToPng (readFileSettled's default). */
+const FRAMES_TIMEOUT_MS = 15_000;
+
+/**
+ * Wait for the acceptance PNGs. saveFrameToPng returns before the file is on
+ * disk (src/color/settled-read.ts): render.frame says ok, the batch answers,
+ * and the PNG lands a few hundred ms later — seen on AE 26.5, where the file
+ * was not there yet when the report was read. The frames are waited for in
+ * parallel; one that never settles is `false`, never an exception.
+ */
+async function waitForFrames(
+  plan: Plan,
+  results: unknown[],
+  timeoutMs: number,
+): Promise<Map<string, boolean>> {
+  const slots = plan.reads.filter(
+    (s): s is Extract<Plan["reads"][number], { kind: "frame" }> =>
+      s.kind === "frame" && (results[s.index] as { ok?: unknown } | null)?.ok === true,
+  );
+  const arrived = await Promise.all(
+    slots.map((s) =>
+      readFileSettled(s.outPath, timeoutMs).then(
+        () => true,
+        () => false,
+      ),
+    ),
+  );
+  return new Map(slots.map((s, i) => [s.outPath, arrived[i]]));
+}
 
 /** Every generated op must exist and accept its arguments: a last guard before AE. */
 function selfCheck(plan: Plan): string[] {
@@ -200,6 +231,12 @@ registerOp({
         "Timeout for the build call in milliseconds (default 120000; the frames take time).",
       required: false,
     },
+    {
+      name: "framesTimeoutMs",
+      type: "number",
+      description: `How long to wait, after the build, for each acceptance PNG to land on disk (default ${FRAMES_TIMEOUT_MS}). A frame that does not arrive is reported as not verifiable, not as an error.`,
+      required: false,
+    },
   ],
   toJsx: () => nodeOnly("recipe.run"),
   async run(args, transport) {
@@ -262,7 +299,10 @@ registerOp({
       );
     }
 
-    const checks = evaluateAcceptance(plan, results);
+    const framesTimeoutMs =
+      typeof args.framesTimeoutMs === "number" ? args.framesTimeoutMs : FRAMES_TIMEOUT_MS;
+    const framesOnDisk = await waitForFrames(plan, results, framesTimeoutMs);
+    const checks = evaluateAcceptance(plan, results, framesOnDisk);
     const failed = checks.filter((c) => c.outcome === "fallito").length;
     const unverified = checks.filter((c) => c.outcome === "non verificabile").length;
     return {
@@ -276,9 +316,9 @@ registerOp({
         unverified,
         checks,
         look: plan.look,
-        frames: plan.reads
-          .filter((r) => r.kind === "frame")
-          .map((r) => (r as { outPath: string }).outPath),
+        // Only the files that are really there: a path in this list can be opened.
+        frames: [...framesOnDisk].filter(([, arrived]) => arrived).map(([p]) => p),
+        framesMissing: [...framesOnDisk].filter(([, arrived]) => !arrived).map(([p]) => p),
       },
       usedCards: plan.usedCards,
       usedCardsLine: plan.usedCardsLine,

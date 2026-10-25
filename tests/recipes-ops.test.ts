@@ -3,9 +3,12 @@
 // (plus the read of comp names before it), undo a half-built piece, and turn
 // the verification reads into plain-Italian outcomes.
 
+import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import "../src/operations/index.js";
 import type { Plan } from "../src/recipes/generate.js";
@@ -14,12 +17,17 @@ import { doTool } from "../src/tools/do.js";
 import type { AeTransport, EvalRequest, EvalResult } from "../src/transport/AeTransport.js";
 
 const ARCHIVE = fileURLToPath(new URL("./fixtures/archivio-lanterna-blu/", import.meta.url));
-const FRAMES = "/tmp/parlez-test";
+// A real folder: recipe.run now waits for the acceptance PNGs to land on disk.
+const FRAMES = mkdtempSync(path.join(os.tmpdir(), "parlez-recipes-frames-"));
+/** The frame paths as the plan writes them (forward slashes). */
+const FRAMES_POSIX = FRAMES.replace(/\\/g, "/");
 const ARGS = { title: "Mario Rossi", subtitle: "Direttrice della fotografia" };
+const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
 
 afterEach(() => {
   delete process.env.AE_MCP_READONLY;
 });
+afterAll(() => rmSync(FRAMES, { recursive: true, force: true }));
 
 function evalOk(result: unknown): EvalResult {
   return {
@@ -70,11 +78,30 @@ function box(l: number, t: number, r: number, b: number) {
   };
 }
 
-/** Results for every op of a plan: building steps ok, reads with plausible values. */
+/**
+ * Results for every op of a plan: building steps ok, reads with plausible values.
+ * Like After Effects, render.frame answers ok and the PNG appears on its own
+ * schedule: at once (default), after `framesDelayMs`, or never.
+ */
 function batchResults(
   p: Plan,
-  opts: { failAt?: number; titleBox?: number[]; scale?: unknown; opacity?: unknown } = {},
+  opts: {
+    failAt?: number;
+    titleBox?: number[];
+    scale?: unknown;
+    opacity?: unknown;
+    framesDelayMs?: number;
+    framesNever?: boolean;
+  } = {},
 ): unknown[] {
+  for (const s of p.reads) {
+    if (s.kind !== "frame") continue;
+    rmSync(s.outPath, { force: true });
+    if (opts.framesNever || opts.failAt !== undefined) continue;
+    const write = () => writeFileSync(s.outPath, PNG);
+    if (opts.framesDelayMs) setTimeout(write, opts.framesDelayMs);
+    else write();
+  }
   return p.batch.args.ops.map((o, i) => {
     if (opts.failAt !== undefined) {
       if (i < opts.failAt) return { ok: true };
@@ -196,12 +223,60 @@ describe("recipe.run", () => {
     expect(r.acceptance.unverified).toBe(0);
     expect(r.acceptance.passed).toBe(r.acceptance.checks.length);
     expect(r.acceptance.frames).toEqual([
-      "/tmp/parlez-test/r-lower-third-barra-020f.png",
-      "/tmp/parlez-test/r-lower-third-barra-062f.png",
-      "/tmp/parlez-test/r-lower-third-barra-111f.png",
+      `${FRAMES_POSIX}/r-lower-third-barra-020f.png`,
+      `${FRAMES_POSIX}/r-lower-third-barra-062f.png`,
+      `${FRAMES_POSIX}/r-lower-third-barra-111f.png`,
     ]);
+    expect(r.acceptance.framesMissing).toEqual([]);
     expect(r.usedCardsLine).toMatch(/^Schede usate: stile s-lanterna v3/);
     expect(r.acceptance.look).toHaveLength(5);
+  });
+
+  it("waits for frames that After Effects writes after it has answered", async () => {
+    // Prova del 25/10 su After Effects 26.5: render.frame diceva ok, ma il PNG
+    // non c'era ancora quando il rapporto veniva letto (ENOENT nel test E2E).
+    const p = await plan();
+    const t = scripted(namesAnswer([]), () =>
+      evalOk({ ok: true, results: batchResults(p, { framesDelayMs: 400 }) }),
+    );
+    const r = (await getOp("recipe.run")!.run!(
+      { recipe: "r-lower-third-barra", args: ARGS, archivio: ARCHIVE, framesDir: FRAMES },
+      t,
+    )) as Record<string, any>;
+    expect(r.acceptance.unverified).toBe(0);
+    expect(r.acceptance.frames).toHaveLength(3);
+    // When recipe.run returns, every frame it lists is really on disk.
+    for (const f of r.acceptance.frames as string[]) expect(statSync(f).size).toBeGreaterThan(0);
+  });
+
+  it("a frame that never arrives is «non verificabile», not an error", async () => {
+    const p = await plan();
+    const t = scripted(namesAnswer([]), () =>
+      evalOk({ ok: true, results: batchResults(p, { framesNever: true }) }),
+    );
+    const started = Date.now();
+    const r = (await getOp("recipe.run")!.run!(
+      {
+        recipe: "r-lower-third-barra",
+        args: ARGS,
+        archivio: ARCHIVE,
+        framesDir: FRAMES,
+        framesTimeoutMs: 300,
+      },
+      t,
+    )) as Record<string, any>;
+    // The three frames are waited for together, not one after the other.
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(r.ok).toBe(true);
+    expect(r.acceptance.failed).toBe(0);
+    expect(r.acceptance.unverified).toBe(3);
+    expect(r.acceptance.frames).toEqual([]);
+    expect(r.acceptance.framesMissing).toHaveLength(3);
+    const frame = r.acceptance.checks.find((c: { check: string }) => c.check === "frames");
+    expect(frame.outcome).toBe("non verificabile");
+    expect(frame.detail).toBe(
+      `il fotogramma 20f (0.8 s) doveva arrivare in ${FRAMES_POSIX}/r-lower-third-barra-020f.png, ma il file non c'è: After Effects lo scrive dopo aver risposto, e non è arrivato in tempo`,
+    );
   });
 
   it("picks a free comp name when the project already has one", async () => {

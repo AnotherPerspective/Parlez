@@ -443,7 +443,13 @@ function okResult(r: unknown): boolean {
 }
 
 /** Turn the batch's verification results into plain-Italian outcomes. */
-export function evaluateAcceptance(plan: Plan, results: unknown[]): CheckOutcome[] {
+export function evaluateAcceptance(
+  plan: Plan,
+  results: unknown[],
+  // Per PNG path: did the file actually arrive? render.frame reports success
+  // before After Effects has written it (recipe.run waits, then says here).
+  framesOnDisk?: ReadonlyMap<string, boolean>,
+): CheckOutcome[] {
   const fps = plan.comp.fps;
   const resultAt = (i: number): unknown => results[i];
   const slot = <K extends ReadSlot["kind"]>(
@@ -573,15 +579,28 @@ export function evaluateAcceptance(plan: Plan, results: unknown[]): CheckOutcome
       for (const frame of c.frames) {
         const s = slot("frame", (x) => x.frame === frame);
         const r = s ? resultAt(s.index) : undefined;
-        out.push({
-          check: c.check,
-          frame,
-          outcome: okResult(r) ? "ok" : "non verificabile",
-          detail:
-            okResult(r) && s
-              ? `fotogramma ${at(frame)} in ${s.outPath}: da guardare`
-              : `il fotogramma ${at(frame)} non è stato salvato`,
-        });
+        if (!okResult(r) || !s) {
+          out.push({
+            check: c.check,
+            frame,
+            outcome: "non verificabile",
+            detail: `il fotogramma ${at(frame)} non è stato salvato`,
+          });
+        } else if (framesOnDisk?.get(s.outPath) === false) {
+          out.push({
+            check: c.check,
+            frame,
+            outcome: "non verificabile",
+            detail: `il fotogramma ${at(frame)} doveva arrivare in ${s.outPath}, ma il file non c'è: After Effects lo scrive dopo aver risposto, e non è arrivato in tempo`,
+          });
+        } else {
+          out.push({
+            check: c.check,
+            frame,
+            outcome: "ok",
+            detail: `fotogramma ${at(frame)} in ${s.outPath}: da guardare`,
+          });
+        }
       }
     }
   }
