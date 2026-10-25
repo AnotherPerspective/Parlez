@@ -14,7 +14,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { validateOpArgs } from "../src/opschema.js";
 import "../src/operations/index.js";
 import type { Plan } from "../src/recipes/generate.js";
-import { cardsComment } from "../src/recipes/generate.js";
+import { cardsComment, valueMatches } from "../src/recipes/generate.js";
 import { planRecipe } from "../src/recipes/library.js";
 import { getOp } from "../src/registry.js";
 import { lintJsxFile } from "./helpers/lint-jsx.js";
@@ -259,6 +259,31 @@ describe("second recipe: centred title with a fade", () => {
     });
     assertRegistryValid(plan);
     lintBatch(plan);
+  });
+});
+
+describe("valueMatches (values as After Effects reports them)", () => {
+  it("compares only the dimensions the recipe means", () => {
+    // Scale, Position and Anchor Point come back with a z on 2D layers.
+    expect(valueMatches([0, 100, 100], [0, 100])).toBe(true);
+    expect(valueMatches([960, 540, 0], [960, 540])).toBe(true);
+    expect(valueMatches([0, 0, 0], [0, 0])).toBe(true);
+    expect(valueMatches([0, 100], [0, 100])).toBe(true);
+  });
+
+  it("tolerates float noise but not a real difference", () => {
+    expect(valueMatches([0.004, 99.996, 100], [0, 100])).toBe(true);
+    expect(valueMatches(1920.0000001, 1920)).toBe(true);
+    expect(valueMatches([0.5, 100, 100], [0, 100])).toBe(false);
+    expect(valueMatches(0.02, 0)).toBe(false);
+  });
+
+  it("a missing dimension, or a different kind of value, never matches", () => {
+    expect(valueMatches([0], [0, 100])).toBe(false);
+    expect(valueMatches(0, [0, 100])).toBe(false);
+    expect(valueMatches([0, 100], 0)).toBe(false);
+    expect(valueMatches([0], 0)).toBe(true);
+    expect(valueMatches("0", 0)).toBe(false);
   });
 });
 

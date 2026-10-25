@@ -57,15 +57,24 @@ async function plan(args: Record<string, unknown> = {}): Promise<Plan> {
   return r;
 }
 
+// Corners come back with a z, as After Effects gives them for a 2D layer.
 function box(l: number, t: number, r: number, b: number) {
   return {
     ok: true,
-    compSpace: { topLeft: [l, t], topRight: [r, t], bottomLeft: [l, b], bottomRight: [r, b] },
+    compSpace: {
+      topLeft: [l, t, 0],
+      topRight: [r, t, 0],
+      bottomLeft: [l, b, 0],
+      bottomRight: [r, b, 0],
+    },
   };
 }
 
 /** Results for every op of a plan: building steps ok, reads with plausible values. */
-function batchResults(p: Plan, opts: { failAt?: number; titleBox?: number[] } = {}): unknown[] {
+function batchResults(
+  p: Plan,
+  opts: { failAt?: number; titleBox?: number[]; scale?: unknown; opacity?: unknown } = {},
+): unknown[] {
   return p.batch.args.ops.map((o, i) => {
     if (opts.failAt !== undefined) {
       if (i < opts.failAt) return { ok: true };
@@ -90,8 +99,9 @@ function batchResults(p: Plan, opts: { failAt?: number; titleBox?: number[] } = 
       };
     }
     if (slot.kind === "value") {
-      if (slot.alias === "scale") return { ok: true, value: [0, 100] };
-      return { ok: true, value: 0 };
+      // Scale as After Effects 26.5 reports it on a 2D layer: three components.
+      if (slot.alias === "scale") return { ok: true, value: opts.scale ?? [0, 100, 100] };
+      return { ok: true, value: opts.opacity ?? 0 };
     }
     return { ok: true, path: slot.outPath };
   });
@@ -205,6 +215,41 @@ describe("recipe.run", () => {
     )) as Record<string, any>;
     expect(r.comp).toBe("LT – Mario Rossi 2");
     expect(t.calls[1].code).toContain('"LT – Mario Rossi 2"');
+  });
+
+  it("reads Scale with three components on a 2D layer as the two the recipe means", async () => {
+    // Prova del 25/10 su After Effects 26.5: [0, 100, 100] contro [0, 100] dava «fallito».
+    const p = await plan();
+    const t = scripted(namesAnswer([]), () => evalOk({ ok: true, results: batchResults(p) }));
+    const r = (await getOp("recipe.run")!.run!(
+      { recipe: "r-lower-third-barra", args: ARGS, archivio: ARCHIVE, framesDir: FRAMES },
+      t,
+    )) as Record<string, any>;
+    const scale = r.acceptance.checks.filter((c: { detail: string }) => c.detail.includes("scale"));
+    expect(scale.map((c: { outcome: string }) => c.outcome)).toEqual(["ok", "ok"]);
+    expect(scale[0].detail).toBe(
+      "«LT Barra» · scale a 0f (0 s): [0,100], atteso [0,100] (After Effects dà [0,100,100]: contano le prime 2 componenti)",
+    );
+  });
+
+  it("still fails a wrong value, and tolerates After Effects' float noise", async () => {
+    const p = await plan();
+    const run = async (scale: unknown, opacity: unknown) => {
+      const t = scripted(namesAnswer([]), () =>
+        evalOk({ ok: true, results: batchResults(p, { scale, opacity }) }),
+      );
+      const r = (await getOp("recipe.run")!.run!(
+        { recipe: "r-lower-third-barra", args: ARGS, archivio: ARCHIVE, framesDir: FRAMES },
+        t,
+      )) as Record<string, any>;
+      return r.acceptance.checks
+        .filter((c: { check: string }) => c.check === "value")
+        .map((c: { outcome: string }) => c.outcome);
+    };
+    expect(await run([50, 100, 100], 0)).toEqual(["fallito", "fallito", "ok", "ok", "ok", "ok"]);
+    expect(await run([0.000001, 99.999999, 100], 0.0000001)).toEqual(Array(6).fill("ok"));
+    expect(await run([0, 100, 100], [0])).toEqual(Array(6).fill("ok"));
+    expect(await run([0], 0)).toEqual(["fallito", "fallito", "ok", "ok", "ok", "ok"]);
   });
 
   it("reports a layer outside the safe area as failed, in plain words", async () => {
