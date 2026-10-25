@@ -33,6 +33,8 @@ import "./sample.js";
 import "./instance.js";
 import "./checkpoint.js";
 import "./audit.js";
+// Parlez! M6.3: named curves, stagger, expression templates.
+import "./motion.js";
 
 // eval.run executes arbitrary ExtendScript (file I/O, system.callSystem,
 // Socket, …). Opt-in: it enters the registry only when AE_MCP_ENABLE_EVAL=1

@@ -86,6 +86,8 @@ const CONDITIONAL = [
   "layer.set_props",
   "item.set_props",
   "keyframe.apply",
+  // M6.3: same replace switch as keyframe.apply.
+  "keyframe.apply_ease",
   "layer.set_visibility_schedule",
   "layer.split_groups",
   "layer.convert_to_shapes",
@@ -280,6 +282,16 @@ const CONDITIONAL_CASES: Array<[string, Record<string, unknown>, boolean]> = [
   ],
   [
     "keyframe.apply",
+    { comp: "Main", layer: 1, property: ["Transform", "Opacity"], keys: [] },
+    false,
+  ],
+  [
+    "keyframe.apply_ease",
+    { comp: "Main", layer: 1, property: ["Transform", "Opacity"], keys: [], replace: true },
+    true,
+  ],
+  [
+    "keyframe.apply_ease",
     { comp: "Main", layer: 1, property: ["Transform", "Opacity"], keys: [] },
     false,
   ],
