@@ -106,8 +106,10 @@
                   {
                     "time": 0,
                     "value": 0,
-                    "inInterp": 6614,
-                    "outInterp": 6614,
+                    "inInterp": 6613,
+                    "outInterp": 6613,
+                    "inInterpName": "bezier",
+                    "outInterpName": "bezier",
                     "inEase": [
                       {
                         "speed": 0,
@@ -124,8 +126,10 @@
                   {
                     "time": 1,
                     "value": 100,
-                    "inInterp": 6614,
-                    "outInterp": 6614,
+                    "inInterp": 6613,
+                    "outInterp": 6613,
+                    "inInterpName": "bezier",
+                    "outInterpName": "bezier",
                     "inEase": [
                       {
                         "speed": 0,
@@ -324,8 +328,10 @@
                   {
                     "time": 0.5,
                     "value": 0,
-                    "inInterp": 6614,
-                    "outInterp": 6614,
+                    "inInterp": 6613,
+                    "outInterp": 6613,
+                    "inInterpName": "bezier",
+                    "outInterpName": "bezier",
                     "inEase": [
                       {
                         "speed": 0,
@@ -342,8 +348,10 @@
                   {
                     "time": 1.5,
                     "value": 100,
-                    "inInterp": 6614,
-                    "outInterp": 6614,
+                    "inInterp": 6613,
+                    "outInterp": 6613,
+                    "inInterpName": "bezier",
+                    "outInterpName": "bezier",
                     "inEase": [
                       {
                         "speed": 0,
@@ -491,8 +499,10 @@
                   {
                     "time": 0,
                     "value": 0,
-                    "inInterp": 6614,
-                    "outInterp": 6614,
+                    "inInterp": 6613,
+                    "outInterp": 6613,
+                    "inInterpName": "bezier",
+                    "outInterpName": "bezier",
                     "inEase": [
                       {
                         "speed": 0,
@@ -509,8 +519,10 @@
                   {
                     "time": 2,
                     "value": 60,
-                    "inInterp": 6614,
-                    "outInterp": 6614,
+                    "inInterp": 6613,
+                    "outInterp": 6613,
+                    "inInterpName": "bezier",
+                    "outInterpName": "bezier",
                     "inEase": [
                       {
                         "speed": 0,

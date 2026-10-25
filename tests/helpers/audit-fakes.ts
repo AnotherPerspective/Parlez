@@ -10,9 +10,17 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-export const LINEAR = 6613;
-export const BEZIER = 6614;
-export const HOLD = 6615;
+// KeyframeInterpolationType as After Effects itself reports it: an export
+// from AE 26.5x89 (25/10/2026) gives inInterp 6612 with inInterpName
+// "linear"; tests/motion.test.ts uses the same three values. The import
+// document carries these numbers and jsx/import.jsx hands them straight to
+// setInterpolationTypeAtKey, so the fake must use the real ones — with the
+// old 6613/6614/6615 (copied from a wrong comment in src/schema.ts) the
+// fake agreed with the test projects and hid that, in After Effects, their
+// "linear" keys were bezier and their "eased" keys were hold.
+export const LINEAR = 6612;
+export const BEZIER = 6613;
+export const HOLD = 6614;
 
 export const PropertyType = { PROPERTY: 6812, INDEXED_GROUP: 6813, NAMED_GROUP: 6814 };
 export const KeyframeInterpolationType = { LINEAR, BEZIER, HOLD };
