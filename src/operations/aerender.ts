@@ -25,7 +25,7 @@ import { type ChildProcess, type SpawnOptions, spawn as nodeSpawn } from "node:c
 import { promises as fs, closeSync, openSync, writeSync } from "node:fs";
 import * as path from "node:path";
 
-import { rejectedOutputPath, resolveAfterFxPath } from "../config.js";
+import { AGENT_DISABLE_ENV, rejectedOutputPath, resolveAfterFxPath } from "../config.js";
 import { jsxFail, jsxVal, registerOp } from "../registry.js";
 import type { AeTransport } from "../transport/AeTransport.js";
 import {
@@ -687,6 +687,10 @@ registerOp({
         detached: true,
         windowsHide: true,
         stdio: ["ignore", fd, fd],
+        // The render engine loads Scripts/Startup too; without this the
+        // resident agent registers it as a second instance and every unnamed
+        // call fails as ambiguous while the render runs (2026-10-25).
+        env: { ...process.env, [AGENT_DISABLE_ENV]: "1" },
       });
     } catch (err) {
       closeSync(fd);

@@ -101,6 +101,7 @@ function fakeAe(
 interface Spawned {
   command: string;
   args: string[];
+  env: NodeJS.ProcessEnv | undefined;
 }
 let spawned: Spawned[] = [];
 let fakeEnv: Record<string, string> = {};
@@ -112,7 +113,7 @@ function installFake(platform: NodeJS.Platform = "win32", exe: () => string = ()
     platform,
     afterFxPath: exe,
     spawn: (command: string, args: string[], options: SpawnOptions) => {
-      spawned.push({ command, args });
+      spawned.push({ command, args, env: options.env });
       return nodeSpawn(process.execPath, [FAKE, ...args], {
         ...options,
         env: { ...process.env, ...fakeEnv },
@@ -486,6 +487,9 @@ describe("aerender.start → status → done", () => {
       "-OMtemplate",
       "H.264 - Match Render Settings - 15 Mbps",
     ]);
+    // aerender loads Scripts/Startup like After Effects does: this keeps the
+    // resident agent from registering the render engine as an instance.
+    expect(spawned[0]!.env?.AE_MCP_AGENT_DISABLE).toBe("1");
 
     const done = await waitDone(String(r.id));
     expect(done).toMatchObject({

@@ -48,7 +48,7 @@
 #include "serve.jsx"
 
 (function agentEntry() {
-    var AGENT_VERSION = 1;
+    var AGENT_VERSION = 2;
     var TICK_MS = 250;
     var HEARTBEAT_MS = 1000;
 
@@ -144,11 +144,31 @@
         return normalizePath(Folder.temp.fsName) + "/mcp-aftereffects";
     }
 
+    /**
+     * True inside a process that loads Scripts/Startup but is not an After
+     * Effects someone works in: the render engine (aerender loads the Startup
+     * folder too — on AE 26.5 its agent registered as a second instance and
+     * made every unnamed call ambiguous), or a process we started with
+     * AE_MCP_AGENT_DISABLE=1. app.isRenderEngine is a documented Application
+     * attribute (present in the AE 2020 scripting plug-in already); whether
+     * aerender itself reports true is not verified yet, hence the variable.
+     */
+    function shouldStayOut() {
+        try {
+            if (app.isRenderEngine === true) return true;
+        } catch (eRe) { /* attribute missing: not a render engine we can tell */ }
+        try {
+            if ($.getenv("AE_MCP_AGENT_DISABLE") === "1") return true;
+        } catch (eDis) { /* no env access */ }
+        return false;
+    }
+
     function agentMain() {
         // One agent per process. A second evaluation (a `-r` run of this file,
         // a second stub) must not install a second poller: two tasks would
         // race over the same mailbox.
         if ($.global.AE_MCP_AGENT) return;
+        if (shouldStayOut()) return;
 
         var envId = null;
         try { envId = sanitizeId($.getenv("AE_MCP_INSTANCE")); } catch (eEnv) { /* no env access */ }
