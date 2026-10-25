@@ -407,11 +407,35 @@ function fmtBox(b: Box): string {
   return `x ${round(b.left, 1)}…${round(b.right, 1)}, y ${round(b.top, 1)}…${round(b.bottom, 1)}`;
 }
 
-function nearlyEqual(a: unknown, b: unknown): boolean {
-  if (typeof a === "number" && typeof b === "number") return Math.abs(a - b) <= 0.01;
-  if (Array.isArray(a) && Array.isArray(b))
-    return a.length === b.length && a.every((x, i) => nearlyEqual(x, b[i]));
-  return a === b;
+/**
+ * Whether a value read from After Effects is the one a check expects.
+ *
+ * After Effects reports Scale, Position and Anchor Point with THREE components
+ * even on a 2D layer (seen on 26.5: Scale [0, 100, 100] where the recipe means
+ * [0, 100]), and stores numbers with float noise. A recipe writes only the
+ * dimensions it means, so only those are compared — the first N — each within
+ * a tolerance; a 1-element array also matches a plain number.
+ */
+export function valueMatches(actual: unknown, expected: unknown): boolean {
+  if (typeof expected === "number") {
+    const a = Array.isArray(actual) && actual.length === 1 ? actual[0] : actual;
+    return (
+      typeof a === "number" && Math.abs(a - expected) <= Math.max(0.01, Math.abs(expected) * 1e-6)
+    );
+  }
+  if (Array.isArray(expected)) {
+    if (!Array.isArray(actual) || actual.length < expected.length) return false;
+    return expected.every((e, i) => valueMatches(actual[i], e));
+  }
+  return actual === expected;
+}
+
+/** The read value as the check compares it: the extra components are left out. */
+function comparedPart(actual: unknown, expected: unknown): unknown {
+  if (Array.isArray(expected) && Array.isArray(actual) && actual.length > expected.length) {
+    return actual.slice(0, expected.length);
+  }
+  return actual;
 }
 
 function okResult(r: unknown): boolean {
@@ -536,8 +560,12 @@ export function evaluateAcceptance(plan: Plan, results: unknown[]): CheckOutcome
               check: c.check,
               layer,
               frame,
-              outcome: nearlyEqual(r.value, c.equals) ? "ok" : "fallito",
-              detail: `«${layer}» · ${c.alias} a ${at(frame)}: ${JSON.stringify(r.value)}, atteso ${JSON.stringify(c.equals)}`,
+              outcome: valueMatches(r.value, c.equals) ? "ok" : "fallito",
+              detail:
+                `«${layer}» · ${c.alias} a ${at(frame)}: ${JSON.stringify(comparedPart(r.value, c.equals))}, atteso ${JSON.stringify(c.equals)}` +
+                (comparedPart(r.value, c.equals) !== r.value
+                  ? ` (After Effects dà ${JSON.stringify(r.value)}: contano le prime ${(c.equals as unknown[]).length} componenti)`
+                  : ""),
             });
         }
       }
