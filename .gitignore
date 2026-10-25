@@ -20,3 +20,11 @@ coverage/
 # Ephemeral file-IPC state exchanged with After Effects (request/response
 # JSON, dispatcher log, test-time project backups) — never committed.
 runtime/
+
+# Parlez!: private material and client projects never enter the repository
+# (the planning notes §3). Test fixtures are the only .aep files allowed.
+*-private*/
+archivio-privato/
+prove/
+*.aep
+!tests/fixtures/**

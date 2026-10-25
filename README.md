@@ -273,12 +273,30 @@ Bug reports, feature requests, and Pull Requests are welcome.
 
 For information on setting up the development environment and the internal architecture, please refer to `CONTRIBUTING.md`.
 
+## Crediti
+
+Parlez! per Adobe® After Effects® _(nome provvisorio)_ nasce dal lavoro di altri, pubblicato con licenza MIT. Li ringraziamo. I testi completi delle licenze sono in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+- **[mcp-aftereffects](https://github.com/kumoproductions/mcp-aftereffects)** di kumo.productions, Inc. ([@kumoproductions](https://github.com/kumoproductions)) — Copyright (c) 2026 kumo.productions, Inc. Parlez! è un fork di questo progetto: il motore che parla con After Effects viene da qui.
+- **[After-Effects-mcp-pro](https://github.com/malkawi06/After-Effects-mcp-pro)** di Mohammad Malkawi ([@malkawi06](https://github.com/malkawi06)) — Copyright (c) 2026 Mohammad Malkawi. Ne riprendiamo idee ed eventuale codice per gli «occhi» (vedere e controllare il lavoro), i checkpoint, il render in sottofondo e la libreria di aiuti AEH.
+- **[after-effects-mcp](https://github.com/ishu86/after-effects-mcp)** di Ishant Kohar ([@ishu86](https://github.com/ishu86)) — Copyright (c) 2024 Ishant Kohar. Ne riprendiamo le idee dei modelli pronti e i modelli di espressione.
+
+## Credits
+
+Parlez! for Adobe® After Effects® _(working name)_ builds on the work of others, released under the MIT License. Thank you. The full license texts are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+- **[mcp-aftereffects](https://github.com/kumoproductions/mcp-aftereffects)** by kumo.productions, Inc. ([@kumoproductions](https://github.com/kumoproductions)) — Copyright (c) 2026 kumo.productions, Inc. Parlez! is a fork of this project: the engine that talks to After Effects comes from here.
+- **[After-Effects-mcp-pro](https://github.com/malkawi06/After-Effects-mcp-pro)** by Mohammad Malkawi ([@malkawi06](https://github.com/malkawi06)) — Copyright (c) 2026 Mohammad Malkawi. We draw ideas, and possibly code, from it for the "eyes" (seeing and checking the work), checkpoints, background rendering and the AEH helper library.
+- **[after-effects-mcp](https://github.com/ishu86/after-effects-mcp)** by Ishant Kohar ([@ishu86](https://github.com/ishu86)) — Copyright (c) 2024 Ishant Kohar. We draw on its ideas for ready-made templates and its expression presets.
+
 ## License
 
 MIT © 2026 kumo.productions, Inc.
 
-## Trademark
+## Marchi
 
-Adobe® and Adobe After Effects® are trademarks of Adobe Inc.
+«Parlez! per Adobe® After Effects®». Adobe e After Effects sono marchi di Adobe Inc. Parlez! è un progetto indipendente, non affiliato ad Adobe, né approvato o sponsorizzato da Adobe.
 
-This project is an independent, unofficial tool and is **not affiliated with or endorsed by Adobe**.
+## Trademarks
+
+"Parlez! for Adobe® After Effects®". Adobe and After Effects are trademarks of Adobe Inc. Parlez! is an independent project, not affiliated with, endorsed by or sponsored by Adobe.
