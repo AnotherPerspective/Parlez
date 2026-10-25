@@ -1,0 +1,48 @@
+{
+  "format": "parlez.card/0.1",
+  "kind": "technique",
+  "id": "t-entrata-scorrimento",
+  "version": 2,
+  "status": "approved",
+  "role": "text-entry",
+  "title": "Entrata a scorrimento breve",
+  "summary": "Testi da sinistra di 40u in 12f, decelerando, 5f dopo il fondo, sfalsati di 3f.",
+  "use": "Righe di testo che entrano sopra un fondo già in movimento: lower third, didascalie, elenchi brevi.",
+  "header": {
+    "confidentiality": "libero",
+    "toClaude": { "numbers": true, "descriptions": true, "images": true },
+    "sources": [
+      {
+        "type": "inventato",
+        "ref": "esempio",
+        "label": "Numeri inventati, verosimili",
+        "ownership": "libero"
+      }
+    ],
+    "approval": { "by": "Anthony", "date": "2026-11-10", "note": "v2: sfalsamento da 4f a 3f" },
+    "client": null
+  },
+  "motion": {
+    "property": "position + opacity",
+    "direction": "da sinistra",
+    "distance": "40u",
+    "duration": "12f@25",
+    "fade": "10f@25",
+    "delay": "5f@25",
+    "stagger": "3f@25",
+    "curve": "decelera"
+  },
+  "measured": {
+    "occurrences": 23,
+    "projects": 4,
+    "duration": { "median": "12f@25", "p10": "10f@25", "p90": "14f@25" },
+    "distance": { "median": "38u", "p10": "30u", "p90": "48u" },
+    "curveFit": { "name": "decelera", "error": 0.021 }
+  },
+  "example": {
+    "recipe": "r-lower-third-barra",
+    "where": "titolo e sottotitolo, entrata",
+    "sample": "c-lt-001"
+  },
+  "avoid": ["Oltre 60u sembra una transizione, non un'entrata."]
+}

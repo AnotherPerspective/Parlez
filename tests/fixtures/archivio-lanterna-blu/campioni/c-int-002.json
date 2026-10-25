@@ -1,0 +1,32 @@
+{
+  "format": "parlez.card/0.1",
+  "kind": "sample",
+  "id": "c-int-002",
+  "version": 1,
+  "status": "approved",
+  "title": "Lower third su intervista",
+  "summary": "Lo stesso lower third su un'intervista: solo descrizione e numeri (persone in campo).",
+  "header": {
+    "confidentiality": "libero",
+    "toClaude": { "numbers": true, "descriptions": true, "images": false },
+    "sources": [
+      {
+        "type": "inventato",
+        "ref": "esempio",
+        "label": "Descrizione inventata",
+        "ownership": "libero"
+      }
+    ],
+    "approval": { "by": "Anthony", "date": "2026-11-10" },
+    "client": null
+  },
+  "people": true,
+  "description": "Intervista in piano medio, persona a destra dell'inquadratura; il lower third occupa il terzo sinistro senza coprire il viso. Fondo sfocato e caldo.",
+  "measurements": {
+    "format": "16:9",
+    "subjectSide": "destra",
+    "ltWidthShare": 0.31,
+    "bgPalette": [{ "hex": "#6B4F3A", "share": 0.42 }]
+  },
+  "thumbnails": []
+}

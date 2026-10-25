@@ -1,0 +1,123 @@
+{
+  "format": "parlez.recipe/0.1",
+  "kind": "recipe",
+  "id": "r-titolo-dissolvenza",
+  "version": 1,
+  "status": "draft",
+  "title": "Titolo centrato con dissolvenza",
+  "summary": "Una riga di titolo al centro che compare in dissolvenza salendo appena, resta, e svanisce.",
+  "note": "Seconda ricetta di prova (M6.2): un solo livello di testo, nessuna dipendenza da forme o espressioni.",
+  "header": {
+    "confidentiality": "libero",
+    "toClaude": { "numbers": true, "descriptions": true, "images": true },
+    "sources": [
+      {
+        "type": "idea",
+        "ref": "the recipe format spec",
+        "ownership": "libero",
+        "note": "ricetta di esempio"
+      }
+    ],
+    "approval": null
+  },
+  "requires": { "ae": "24.0", "capabilities": [] },
+
+  "params": {
+    "title": { "type": "text", "default": "Titolo", "maxChars": 40 },
+    "format": { "type": "format", "default": "16:9" },
+    "duration": { "type": "time", "default": "4s", "min": "2s" },
+    "titleColor": {
+      "type": "color",
+      "default": { "$ref": "style:color/onPrimary", "default": "#FFFFFF" }
+    },
+    "bgColor": {
+      "type": "color",
+      "default": { "$ref": "style:color/primary", "default": "#000000" }
+    },
+    "titleFont": {
+      "type": "font",
+      "default": { "$ref": "style:font/title", "default": "Arial-BoldMT" }
+    },
+    "titleSize": {
+      "type": "length",
+      "default": { "$ref": "style:size/titleCard", "default": "120u" }
+    },
+    "fadeIn": { "type": "time", "default": "15f" },
+    "fadeOut": { "type": "time", "default": "12f" },
+    "rise": { "type": "length", "default": "16u" },
+    "curveIn": { "type": "curve", "default": "decelera" },
+    "curveOut": { "type": "curve", "default": "accelera" }
+  },
+
+  "let": {
+    "baseline": "= comp.height / 2 + titleSize * titleFont.capHeight / 2",
+    "holdMid": "= round(end / 2)"
+  },
+
+  "comp": {
+    "create": true,
+    "name": "Titolo – {title}",
+    "format": "= format",
+    "duration": "= duration",
+    "bgColor": "= bgColor"
+  },
+
+  "layers": [
+    {
+      "id": "title",
+      "type": "text",
+      "name": "Titolo",
+      "text": "{title}",
+      "style": {
+        "font": "= titleFont",
+        "fontSize": "= titleSize",
+        "fillColor": "= titleColor",
+        "justification": "center"
+      },
+      "transform": { "position": "= [comp.width / 2, baseline]" }
+    }
+  ],
+
+  "animation": [
+    {
+      "layer": "title",
+      "property": "opacity",
+      "keys": [
+        { "at": "0f", "value": 0 },
+        { "at": "= fadeIn", "value": 100, "curve": "= curveIn" },
+        { "at": "= end - fadeOut", "value": 100, "curve": "linear" },
+        { "at": "= end", "value": 0, "curve": "= curveOut" }
+      ]
+    },
+    {
+      "layer": "title",
+      "property": "position",
+      "relative": true,
+      "spatial": "linear",
+      "keys": [
+        { "at": "0f", "offset": "= [0, rise]" },
+        { "at": "= fadeIn", "offset": [0, 0], "curve": "= curveIn" }
+      ]
+    }
+  ],
+
+  "acceptance": {
+    "checks": [
+      { "check": "insideSafeArea", "layer": "title", "area": "title", "at": "= holdMid" },
+      { "check": "fontIs", "layer": "title", "font": "= titleFont" },
+      {
+        "check": "value",
+        "layer": "title",
+        "property": "opacity",
+        "at": ["0f", "= end"],
+        "equals": 0
+      },
+      { "check": "frames", "at": ["= fadeIn", "= holdMid"] }
+    ],
+    "look": [
+      "Il titolo è al centro, in una riga sola, dentro l'area del titolo.",
+      "Compare salendo appena e si ferma; alla fine svanisce senza muoversi.",
+      "Il primo e l'ultimo fotogramma sono vuoti."
+    ]
+  }
+}
