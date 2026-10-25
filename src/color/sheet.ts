@@ -170,6 +170,9 @@ export function analyzeFrame(img: DecodedPng): FrameAnalysis {
 // Contact sheet
 // ---------------------------------------------------------------------------
 
+/** Default tile width of a contact sheet (px). */
+export const SHEET_THUMB_WIDTH = 480;
+
 export interface SheetOptions {
   /** Tiles per row (default: ceil(sqrt(n))). */
   columns?: number;
@@ -191,8 +194,11 @@ export interface SheetImage {
   thumbHeight: number;
 }
 
+/** Just the pixels: what resampling and drawing need from a decoded PNG. */
+export type Raster = Pick<DecodedPng, "width" | "height" | "rgb">;
+
 /** Area-averaging downscale to exactly tw×th. */
-export function resample(img: DecodedPng, tw: number, th: number): Float64Array {
+export function resample(img: Raster, tw: number, th: number): Float64Array {
   const out = new Float64Array(tw * th * 3);
   const counts = new Float64Array(tw * th);
   for (let y = 0; y < img.height; y++) {
@@ -216,7 +222,8 @@ export function resample(img: DecodedPng, tw: number, th: number): Float64Array 
   return out;
 }
 
-// 5×7 glyphs for the only text the sheet ever carries: "#<index> <time>s".
+// 5×7 glyphs for the only text the sheet ever carries: "#<index> <time>s"
+// (plus "+" for the timeline strip's merged-layers row).
 const GLYPHS: Record<string, string[]> = {
   "0": [".###.", "#...#", "#..##", "#.#.#", "##..#", "#...#", ".###."],
   "1": ["..#..", ".##..", "..#..", "..#..", "..#..", "..#..", ".###."],
@@ -232,6 +239,7 @@ const GLYPHS: Record<string, string[]> = {
   ":": [".....", ".##..", ".##..", ".....", ".##..", ".##..", "....."],
   "-": [".....", ".....", ".....", "#####", ".....", ".....", "....."],
   "#": [".#.#.", ".#.#.", "#####", ".#.#.", "#####", ".#.#.", ".#.#."],
+  "+": [".....", "..#..", "..#..", "#####", "..#..", "..#..", "....."],
   s: [".....", ".....", ".####", "#....", ".###.", "....#", "####."],
   f: ["..##.", ".#...", "###..", ".#...", ".#...", ".#...", ".#..."],
   " ": [".....", ".....", ".....", ".....", ".....", ".....", "....."],
@@ -241,24 +249,38 @@ const GLYPH_H = 7;
 const FONT_SCALE = 2;
 const LABEL_H = GLYPH_H * FONT_SCALE + 6;
 
-function drawText(
+/** Width in px of `text` drawn at `scale` (trailing spacing included). */
+export function textWidth(text: string, scale = FONT_SCALE): number {
+  return [...text].length * (GLYPH_W + 1) * scale;
+}
+
+/** Height in px of one line of text at `scale`. */
+export function textHeight(scale = FONT_SCALE): number {
+  return GLYPH_H * scale;
+}
+
+export function drawText(
   rgb: Float64Array,
   width: number,
   x0: number,
   y0: number,
   text: string,
   color: Rgb,
+  scale = FONT_SCALE,
 ): void {
+  // Clip to the buffer: the strip places labels near its right edge.
+  const height = rgb.length / 3 / width;
   let cx = x0;
   for (const ch of text) {
     const glyph = GLYPHS[ch] ?? GLYPHS[" "];
     for (let gy = 0; gy < GLYPH_H; gy++) {
       for (let gx = 0; gx < GLYPH_W; gx++) {
         if (glyph[gy][gx] !== "#") continue;
-        for (let sy = 0; sy < FONT_SCALE; sy++) {
-          for (let sx = 0; sx < FONT_SCALE; sx++) {
-            const x = cx + gx * FONT_SCALE + sx;
-            const y = y0 + gy * FONT_SCALE + sy;
+        for (let sy = 0; sy < scale; sy++) {
+          for (let sx = 0; sx < scale; sx++) {
+            const x = cx + gx * scale + sx;
+            const y = y0 + gy * scale + sy;
+            if (x < 0 || y < 0 || x >= width || y >= height) continue;
             const i = (y * width + x) * 3;
             rgb[i] = color[0];
             rgb[i + 1] = color[1];
@@ -267,12 +289,12 @@ function drawText(
         }
       }
     }
-    cx += (GLYPH_W + 1) * FONT_SCALE;
+    cx += (GLYPH_W + 1) * scale;
   }
 }
 
 /** Tile frames into one image with a label strip above each tile. */
-export function composeContactSheet(frames: DecodedPng[], opts: SheetOptions = {}): SheetImage {
+export function composeContactSheet(frames: Raster[], opts: SheetOptions = {}): SheetImage {
   if (frames.length === 0) throw new Error("contact sheet needs at least one frame");
   const gap = opts.gap ?? 8;
   const bg = opts.background ?? [0.12, 0.12, 0.12];
@@ -283,7 +305,7 @@ export function composeContactSheet(frames: DecodedPng[], opts: SheetOptions = {
   const rows = Math.ceil(frames.length / columns);
   const srcW = Math.max(...frames.map((f) => f.width));
   const srcH = Math.max(...frames.map((f) => f.height));
-  const thumbWidth = Math.max(16, Math.min(opts.thumbWidth ?? 480, srcW));
+  const thumbWidth = Math.max(16, Math.min(opts.thumbWidth ?? SHEET_THUMB_WIDTH, srcW));
   const thumbHeight = Math.max(1, Math.round((srcH * thumbWidth) / srcW));
   const cellW = thumbWidth;
   const cellH = LABEL_H + thumbHeight;

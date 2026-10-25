@@ -60,3 +60,64 @@ export const RENDER_FRAME_FN = `
         }
     }
 `;
+
+/**
+ * Read-only walk for the timeline strip: per layer, in/out points and the
+ * distinct keyframe times of every animatable property (comp seconds;
+ * markers are not keyframes and are skipped). Capped so a huge comp cannot
+ * flood the response: `maxLayers` layers, `maxKeys` distinct times each,
+ * property groups 8 deep.
+ */
+export const TIMELINE_KEYS_FN = `
+    function _tlWalk(g, depth, seen, keys, maxKeys, st) {
+        if (depth > 8 || st.truncated) return;
+        var _np = 0;
+        try { _np = g.numProperties; } catch (eNp) { return; }
+        for (var _pi = 1; _pi <= _np; _pi++) {
+            var _p = null;
+            try { _p = g.property(_pi); } catch (eP) { continue; }
+            if (!_p) continue;
+            if (_p.propertyType === PropertyType.PROPERTY) {
+                if (_p.matchName === "ADBE Marker") continue;
+                var _nk = 0;
+                try { _nk = _p.numKeys; } catch (eNk) { _nk = 0; }
+                for (var _ki = 1; _ki <= _nk; _ki++) {
+                    var _kt = _p.keyTime(_ki);
+                    var _kk = "k" + Math.round(_kt * 1000);
+                    if (seen.hasOwnProperty(_kk)) continue;
+                    if (keys.length >= maxKeys) { st.truncated = true; return; }
+                    seen[_kk] = true;
+                    keys.push(_kt);
+                }
+            } else {
+                _tlWalk(_p, depth + 1, seen, keys, maxKeys, st);
+            }
+        }
+    }
+    function _tlCollect(c, maxLayers, maxKeys) {
+        var _tl = {
+            duration: c.duration,
+            frameRate: c.frameRate,
+            displayStartTime: c.displayStartTime,
+            layers: [],
+            layersTruncated: false
+        };
+        for (var _li = 1; _li <= c.numLayers; _li++) {
+            if (_tl.layers.length >= maxLayers) { _tl.layersTruncated = true; break; }
+            var _l = c.layer(_li);
+            var _keys = [];
+            var _st = { truncated: false };
+            try { _tlWalk(_l, 0, {}, _keys, maxKeys, _st); } catch (eW) { }
+            _tl.layers.push({
+                index: _l.index,
+                name: _l.name,
+                inPoint: _l.inPoint,
+                outPoint: _l.outPoint,
+                enabled: _l.enabled,
+                keys: _keys,
+                keysTruncated: _st.truncated
+            });
+        }
+        return _tl;
+    }
+`;
