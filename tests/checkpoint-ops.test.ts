@@ -22,9 +22,10 @@ import {
   sanitizeLabel,
 } from "../src/operations/checkpoint.js";
 import "../src/operations/index.js";
-import { validateOpArgs } from "../src/opschema.js";
+import { DESTRUCTIVE_CONFIRM_PARAM } from "../src/confirm-policy.js";
 import { denyOperation } from "../src/policy.js";
 import { getOp } from "../src/registry.js";
+import { doTool } from "../src/tools/do.js";
 import type { AeTransport, EvalRequest, EvalResult } from "../src/transport/AeTransport.js";
 
 // --- A fake After Effects -----------------------------------------------------
@@ -127,6 +128,15 @@ async function run(name: string, args: Record<string, unknown>, transport: AeTra
   const op = getOp(name);
   if (!op?.run) throw new Error(`${name} is not a Node-side operation`);
   return (await op.run(args, transport)) as Res;
+}
+
+/** Through ae_do, where the general confirm gate (confirm-policy.ts) lives. */
+async function viaDo(operation: string, args: Record<string, unknown>, transport: AeTransport) {
+  const res = (await doTool.handler({ operation, args }, transport)) as {
+    isError?: boolean;
+    structuredContent?: { error?: { code: string; message: string } };
+  };
+  return { isError: res.isError === true, error: res.structuredContent?.error };
 }
 
 let tmp: string;
@@ -425,17 +435,17 @@ async function threeCheckpoints(ae: FakeAe): Promise<string[]> {
 }
 
 describe("checkpoint.restore", () => {
-  it("refuses without confirm: true, before contacting AE", async () => {
+  it("refuses without confirm: true, in Italian, before contacting AE", async () => {
     const ae = fakeAe({ file: projectFile, memory: "A" });
     for (const args of [{ checkpoint: "x.aep" }, { checkpoint: "x.aep", confirm: false }]) {
-      const res = await run("checkpoint.restore", args, ae);
-      expect(res.ok).toBe(false);
-      expect(res.errorCode).toBe("FORBIDDEN");
-      expect(res.error).toContain("confirm");
+      const res = await viaDo("checkpoint.restore", args, ae);
+      expect(res.isError).toBe(true);
+      expect(res.error?.code).toBe("FORBIDDEN");
+      expect(res.error?.message).toContain("sostituisce il file del progetto");
+      expect(res.error?.message).toContain("confirm: true");
     }
     expect(ae.calls).toHaveLength(0);
-    const schema = validateOpArgs(getOp("checkpoint.restore")!, { checkpoint: "x.aep" });
-    expect(schema.ok, "missing confirm fails ae_do's schema check too").toBe(false);
+    expect(await read(projectFile)).toBe("A");
   });
 
   it("creates, ruins, restores the second: the project file is the second again", async () => {
@@ -577,12 +587,35 @@ describe("checkpoint.restore", () => {
 // --- checkpoint.delete -----------------------------------------------------------------
 
 describe("checkpoint.delete", () => {
-  it("refuses without confirm: true", async () => {
+  it("refuses without confirm: true, before contacting AE or deleting", async () => {
+    await fs.mkdir(defaultDir());
+    const cp = path.join(defaultDir(), "shot__20261025-090000.aep");
+    await fs.writeFile(cp, "1");
     const ae = fakeAe({ file: projectFile, memory: "A" });
-    const res = await run("checkpoint.delete", { checkpoint: "x.aep", confirm: false }, ae);
-    expect(res.ok).toBe(false);
-    expect(res.errorCode).toBe("FORBIDDEN");
+    for (const args of [
+      { checkpoint: path.basename(cp) },
+      { checkpoint: path.basename(cp), confirm: false },
+    ]) {
+      const res = await viaDo("checkpoint.delete", args, ae);
+      expect(res.isError).toBe(true);
+      expect(res.error?.code).toBe("FORBIDDEN");
+      expect(res.error?.message).toContain("cancella per sempre");
+    }
     expect(ae.calls).toHaveLength(0);
+    expect(await exists(cp)).toBe(true);
+  });
+
+  it("goes through with confirm: true via ae_do", async () => {
+    await fs.mkdir(defaultDir());
+    const cp = path.join(defaultDir(), "shot__20261025-090000.aep");
+    await fs.writeFile(cp, "1");
+    const res = await viaDo(
+      "checkpoint.delete",
+      { checkpoint: path.basename(cp), confirm: true },
+      fakeAe({ file: projectFile, memory: "A" }),
+    );
+    expect(res.isError).toBe(false);
+    expect(await exists(cp)).toBe(false);
   });
 
   it("deletes one checkpoint in the folder", async () => {
@@ -646,10 +679,17 @@ describe("checkpoint.* and the capability policy", () => {
     }
   });
 
-  it("restore and delete declare a required confirm parameter", () => {
+  it("restore and delete use the general confirm gate; create and list are not gated", () => {
     for (const name of ["checkpoint.restore", "checkpoint.delete"]) {
-      const confirm = getOp(name)!.params.find((p) => p.name === "confirm");
-      expect(confirm?.required, name).toBe(true);
+      const op = getOp(name)!;
+      expect(op.destructive, name).toBe(true);
+      expect(op.destructiveReason, name).toMatch(/\S{3,}/);
+      expect(op.params.filter((p) => p.name === "confirm")).toEqual([DESTRUCTIVE_CONFIRM_PARAM]);
+    }
+    for (const name of ["checkpoint.create", "checkpoint.list"]) {
+      const op = getOp(name)!;
+      expect(op.destructive, name).toBeUndefined();
+      expect(op.params.some((p) => p.name === "confirm")).toBe(false);
     }
   });
 });

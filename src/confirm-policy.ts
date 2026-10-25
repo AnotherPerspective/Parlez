@@ -138,6 +138,13 @@ export const CONFIRM_RULES: Readonly<Record<string, ConfirmRule>> = {
   "project.set_xmp": always("sostituisce tutti i metadati XMP del progetto"),
   "text.paste_range": always("sostituisce testo e stile di una parte del testo"),
 
+  // --- Checkpoints (M3.1): restore replaces the project file, delete removes
+  // a file from disk. ---
+  "checkpoint.restore": always(
+    "sostituisce il file del progetto con il checkpoint scelto e lo riapre (prima salva lo stato attuale in un checkpoint «prima-del-ripristino»)",
+  ),
+  "checkpoint.delete": always("cancella per sempre un file di checkpoint dal disco"),
+
   // --- Conditional: only some arguments delete, overwrite or rename.
   // validateOpArgs does not fill defaults, so an omitted argument is read
   // here exactly as the operation's toJsx reads it. ---

@@ -77,6 +77,9 @@ const ALWAYS = [
   "project.replace_font",
   "project.set_xmp",
   "text.paste_range",
+  // checkpoints (M3.1)
+  "checkpoint.restore",
+  "checkpoint.delete",
 ].toSorted();
 
 const CONDITIONAL = [
@@ -139,7 +142,7 @@ describe("the confirm table", () => {
   });
 
   it("marks exactly the operations decided for 'always'", () => {
-    expect(ALWAYS).toHaveLength(32);
+    expect(ALWAYS).toHaveLength(34);
     expect(gatedNames("always")).toEqual(ALWAYS);
   });
 

@@ -506,21 +506,6 @@ async function copySnapshot(
   }
 }
 
-function requireConfirm(name: string, args: Record<string, unknown>, what: string): Failure | null {
-  if (args.confirm === true) return null;
-  return fail(
-    `${name} ${what}: serve confirm: true. Passalo solo se è l'utente a chiederlo esplicitamente.`,
-    { errorCode: "FORBIDDEN", hint: "Chiedi prima all'utente se non l'ha già chiesto lui." },
-  );
-}
-
-const CONFIRM_PARAM = (what: string) => ({
-  name: "confirm",
-  type: "boolean" as const,
-  description: `Must be true. This operation ${what} — set it only when the user explicitly asked for it.`,
-  required: true,
-});
-
 const DIR_PARAM = {
   name: "dir",
   type: "string" as const,
@@ -716,14 +701,11 @@ registerOp({
       required: true,
     },
     DIR_PARAM,
-    CONFIRM_PARAM(
-      "replaces the project file with an older version (the current one is checkpointed first)",
-    ),
   ],
+  // confirm: true is enforced by the general gate (confirm-policy.ts), which
+  // also injects the `confirm` param: refused in ae_do / batch.run before run().
   toJsx: () => nodeOnly("checkpoint.restore"),
   async run(args, transport) {
-    const denied = requireConfirm("checkpoint.restore", args, "sostituisce il file del progetto");
-    if (denied) return denied;
     const chosen = typeof args.checkpoint === "string" ? args.checkpoint.trim() : "";
     if (!chosen) return fail("checkpoint mancante", { errorCode: "INVALID_ARGS" });
     if (explicitDir(args.dir) !== null) {
@@ -849,12 +831,10 @@ registerOp({
       required: true,
     },
     DIR_PARAM,
-    CONFIRM_PARAM("permanently deletes a checkpoint file"),
   ],
+  // confirm: true is enforced by the general gate (confirm-policy.ts).
   toJsx: () => nodeOnly("checkpoint.delete"),
   async run(args, transport) {
-    const denied = requireConfirm("checkpoint.delete", args, "cancella un file");
-    if (denied) return denied;
     const chosen = typeof args.checkpoint === "string" ? args.checkpoint.trim() : "";
     if (!chosen) return fail("checkpoint mancante", { errorCode: "INVALID_ARGS" });
     if (explicitDir(args.dir) !== null) {
