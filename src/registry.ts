@@ -95,9 +95,21 @@ export interface Operation {
    * optional `errorCode` / `hint`) for an expected failure. `toJsx` must still
    * be provided; it should return a `jsxFail` saying the operation cannot ride
    * inside batch.run, which only knows how to inline ExtendScript.
+   *
+   * A Node-side result may carry pictures for the model under
+   * OP_INLINE_IMAGES_KEY (an array of `{ data, mimeType }`); ae_do moves
+   * them out of the JSON into image blocks after it.
    */
   run?(args: Record<string, unknown>, transport: AeTransport): Promise<unknown>;
 }
+
+/**
+ * Where a Node-side operation puts images for the model (Parlez! M5:
+ * reference.measure's crop, frame.compare's difference map). ae_do takes
+ * them out of the result, so the JSON never holds base64 and does not
+ * depend on them — the privacy filter can drop the image blocks alone.
+ */
+export const OP_INLINE_IMAGES_KEY = "inlineImages";
 
 const operations = new Map<string, Operation>();
 
