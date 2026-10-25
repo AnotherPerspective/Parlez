@@ -11,11 +11,13 @@ import { promises as fs } from "node:fs";
 import * as path from "node:path";
 
 import {
+  AGENT_GRACE_MS,
   HEARTBEAT_BUSY_STALE_MS,
   HEARTBEAT_FILENAME,
   HEARTBEAT_STALE_MS,
   INSTANCE_DIR_SWEEP_MS,
   INSTANCES_DIR,
+  NEVER_TICKED_MS,
   sanitizeInstanceId,
 } from "../config.js";
 
@@ -35,6 +37,8 @@ export interface Heartbeat {
   busy?: boolean;
   busySince?: number | null;
   lastError?: string | null;
+  /** True when the agent runs inside the render engine; such a process is never an instance. */
+  renderEngine?: boolean;
   /** Epoch milliseconds, AE's clock — same machine as ours. */
   ts: number;
 }
@@ -48,30 +52,69 @@ export interface InstanceInfo {
   alive: boolean;
 }
 
+/**
+ * Could this heartbeat belong to an After Effects someone works in? Not when
+ * it says it runs in the render engine, and not when it never got past its
+ * first tick: that is what the agent inside aerender looks like (one
+ * heartbeat with `ticks: 1`, then silence, because the render engine never
+ * runs scheduled tasks). Heartbeats from agents that predate `ticks` pass.
+ */
+function canBeInstance(heartbeat: Heartbeat, now: number): boolean {
+  if (heartbeat.renderEngine === true) return false;
+  if (!heartbeat.busy && typeof heartbeat.ticks === "number" && heartbeat.ticks <= 1) {
+    return now - heartbeat.ts < NEVER_TICKED_MS;
+  }
+  return true;
+}
+
 export function isAlive(heartbeat: Heartbeat | null, now: number = Date.now()): boolean {
   if (heartbeat === null || typeof heartbeat.ts !== "number") return false;
+  if (!canBeInstance(heartbeat, now)) return false;
   const age = now - heartbeat.ts;
   return age < (heartbeat.busy ? HEARTBEAT_BUSY_STALE_MS : HEARTBEAT_STALE_MS);
 }
 
-/** Describe one instance directory. Never throws; a missing or torn heartbeat reads as dead. */
+async function tryReadHeartbeat(file: string): Promise<Partial<Heartbeat> | null> {
+  try {
+    const parsed = JSON.parse(await fs.readFile(file, "utf8")) as Partial<Heartbeat>;
+    return parsed && typeof parsed.ts === "number" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * The agent replaces heartbeat.json the way ExtendScript must on Windows:
+ * write heartbeat.json.tmp, REMOVE heartbeat.json, rename the tmp over it. A
+ * read that lands between the remove and the rename finds no file, and a
+ * missing heartbeat used to mean "no agent", which sent the call down the
+ * push path (2026-10-25: 60 s timeouts in an E2E run with the agent alive).
+ * So: the file, else the complete .tmp next to it, else the file again a
+ * moment later, once the rename has landed.
+ */
+async function readHeartbeatFile(dir: string): Promise<Partial<Heartbeat> | null> {
+  const file = path.join(dir, HEARTBEAT_FILENAME);
+  const first = (await tryReadHeartbeat(file)) ?? (await tryReadHeartbeat(`${file}.tmp`));
+  if (first !== null) return first;
+  await sleep(30);
+  return tryReadHeartbeat(file);
+}
+
+/** Describe one instance directory. Never throws; a heartbeat that cannot be read reads as dead. */
 export async function readInstance(dir: string, now: number = Date.now()): Promise<InstanceInfo> {
   const id = path.basename(dir);
   let heartbeat: Heartbeat | null = null;
-  try {
-    const raw = await fs.readFile(path.join(dir, HEARTBEAT_FILENAME), "utf8");
-    const parsed = JSON.parse(raw) as Partial<Heartbeat>;
-    if (parsed && typeof parsed.ts === "number") {
-      heartbeat = {
-        ...parsed,
-        id: typeof parsed.id === "string" ? parsed.id : id,
-        project: typeof parsed.project === "string" ? parsed.project : null,
-        projectName: typeof parsed.projectName === "string" ? parsed.projectName : null,
-        ts: parsed.ts,
-      };
-    }
-  } catch {
-    /* no heartbeat yet, unreadable, or mid-rename — dead until proven otherwise */
+  const parsed = await readHeartbeatFile(dir);
+  if (parsed !== null && typeof parsed.ts === "number") {
+    heartbeat = {
+      ...parsed,
+      id: typeof parsed.id === "string" ? parsed.id : id,
+      project: typeof parsed.project === "string" ? parsed.project : null,
+      projectName: typeof parsed.projectName === "string" ? parsed.projectName : null,
+      ts: parsed.ts,
+    };
   }
   return {
     id,
@@ -139,7 +182,16 @@ export function matchesTarget(instance: InstanceInfo, target: string): boolean {
 export type TargetResolution =
   | { mode: "push" }
   | { mode: "pull"; instance: InstanceInfo }
-  | { mode: "error"; message: string; hint: string };
+  | {
+      mode: "error";
+      message: string;
+      hint: string;
+      /**
+       * "ambiguous": several live instances fit, so waiting cannot help.
+       * "unmatched": nothing live fits (yet) — an agent may still come back.
+       */
+      kind?: "ambiguous" | "unmatched";
+    };
 
 const INSTALL_HINT =
   "Each instance needs the resident agent: run `npx @kumoproductions/mcp-aftereffects install-agent` " +
@@ -190,8 +242,19 @@ export async function resolveTarget(
   if (target === null) {
     if (live.length === 0) return { mode: "push" };
     if (live.length === 1) return { mode: "pull", instance: live[0] };
+    // An instance on its very first heartbeat (one tick) is still starting,
+    // or is the agent inside aerender, which never ticks again. When exactly
+    // one of the live instances is past that, it is the one being worked in.
+    const established = live.filter(
+      (i) =>
+        typeof i.heartbeat?.ticks !== "number" ||
+        i.heartbeat.ticks > 1 ||
+        i.heartbeat.busy === true,
+    );
+    if (established.length === 1) return { mode: "pull", instance: established[0] };
     return {
       mode: "error",
+      kind: "ambiguous",
       message:
         `${live.length} After Effects instances are live and none was named — ` +
         `set AE_MCP_INSTANCE to one of: ${live.map(instanceLabel).join(", ")}`,
@@ -207,6 +270,7 @@ export async function resolveTarget(
   if (matches.length > 1) {
     return {
       mode: "error",
+      kind: "ambiguous",
       message:
         `'${target}' matches ${matches.length} live After Effects instances: ` +
         matches.map(instanceLabel).join(", "),
@@ -222,9 +286,34 @@ export async function resolveTarget(
         : "; no instance has a live agent";
   return {
     mode: "error",
+    kind: "unmatched",
     message: `no live After Effects instance matches '${target}'${why}`,
     hint: INSTALL_HINT,
   };
+}
+
+/**
+ * An agent that is not live right now but was a moment ago (heartbeat younger
+ * than AGENT_GRACE_MS, and one that can be an instance at all), matching
+ * `target` when one is named; null when there is none. The transport waits
+ * for such an agent to tick again rather than pushing past it or reporting it
+ * gone: After Effects pauses scheduled tasks while it is busy. A machine that
+ * never ran the agent has no heartbeat at all, so nothing changes there.
+ */
+export async function recentlyAliveAgent(
+  target: string | null,
+  instancesDir: string = INSTANCES_DIR,
+  now: number = Date.now(),
+): Promise<InstanceInfo | null> {
+  const recent = (await listInstances(instancesDir, now)).find((i) => {
+    const hb = i.heartbeat;
+    if (i.alive || hb === null) return false;
+    if (now - hb.ts >= AGENT_GRACE_MS) return false;
+    if (hb.renderEngine === true) return false;
+    if (!hb.busy && typeof hb.ticks === "number" && hb.ticks <= 1) return false;
+    return target === null || matchesTarget(i, target);
+  });
+  return recent ?? null;
 }
 
 /**

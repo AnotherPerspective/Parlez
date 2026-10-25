@@ -331,6 +331,43 @@ export const HEARTBEAT_BUSY_STALE_MS = 15 * 60_000;
 /** An instance directory whose heartbeat is this old is swept at startup. */
 export const INSTANCE_DIR_SWEEP_MS = STALE_RUNTIME_FILE_MS;
 
+/**
+ * A heartbeat that still says `ticks: 1` this long after it was written comes
+ * from an agent whose scheduled task never fired: the render engine
+ * (aerender loads Scripts/Startup too) or an AE that stalled while starting.
+ * A real agent writes its second heartbeat about a second after the first.
+ */
+export const NEVER_TICKED_MS = 2_500;
+
+/**
+ * How long after its last heartbeat an agent that was live is still waited
+ * for, instead of falling back to push (or reporting it gone). After Effects
+ * can stop running scheduled tasks for a few seconds while it is busy —
+ * redrawing after a resize, reloading fonts — without having quit.
+ * (Nome provvisorio della costante; valore da rivedere dopo le prove.)
+ */
+export const AGENT_GRACE_MS = 20_000;
+
+/**
+ * `AE_MCP_PULL_ONLY=1` (nome provvisorio): never use the push path. With no
+ * live agent a call waits for one until its own timeout, then fails with
+ * NO_INSTANCE. For machines where `AfterFX.exe -r` does not deliver scripts
+ * (seen on AE 26.5 / Windows, 2026-10-25), where a push only burns the
+ * timeout. Read at call time.
+ */
+export const PULL_ONLY_ENV = "AE_MCP_PULL_ONLY";
+
+export function pullOnlyMode(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env[PULL_ONLY_ENV]?.trim() === "1";
+}
+
+/**
+ * Set in the environment of processes we start that load Scripts/Startup but
+ * must not run the resident agent (aerender). jsx/agent.jsx reads it with
+ * $.getenv. (Nome provvisorio.)
+ */
+export const AGENT_DISABLE_ENV = "AE_MCP_AGENT_DISABLE";
+
 /** How often a pull call re-checks that its instance is alive while the request waits. */
 export const LIVENESS_CHECK_MS = 1_000;
 

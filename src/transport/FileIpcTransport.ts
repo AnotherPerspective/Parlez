@@ -11,6 +11,7 @@ import {
   DEFAULT_TIMEOUT_MS,
   LIVENESS_CHECK_MS,
   MAX_LAUNCH_ATTEMPTS,
+  PULL_ONLY_ENV,
   PHANTOM_LAUNCH_MS,
   POLL_INTERVAL_MS,
   RELAUNCH_UNCONSUMED_AFTER_MS,
@@ -23,6 +24,7 @@ import {
   RUNTIME_ROOT,
   STALE_RUNTIME_FILE_MS,
   instanceTargetFromEnv,
+  pullOnlyMode,
   requestPathFor,
   resolveAfterFxPath,
   responsePathFor,
@@ -37,6 +39,7 @@ import {
   describeInstance,
   listInstances,
   readInstance,
+  recentlyAliveAgent,
   resolveTarget,
   sweepDeadInstanceDirs,
 } from "./instances.js";
@@ -211,12 +214,77 @@ export class FileIpcTransport implements AeTransport {
    * call names an instance explicitly.
    */
   private async resolveTarget(explicit?: string): Promise<TargetResolution> {
+    const { name, forcedPush } = this.targetName(explicit);
+    if (forcedPush) return { mode: "push" };
+    return resolveTarget(name);
+  }
+
+  /** The name this call addresses (null: whichever agent is live), and whether push is forced. */
+  private targetName(explicit?: string): { name: string | null; forcedPush: boolean } {
     const named = explicit?.trim();
-    if (named) return resolveTarget(named);
-    if (this.instanceOption === null) return { mode: "push" };
-    const target =
-      this.instanceOption === undefined ? instanceTargetFromEnv() : this.instanceOption;
-    return resolveTarget(target);
+    if (named) return { name: named, forcedPush: false };
+    if (this.instanceOption === null) return { name: null, forcedPush: true };
+    return {
+      name: this.instanceOption === undefined ? instanceTargetFromEnv() : this.instanceOption,
+      forcedPush: false,
+    };
+  }
+
+  /**
+   * A call about to push (or to report its named instance gone) first gives
+   * an agent that was live moments ago the chance to tick again: After
+   * Effects stops running scheduled tasks while it is busy, and pushing past
+   * a live agent sends the call down a path that may not work at all on this
+   * machine (2026-10-25, AE 26.5 / Windows: `-r` delivered nothing, four calls
+   * timed out after 60 s with the agent alive). Machines that never ran the
+   * agent have no heartbeat, so they push at once as before.
+   *
+   * With AE_MCP_PULL_ONLY=1 there is no push at all: the call waits for an
+   * agent until its own deadline, then fails with a message that says so.
+   */
+  private async awaitAgent(
+    explicit: string | undefined,
+    first: TargetResolution,
+    deadline: number,
+  ): Promise<TargetResolution> {
+    if (first.mode === "pull") return first;
+    if (first.mode === "error" && first.kind === "ambiguous") return first;
+    const { name, forcedPush } = this.targetName(explicit);
+    const pullOnly = pullOnlyMode();
+    if (forcedPush) return pullOnly ? pullOnlyRefusal(name, null, true) : first;
+
+    let target = first;
+    let waitedFor: InstanceInfo | null = null;
+    let dialogsChecked = false;
+    while (Date.now() < deadline) {
+      if (!pullOnly) {
+        const recent = await recentlyAliveAgent(name);
+        if (recent === null) return target;
+        waitedFor = recent;
+        // An agent that went quiet behind a modal dialog does not come back
+        // by itself; the caller reports the dialog instead of waiting it out.
+        if (!dialogsChecked) {
+          dialogsChecked = true;
+          if ((await this.scanDialogs()).length > 0) return target;
+        }
+      }
+      await sleep(AGENT_WAIT_POLL_MS);
+      const next = await this.resolveTarget(explicit);
+      if (next.mode === "pull") return next;
+      if (next.mode === "error" && next.kind === "ambiguous") return next;
+      target = next;
+    }
+    if (pullOnly) return pullOnlyRefusal(name, target, false);
+    // Out of time while waiting: pushing now would only start a launch with
+    // no time left to answer.
+    return {
+      mode: "error",
+      kind: "unmatched",
+      message:
+        `After Effects instance '${waitedFor?.id ?? name ?? "?"}' had stopped ticking and did not come back ` +
+        "before this call's timeout; nothing was sent",
+      hint: "Is After Effects busy (rendering, previewing) or showing a dialog? Retry once it is idle, or raise timeoutMs.",
+    };
   }
 
   async execute(req: EvalRequest): Promise<EvalResult> {
@@ -252,7 +320,11 @@ export class FileIpcTransport implements AeTransport {
       });
     }
 
-    const target = await this.resolveTarget(req.instance);
+    const target = await this.awaitAgent(
+      req.instance,
+      await this.resolveTarget(req.instance),
+      started + timeoutMs,
+    );
     if (target.mode === "error") {
       // A named instance that stopped ticking is most often one stuck behind
       // a dialog — say which, rather than only that it went quiet.
@@ -840,6 +912,32 @@ function dialogFailure(dialogs: AeDialog[], outcome: string, started: number): E
     hint: dialogHint(dialogs),
     dialogs,
   });
+}
+
+/** How often a call waiting for an agent re-reads the heartbeats. */
+const AGENT_WAIT_POLL_MS = 250;
+
+/** The NO_INSTANCE answer under AE_MCP_PULL_ONLY=1. Plain Italian: the user reads it. */
+function pullOnlyRefusal(
+  name: string | null,
+  last: TargetResolution | null,
+  forcedPush: boolean,
+): TargetResolution {
+  const cause = forcedPush
+    ? "questo collegamento era impostato per usare il percorso push"
+    : `nessun After Effects con l'agente attivo ha risposto${name ? ` (cercato: '${name}')` : ""} entro il tempo della chiamata`;
+  const detail = last !== null && last.mode === "error" ? ` Dettaglio: ${last.message}.` : "";
+  return {
+    mode: "error",
+    kind: "unmatched",
+    message:
+      `Non ho inviato niente: ${cause}, e ${PULL_ONLY_ENV}=1 vieta il percorso push (AfterFX.exe -r).` +
+      detail,
+    hint:
+      "Controlla che After Effects sia aperto e che l'agente sia installato " +
+      "(`npx @kumoproductions/mcp-aftereffects install-agent`, poi riavvia After Effects): l'agente si " +
+      "registra circa dieci secondi dopo l'avvio. Se After Effects mostra una finestra di dialogo, chiudila e riprova.",
+  };
 }
 
 function sleep(ms: number): Promise<void> {
