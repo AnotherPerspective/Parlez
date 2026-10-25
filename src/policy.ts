@@ -3,6 +3,7 @@
 //   AE_MCP_READONLY=1          — nothing may modify the AE project
 //   AE_MCP_ALLOW_CATEGORIES=…  — comma-separated operation-category allowlist
 //   AE_MCP_ENABLE_EVAL=1       — opt in to `eval.run` (arbitrary ExtendScript)
+//   AE_MCP_PRIVACY=1           — filter what leaves the server (src/privacy.ts)
 //
 // `eval.run` is opt-in because it is code execution with the full authority
 // of the After Effects process (file I/O, system.callSystem, Socket); a
@@ -17,6 +18,7 @@
 // `ae_do` / `batch.run` (the operation is refused even if the model guessed
 // its name).
 
+import { denyForPrivacy, privacyMode, privacySummary } from "./privacy.js";
 import type { Operation } from "./registry.js";
 
 /**
@@ -33,6 +35,8 @@ export interface Denial {
 
 export function evalRunEnabled(): boolean {
   if (readOnlyMode()) return false;
+  // eval.run can read and return any file, which no output filter can vet.
+  if (privacyMode()) return false;
   return process.env.AE_MCP_ENABLE_EVAL === "1";
 }
 
@@ -66,6 +70,8 @@ export function denyOperation(op: Operation): Denial | null {
       hint: `Allowed categories: ${Array.from(allowed).sort().join(", ")}`,
     };
   }
+  const privacy = denyForPrivacy(op.name);
+  if (privacy) return privacy;
   if (op.category === "eval" && !evalRunEnabled()) return EVAL_DENIAL;
   return null;
 }
@@ -85,7 +91,9 @@ const EVAL_DENIAL: Denial = {
  * this before falling back to the unknown-name path.
  */
 export function denyUnregisteredOperation(name: string): Denial | null {
-  return name === "eval.run" && !evalRunEnabled() ? EVAL_DENIAL : null;
+  // Under AE_MCP_PRIVACY the EVAL_DENIAL hint (set AE_MCP_ENABLE_EVAL) would
+  // point at a switch that no longer helps.
+  return denyForPrivacy(name) ?? (name === "eval.run" && !evalRunEnabled() ? EVAL_DENIAL : null);
 }
 
 /** Same idea at category granularity, for `ae_catalog({ category })`. */
@@ -111,5 +119,7 @@ export function policySummary(): string {
   const allowed = allowedCategories();
   parts.push(allowed ? `categories=${Array.from(allowed).sort().join("|")}` : "categories=all");
   parts.push(evalRunEnabled() ? "eval.run=ENABLED" : "eval.run=disabled");
+  const privacy = privacySummary();
+  if (privacy) parts.push(privacy);
   return parts.join(", ");
 }
