@@ -37,12 +37,25 @@ const EXPECTED_ERRORI_3 = [
 interface Report {
   ok: boolean;
   segnalazioni: Array<{ regola: string; livello: string | null; composizione: string }>;
-  riepilogo: { totale: number; elementiConSegnalazioni: number; composizioniControllate: string[] };
+  riepilogo: {
+    testo: string;
+    totale: number;
+    errori: number;
+    avvisi: number;
+    elementiConSegnalazioni: number;
+    perElemento: Array<{ composizione: string; livello: string | null; regole: string[] }>;
+    composizioniControllate: string[];
+  };
   nonControllate: unknown[];
 }
 
-function auditDoc(doc: unknown, args: Record<string, unknown> = {}): Report {
+function auditDoc(
+  doc: unknown,
+  args: Record<string, unknown> = {},
+  tweak: (comps: ReturnType<typeof fakeProjectFromDoc>) => void = () => {},
+): Report {
   const comps = fakeProjectFromDoc(doc as { items: never[] });
+  tweak(comps);
   return runJsx(buildAuditJsx({ comp: "Principale", ...args }), comps) as Report;
 }
 
@@ -106,6 +119,7 @@ describe("test projects for comp.audit", () => {
     expect(res.nonControllate).toEqual([]);
     expect(res.riepilogo.composizioniControllate).toEqual(["Principale", "Sfondo animato"]);
     expect(res.segnalazioni).toEqual([]);
+    expect(res.riepilogo.testo).toBe("Nessuna segnalazione.");
   });
 
   it("offline, the audit finds the three planted errors and nothing else", () => {
@@ -114,8 +128,39 @@ describe("test projects for comp.audit", () => {
     expect(res.nonControllate).toEqual([]);
     const got = res.segnalazioni.map((f) => ({ regola: f.regola, livello: f.livello }));
     expect(got).toEqual(EXPECTED_ERRORI_3);
-    // Four findings, three elements: one per planted error.
-    expect(res.riepilogo.totale).toBe(4);
-    expect(res.riepilogo.elementiConSegnalazioni).toBe(3);
+    // Four findings, three elements: one problem per planted error.
+    expect(res.riepilogo).toMatchObject({
+      totale: 4,
+      errori: 1,
+      avvisi: 3,
+      elementiConSegnalazioni: 3,
+    });
+    expect(res.riepilogo.perElemento).toEqual([
+      {
+        composizione: "Principale",
+        livello: "Cerchio",
+        regole: ["keyframe-lineari", "movimento-senza-motion-blur"],
+      },
+      { composizione: "Principale", livello: "Credito finale", regole: ["fuori-dal-tempo"] },
+      { composizione: "Principale", livello: "Sottotitolo", regole: ["area-sicura"] },
+    ]);
+    expect(res.riepilogo.testo).toBe(
+      "3 problemi su 3 livelli, 4 segnalazioni (1 errore, 3 avvisi).",
+    );
+  });
+
+  it("offline, with motion blur switched on for the circle, three findings remain", () => {
+    // The same step the E2E suite takes with layer.set_props after the import.
+    const res = auditDoc(planted, { profondita: 1 }, (comps) => {
+      const main = comps.find((c) => c.name === "Principale")!;
+      main.layers.find((l) => l.name === "Cerchio")!.motionBlur = true;
+    });
+    const got = res.segnalazioni.map((f) => ({ regola: f.regola, livello: f.livello }));
+    expect(got).toEqual(
+      EXPECTED_ERRORI_3.filter((e) => e.regola !== "movimento-senza-motion-blur"),
+    );
+    expect(res.riepilogo.testo).toBe(
+      "3 problemi su 3 livelli, 3 segnalazioni (1 errore, 2 avvisi).",
+    );
   });
 });

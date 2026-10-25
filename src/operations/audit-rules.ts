@@ -302,6 +302,24 @@ export const AUDIT_CORE = `
         return Math.sqrt(dx * dx + dy * dy) < a.r + b.r;
     }
 
+    function _auPlural(n, one, many) {
+        return n + " " + ((n === 1) ? one : many);
+    }
+    // The summary in one sentence, for reading aloud to a person:
+    // "3 problemi su 3 livelli, 4 segnalazioni (1 errore, 3 avvisi)."
+    function _auSummaryText(total, nLayers, nComps, counts) {
+        if (total === 0) return "Nessuna segnalazione.";
+        var where = [];
+        if (nLayers > 0) where.push(_auPlural(nLayers, "livello", "livelli"));
+        if (nComps > 0) where.push(_auPlural(nComps, "composizione", "composizioni"));
+        var kinds = [];
+        if (counts.errore > 0) kinds.push(_auPlural(counts.errore, "errore", "errori"));
+        if (counts.avviso > 0) kinds.push(_auPlural(counts.avviso, "avviso", "avvisi"));
+        if (counts.nota > 0) kinds.push(_auPlural(counts.nota, "nota", "note"));
+        return _auPlural(nLayers + nComps, "problema", "problemi") + " su " + where.join(" e ") + ", " +
+            _auPlural(total, "segnalazione", "segnalazioni") + " (" + kinds.join(", ") + ").";
+    }
+
     // ---- measurements on layers ----
 
     // The layer's rendered rect carried into comp space through its own and
@@ -413,15 +431,27 @@ export const AUDIT_CORE = `
         }
         var counts = { errore: 0, avviso: 0, nota: 0 };
         var perRegola = {};
-        var touched = {};
-        var nTouched = 0;
+        // One "problem" per element: a layer, or the comp itself for
+        // comp-level findings. Two rules on one layer are one problem with
+        // two findings, each with its own fix.
+        var groups = {};
+        var perElemento = [];
+        var nLayersHit = 0;
+        var nCompsHit = 0;
         for (var f = 0; f < out.length; f++) {
             var g = out[f].gravita;
             if (counts.hasOwnProperty(g)) counts[g] += 1;
             var rk = out[f].regola;
             perRegola[rk] = perRegola.hasOwnProperty(rk) ? perRegola[rk] + 1 : 1;
-            var tk = "k" + out[f].composizione + "|" + ((out[f].livello === null) ? "" : out[f].livello);
-            if (!touched.hasOwnProperty(tk)) { touched[tk] = true; nTouched += 1; }
+            var isComp = out[f].livello === null;
+            var tk = "k" + out[f].composizione + "|" + (isComp ? "" : out[f].livello);
+            if (!groups.hasOwnProperty(tk)) {
+                groups[tk] = { composizione: out[f].composizione, livello: out[f].livello, regole: [] };
+                perElemento.push(groups[tk]);
+                if (isComp) nCompsHit += 1;
+                else nLayersHit += 1;
+            }
+            groups[tk].regole.push(rk);
         }
         var active = [];
         for (var a = 0; a < rules.length; a++) active.push(rules[a].id);
@@ -432,12 +462,15 @@ export const AUDIT_CORE = `
             temporanei: [],
             segnalazioni: out,
             riepilogo: {
+                testo: _auSummaryText(out.length, nLayersHit, nCompsHit, counts),
                 totale: out.length,
                 errori: counts.errore,
                 avvisi: counts.avviso,
                 note: counts.nota,
                 perRegola: perRegola,
-                elementiConSegnalazioni: nTouched,
+                elementiConSegnalazioni: nLayersHit + nCompsHit,
+                livelliConSegnalazioni: nLayersHit,
+                perElemento: perElemento,
                 composizioniControllate: comps,
                 livelliControllati: nLayers,
                 regoleAttive: active,
@@ -481,7 +514,7 @@ export const AUDIT_RULES: AuditRuleDef[] = [
   },
   {
     id: "keyframe-oltre-fine",
-    gravita: "avviso",
+    gravita: "errore",
     fn: "_auR_keyOltreFine",
     descrizione: "Keyframe dopo la fine della composizione (quella parte non si vede)",
     code: `
@@ -577,7 +610,7 @@ export const AUDIT_RULES: AuditRuleDef[] = [
   },
   {
     id: "fuori-dal-tempo",
-    gravita: "avviso",
+    gravita: "errore",
     fn: "_auR_fuoriTempo",
     descrizione: "Livello interamente fuori dalla durata della composizione",
     code: `
@@ -820,7 +853,7 @@ export const AUDIT_RULES: AuditRuleDef[] = [
   },
   {
     id: "comp-vuota",
-    gravita: "nota",
+    gravita: "errore",
     fn: "_auR_compVuota",
     descrizione: "Composizione senza livelli",
     code: `

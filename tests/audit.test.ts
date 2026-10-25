@@ -64,7 +64,10 @@ interface Report {
     avvisi: number;
     note: number;
     perRegola: Record<string, number>;
+    testo: string;
     elementiConSegnalazioni: number;
+    livelliConSegnalazioni: number;
+    perElemento: Array<{ composizione: string; livello: string | null; regole: string[] }>;
     composizioniControllate: string[];
     livelliControllati: number;
     regoleAttive: string[];
@@ -313,6 +316,12 @@ const core = loadFunctions<{
     tolZ: number,
   ): boolean;
   same(a: unknown, b: unknown): boolean;
+  summaryText(
+    total: number,
+    nLayers: number,
+    nComps: number,
+    counts: { errore: number; avviso: number; nota: number },
+  ): string;
 }>(AUDIT_CORE, [
   "_auSafeSides",
   "_auBoxMoved",
@@ -325,6 +334,7 @@ const core = loadFunctions<{
   "_auAngleDiff",
   "_auCoplanar",
   "_auSame",
+  "_auSummaryText",
 ]);
 
 const box = (left: number, top: number, right: number, bottom: number): Box => ({
@@ -609,7 +619,7 @@ describe("rule fuori-dal-tempo", () => {
     );
     const f = only("fuori-dal-tempo", c);
     expect(f.map((x) => x.livello)).toEqual(["Late", "Early", "AudioOnly"]);
-    expect(f[0]).toMatchObject({ tempo: 11, gravita: "avviso" });
+    expect(f[0]).toMatchObject({ tempo: 11, gravita: "errore" });
   });
 
   it("ignores layers with at least a frame inside, and switched-off silent layers", () => {
@@ -916,10 +926,10 @@ describe("rule motion-blur-comp", () => {
 });
 
 describe("rule comp-vuota", () => {
-  it("flags an empty comp as a note, and not a comp with layers", () => {
+  it("flags an empty comp as an error, and not a comp with layers", () => {
     const c = new FakeComp("Empty");
     expect(only("comp-vuota", c)).toMatchObject([
-      { regola: "comp-vuota", gravita: "nota", livello: null },
+      { regola: "comp-vuota", gravita: "errore", livello: null },
     ]);
     c.add(new FakeTextLayer({ name: "T" }));
     expect(only("comp-vuota", c)).toEqual([]);
@@ -946,13 +956,13 @@ describe("comp.audit runner", () => {
     ]);
     const deep = audit(c, { profondita: 5 }, all);
     expect(deep.riepilogo.composizioniControllate).toEqual(["Main", "Mid", "Inner"]);
-    // Inner is empty: one note, found in the precomp and labelled with it.
+    // Inner is empty: one error, found in the precomp and labelled with it.
     expect(deep.segnalazioni).toMatchObject([{ regola: "comp-vuota", composizione: "Inner" }]);
     expect(deep.riepilogo).toMatchObject({
       totale: 1,
-      errori: 0,
+      errori: 1,
       avvisi: 0,
-      note: 1,
+      note: 0,
       perRegola: { "comp-vuota": 1 },
       livelliControllati: 3,
     });
@@ -991,8 +1001,39 @@ describe("comp.audit runner", () => {
       "movimento-senza-motion-blur",
       "motion-blur-comp",
     ]);
-    // Two on the layer, one on the comp itself.
+    // Two on the layer, one on the comp itself: two problems, three findings.
     expect(res.riepilogo.elementiConSegnalazioni).toBe(2);
+    expect(res.riepilogo.livelliConSegnalazioni).toBe(1);
+    expect(res.riepilogo.perElemento).toEqual([
+      {
+        composizione: "Main",
+        livello: "S",
+        regole: ["keyframe-lineari", "movimento-senza-motion-blur"],
+      },
+      { composizione: "Main", livello: null, regole: ["motion-blur-comp"] },
+    ]);
+    expect(res.riepilogo.testo).toBe(
+      "2 problemi su 1 livello e 1 composizione, 3 segnalazioni (3 avvisi).",
+    );
     expect(res.riepilogo.regoleAttive).toEqual(AUDIT_RULE_IDS);
+  });
+});
+
+describe("readable summary", () => {
+  const counts = (errore: number, avviso: number, nota: number) => ({ errore, avviso, nota });
+  it.each([
+    [0, 0, 0, counts(0, 0, 0), "Nessuna segnalazione."],
+    [4, 3, 0, counts(1, 3, 0), "3 problemi su 3 livelli, 4 segnalazioni (1 errore, 3 avvisi)."],
+    [1, 1, 0, counts(0, 0, 1), "1 problema su 1 livello, 1 segnalazione (1 nota)."],
+    [1, 0, 1, counts(1, 0, 0), "1 problema su 1 composizione, 1 segnalazione (1 errore)."],
+    [
+      5,
+      2,
+      2,
+      counts(2, 1, 2),
+      "4 problemi su 2 livelli e 2 composizioni, 5 segnalazioni (2 errori, 1 avviso, 2 note).",
+    ],
+  ])("%i findings on %i layers and %i comps: %j", (total, nLayers, nComps, c, text) => {
+    expect(core.summaryText(total, nLayers, nComps, c)).toBe(text);
   });
 });

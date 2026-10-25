@@ -43,7 +43,12 @@ interface Report {
   solaLettura: boolean;
   temporanei: unknown[];
   segnalazioni: Array<{ regola: string; livello: string | null; messaggio: string }>;
-  riepilogo: { totale: number; elementiConSegnalazioni: number; composizioniControllate: string[] };
+  riepilogo: {
+    testo: string;
+    totale: number;
+    elementiConSegnalazioni: number;
+    composizioniControllate: string[];
+  };
   nonControllate: unknown[];
 }
 
@@ -161,7 +166,31 @@ describe("e2e comp.audit on the two test projects", () => {
       EXPECTED_ERRORI_3,
     );
     expect(res.riepilogo.elementiConSegnalazioni).toBe(3);
+    expect(res.riepilogo.testo).toBe(
+      "3 problemi su 3 livelli, 4 segnalazioni (1 errore, 3 avvisi).",
+    );
     for (const f of res.segnalazioni) expect(f.messaggio.length).toBeGreaterThan(10);
+  });
+
+  it("drops the motion blur finding once the circle's motion blur is on", async (ctx) => {
+    if (!ready || !transport) return ctx.skip();
+    await freshProject(transport);
+    await importDoc(transport, PLANTED);
+    const ops = opRunner(transport);
+    // The import format does not carry the layer switch; set it the way a
+    // user (or Claude) would fix the finding.
+    await ops.run("layer.set_props", {
+      comp: "Principale",
+      layer: "Cerchio",
+      props: { motionBlur: true },
+    });
+    const res = await ops.run<Report>("comp.audit", { comp: "Principale", profondita: 1 });
+    expect(res.nonControllate, "rules that failed to run").toEqual([]);
+    const got = res.segnalazioni.map((f) => ({ regola: f.regola, livello: f.livello }));
+    expect(got).toEqual(
+      EXPECTED_ERRORI_3.filter((e) => e.regola !== "movimento-senza-motion-blur"),
+    );
+    expect(res.riepilogo.totale).toBe(3);
   });
 
   it("leaves the project exactly as it found it", async (ctx) => {

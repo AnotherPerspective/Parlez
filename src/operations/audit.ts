@@ -83,7 +83,7 @@ registerOp({
   readOnly: true,
   description:
     "Read-only quality check of a comp (provisional name): 14 rules — expression errors, keyframes past the end, linear keyframes on motion, moving layers without motion blur, layers outside the comp time, missing footage, CC Radial Blur, blur on adjustment layers without CC RepeTile, layers over 30,000 px, near-coplanar 3D siblings, 2D text under 3D layers, resting elements outside the 5% safe area, comp motion blur off while layers move, empty comp. " +
-    "Returns segnalazioni [{ regola, gravita: errore|avviso|nota, composizione, livello, indice, tempo, messaggio, comeCorreggere }] in Italian plus riepilogo with counts. Changes nothing and creates nothing temporary. " +
+    "Returns segnalazioni [{ regola, gravita: errore|avviso|nota, composizione, livello, indice, tempo, messaggio, comeCorreggere }] in Italian, plus riepilogo: counts, findings grouped per layer (perElemento) and one readable sentence (testo, e.g. '3 problemi su 3 livelli, 4 segnalazioni (1 errore, 3 avvisi).'). Changes nothing and creates nothing temporary. " +
     `Rule ids for 'regole': ${AUDIT_RULE_IDS.join(", ")}.`,
   params: [
     { name: "comp", type: "any", description: "Comp name or id", required: true },
