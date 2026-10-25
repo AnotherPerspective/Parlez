@@ -779,6 +779,10 @@ registerOp({
   },
 });
 
+/** What project.get_xmp says when After Effects has no XMP packet yet. */
+export const XMP_EMPTY_NOTE =
+  "il progetto non ha ancora un pacchetto XMP: salvalo una volta, poi riprova (After Effects lo crea al primo salvataggio)";
+
 registerOp({
   name: "project.get_xmp",
   category: "project",
@@ -796,8 +800,15 @@ registerOp({
             // what AE gave us so the next run shows the cause.
             var _type = typeof _xmp;
             if (_type === "function") return { ok: false, error: "xmpPacket is a function on this After Effects, not text", xmpType: _type };
-            var _text = (_xmp === null || _xmp === undefined) ? null : ("" + _xmp);
-            return { ok: true, length: _text === null ? 0 : _text.length, xmp: _text, xmpType: _type };
+            // The second 26.5 run answered xmpType "undefined" on the suite's
+            // fresh, never-saved project: no packet exists yet. That is a state,
+            // not a failure — always hand back a string, empty when there is
+            // nothing, and say how to get one.
+            if (_xmp === null || _xmp === undefined || ("" + _xmp) === "") {
+                return { ok: true, length: 0, xmp: "", xmpType: _type, note: ${jsxVal(XMP_EMPTY_NOTE)} };
+            }
+            var _text = "" + _xmp;
+            return { ok: true, length: _text.length, xmp: _text, xmpType: _type };
         `;
   },
 });
