@@ -24,7 +24,8 @@ export const INLINE_AUTO_MAX_FRAMES = 4;
 
 export type InlineMode = "auto" | "none" | "all";
 
-export type InlineKind = "frame" | "sheet" | "grid" | "strip";
+/** "crop" and "map" are reference.measure's and frame.compare's images (M5). */
+export type InlineKind = "frame" | "sheet" | "grid" | "strip" | "crop" | "map";
 
 export interface InlineSource {
   kind: InlineKind;

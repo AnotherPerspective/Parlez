@@ -9,10 +9,12 @@ import {
   denyAppConfig,
   getOp,
   listOps,
+  OP_INLINE_IMAGES_KEY,
   wantsDialogSuppression,
   wantsUndoGroup,
 } from "../registry.js";
 import { defineTool, jsonResult, jsxReportedFailure } from "./define-tool.js";
+import type { ImageContent } from "./types.js";
 
 export const doTool = defineTool({
   name: "ae_do",
@@ -165,12 +167,17 @@ export const doTool = defineTool({
           ...(extra.hint ? { hint: extra.hint } : {}),
         });
       }
-      return jsonResult({
+      const images = takeInlineImages(opResult);
+      const res = jsonResult({
         result: opResult,
         context: null,
         logs: [],
         durationMs: Date.now() - started,
       });
+      // After the JSON, so content[0] stays the whole answer for clients
+      // that show no images (and for the privacy filter, which drops them).
+      res.content.push(...images);
+      return res;
     }
 
     // Generate JSX from the operation's toJsx, then append ambient context gathering.
@@ -251,6 +258,24 @@ export const doTool = defineTool({
     });
   },
 });
+
+/** Remove a Node-side operation's images from its result (see OP_INLINE_IMAGES_KEY). */
+function takeInlineImages(opResult: unknown): ImageContent[] {
+  if (opResult === null || typeof opResult !== "object" || Array.isArray(opResult)) return [];
+  const holder = opResult as Record<string, unknown>;
+  const raw = holder[OP_INLINE_IMAGES_KEY];
+  delete holder[OP_INLINE_IMAGES_KEY];
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(
+      (i): i is { data: string; mimeType: string } =>
+        i !== null &&
+        typeof i === "object" &&
+        typeof i.data === "string" &&
+        typeof i.mimeType === "string",
+    )
+    .map((i) => ({ type: "image", data: i.data, mimeType: i.mimeType }));
+}
 
 /** True for a batch.run-style result carrying a per-child `results` array. */
 function isBatchShaped(opResult: unknown): boolean {
