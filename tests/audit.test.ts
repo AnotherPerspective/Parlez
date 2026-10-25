@@ -1019,8 +1019,9 @@ describe("comp.audit runner", () => {
   });
 });
 
+const counts = (errore: number, avviso: number, nota: number) => ({ errore, avviso, nota });
+
 describe("readable summary", () => {
-  const counts = (errore: number, avviso: number, nota: number) => ({ errore, avviso, nota });
   it.each([
     [0, 0, 0, counts(0, 0, 0), "Nessuna segnalazione."],
     [4, 3, 0, counts(1, 3, 0), "3 problemi su 3 livelli, 4 segnalazioni (1 errore, 3 avvisi)."],
