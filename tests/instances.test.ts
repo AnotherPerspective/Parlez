@@ -19,6 +19,7 @@ import {
   describeInstance,
   instanceLabel,
   isAlive,
+  isPaused,
   listInstances,
   matchesTarget,
   readInstance,
@@ -182,6 +183,29 @@ describe("matchesTarget", () => {
   it("never matches an untitled project by name", async () => {
     const info = await readInstance(await writeHeartbeat("ae-untitled"));
     expect(matchesTarget(info, "untitled")).toBe(false);
+  });
+});
+
+describe("the pause switch in heartbeats (Parlez!)", () => {
+  it("reads `paused` and says so when describing the instance", async () => {
+    const info = await readInstance(await writeHeartbeat("ae-paused", { paused: true }));
+    expect(isPaused(info)).toBe(true);
+    expect(describeInstance(info)).toMatch(/\(paused, seen \d+s ago\)$/);
+  });
+
+  it("treats a missing field (agent version 1) and a stale instance as not paused", async () => {
+    const old = await readInstance(await writeHeartbeat("ae-v1"));
+    expect(isPaused(old)).toBe(false);
+    const stale = await readInstance(
+      await writeHeartbeat("ae-gone", { paused: true, ts: Date.now() - HEARTBEAT_STALE_MS - 1 }),
+    );
+    expect(isPaused(stale)).toBe(false);
+  });
+
+  it("still resolves to a paused instance — never falls back to push around it", async () => {
+    await writeHeartbeat("ae-only", { paused: true });
+    const res = await resolveTarget(null, root);
+    expect(res.mode).toBe("pull");
   });
 });
 

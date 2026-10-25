@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { HEARTBEAT_FILENAME, RUNTIME_DIR, instanceDirFor } from "../src/config.js";
 import "../src/operations/index.js";
 import { getOp } from "../src/registry.js";
+import { contextTool } from "../src/tools/context.js";
 import { nullTransport } from "./helpers/null-transport.js";
 
 interface OpFailure {
@@ -58,6 +59,62 @@ describe("instance.* are Node-side", () => {
     expect(Array.isArray(res.instances)).toBe(true);
     expect(Array.isArray(res.live)).toBe(true);
     expect(res.target).toBeNull();
+  });
+});
+
+describe("the pause switch is visible to the model (Parlez!)", () => {
+  // A throwaway instance directory under the REAL mailbox, like the pull
+  // tests: instance.list and ae_context read that location and nothing else.
+  const id = `t-${randomUUID().slice(0, 8)}`;
+  const dir = instanceDirFor(id);
+
+  beforeEach(async () => {
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, HEARTBEAT_FILENAME),
+      JSON.stringify({ id, project: null, projectName: null, paused: true, ts: Date.now() }),
+      "utf8",
+    );
+  });
+
+  afterEach(async () => {
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it("instance.list marks the instance paused", async () => {
+    const res = await run<{ instances: Array<{ id: string; paused: boolean }> }>(
+      "instance.list",
+      {},
+    );
+    expect(res.instances.find((i) => i.id === id)?.paused).toBe(true);
+  });
+
+  it("ae_context passes PAUSED through and still shows the instances", async () => {
+    const transport = nullTransport({
+      ok: false,
+      errorCode: "PAUSED",
+      error: "Claude è in pausa in After Effects: accendi l'interruttore nel pannello Parlez!",
+    });
+    const out = await contextTool.handler({}, transport);
+    expect(out.isError).toBe(true);
+    const env = out.structuredContent as {
+      error: {
+        code: string;
+        message: string;
+        details: { instances: Array<{ id: string; paused: boolean }> };
+      };
+    };
+    expect(env.error.code).toBe("PAUSED");
+    expect(env.error.message).toContain("pannello Parlez!");
+    expect(env.error.details.instances.find((i) => i.id === id)?.paused).toBe(true);
+  });
+
+  it("ae_context lists `paused` on a normal answer too", async () => {
+    const out = await contextTool.handler({}, nullTransport({ result: { project: {} } }));
+    const body = JSON.parse((out.content[0] as { text: string }).text) as {
+      result: { instances: Array<{ id: string; paused: boolean }> };
+    };
+    expect(body.result.instances.find((i) => i.id === id)?.paused).toBe(true);
   });
 });
 

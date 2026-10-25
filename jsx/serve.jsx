@@ -19,6 +19,8 @@
 //     in scope, inside an undo group unless the request said `undoGroup:
 //     false`, with modal dialogs suppressed unless it said `suppressDialogs:
 //     false`;
+//   - while the user has stopped Claude from the panel (the pause switch,
+//     below), the request is consumed and answered `paused` without running;
 //   - every failure mode writes a response. An exception escaping to AE's
 //     modal error dialog would block scripting for the rest of the session.
 //
@@ -71,6 +73,35 @@ AE_MCP.appendLog = function (logPath, msg) {
     } catch (eLog) { /* ignore */ }
 };
 
+// --- The pause switch (Parlez!, nome provvisorio) --------------------------
+// One app.settings entry, written by the panel (jsx/panel.jsx): "1" = Claude
+// may work, "0" = stopped. app.settings rather than a file in the mailbox:
+// the panel and both serving paths reach it without knowing where the
+// mailbox is or which instance id the agent picked, a change takes effect on
+// the very next request without restarting After Effects, and AE keeps it
+// between sessions, which the panel needs anyway. The server learns of it
+// through the agent's heartbeat (`paused`).
+//
+// Absent — the panel was never opened — means allowed: an install without the
+// panel must keep working exactly as before, and a missing switch the user
+// cannot see must not stop anything. The panel writes "0" the first time it
+// opens, so whoever has the switch starts with Claude stopped. Anything but
+// "0" also means allowed, for the same reason.
+//
+// Section and key are mirrored in src/config.ts and jsx/panel.jsx.
+AE_MCP.PAUSE_SECTION = "Parlez";
+AE_MCP.PAUSE_KEY = "claudeEnabled";
+AE_MCP.PAUSED_MESSAGE = "Claude è in pausa in After Effects: accendi l'interruttore nel pannello Parlez!";
+
+AE_MCP.isPaused = function () {
+    try {
+        if (!app.settings.haveSetting(AE_MCP.PAUSE_SECTION, AE_MCP.PAUSE_KEY)) return false;
+        return String(app.settings.getSetting(AE_MCP.PAUSE_SECTION, AE_MCP.PAUSE_KEY)) === "0";
+    } catch (ePause) {
+        return false;
+    }
+};
+
 /**
  * Oldest pending request-*.json directly inside `dir`, or null. Oldest-first
  * keeps a backlog fair. Not recursive: the shared mailbox and every instance
@@ -103,6 +134,7 @@ AE_MCP.oldestRequestIn = function (dir) {
  * @param requestFile  File   the request-<id>.json to serve
  * @param mailboxDir   string directory holding it; the response goes next to it
  * @param logPath      string append-only log for this serving path
+ * @returns "paused" when the request was refused by the pause switch
  */
 AE_MCP.serveRequest = function (requestFile, mailboxDir, logPath) {
     var REQUEST_PREFIX = "request-";
@@ -229,6 +261,17 @@ AE_MCP.serveRequest = function (requestFile, mailboxDir, logPath) {
             if (!requestFile.remove()) appendLog("WARN: could not consume " + requestName);
         } catch (eRm2) {
             appendLog("WARN: consuming " + requestName + " threw: " + describeError(eRm2));
+        }
+        // Checked after consuming, so a refused request cannot run later when
+        // the switch goes back on, and answered at once, so the caller does
+        // not wait out its timeout. `paused` is what the server maps to its
+        // PAUSED error; the message is only a fallback for older servers.
+        if (AE_MCP.isPaused()) {
+            response.paused = true;
+            response.error = AE_MCP.PAUSED_MESSAGE;
+            appendLog("refused " + requestName + ": Claude is paused");
+            writeResponse();
+            return "paused";
         }
         request = JSON.parse(raw);
     } catch (eReq) {

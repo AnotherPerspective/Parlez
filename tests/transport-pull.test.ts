@@ -76,6 +76,10 @@ class FakeAgent {
   private timer: NodeJS.Timeout | null = null;
   private busy = false;
   served: Array<Record<string, unknown>> = [];
+  /** Merged into every heartbeat (e.g. `{ paused: true }`). */
+  beat: Record<string, unknown> = {};
+  /** Answer every request the way serve.jsx does while the pause switch is off. */
+  refuse = false;
 
   constructor(private readonly serve: ((request: Record<string, unknown>) => unknown) | null) {}
 
@@ -105,6 +109,7 @@ class FakeAgent {
       projectName: null,
       busy: this.busy,
       ts: Date.now(),
+      ...this.beat,
       ...overrides,
     });
     const tmp = path.join(this.dir, `${HEARTBEAT_FILENAME}.tmp`);
@@ -138,16 +143,27 @@ class FakeAgent {
       }
       this.busy = true;
       await this.heartbeat();
-      this.served.push(request);
-      const response = {
-        id,
-        ok: true,
-        phase: "execute",
-        result: this.serve(request),
-        error: null,
-        stack: null,
-        logs: ["served by " + this.id],
-      };
+      const response = this.refuse
+        ? {
+            id,
+            ok: false,
+            phase: "dispatch",
+            paused: true,
+            result: null,
+            error: "paused",
+            stack: null,
+            logs: [],
+          }
+        : {
+            id,
+            ok: true,
+            phase: "execute",
+            result: this.serve(request),
+            error: null,
+            stack: null,
+            logs: ["served by " + this.id],
+          };
+      if (!this.refuse) this.served.push(request);
       const tmp = path.join(this.dir, `.${RESPONSE_PREFIX}${id}.json.tmp`);
       await fs.writeFile(tmp, JSON.stringify(response), "utf8");
       await fs.rename(tmp, path.join(this.dir, `${RESPONSE_PREFIX}${id}.json`));
@@ -392,6 +408,71 @@ describe("pull path", () => {
     expect(pull.mode).toBe("pull");
     const push = await new FileIpcTransport({ instance: null }).describeTarget();
     expect(push).toEqual({ mode: "push" });
+  });
+});
+
+describe("pull path: the pause switch (Parlez!)", () => {
+  let agent: FakeAgent;
+
+  afterEach(async () => {
+    await agent?.stop();
+  });
+
+  it("answers PAUSED at once, in Italian, when the heartbeat says the user stopped Claude", async () => {
+    agent = new FakeAgent(() => "ran");
+    agent.beat = { paused: true, agentVersion: 2 };
+    await agent.start();
+    const launcher = recordingSpawn(() => {});
+    const transport = new FileIpcTransport({ instance: agent.id, spawn: launcher.spawn });
+
+    const started = Date.now();
+    const res = await transport.execute({ code: "return 1;", label: "paused", timeoutMs: 30_000 });
+
+    expect(res.ok).toBe(false);
+    expect(res.errorCode).toBe("PAUSED");
+    expect(res.error).toContain(
+      "Claude è in pausa in After Effects: accendi l'interruttore nel pannello Parlez!",
+    );
+    // Decided from the heartbeat: no request written, no 30 s wait, no launch.
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(agent.served).toEqual([]);
+    expect(await listMail(agent.dir, REQUEST_PREFIX)).toEqual([]);
+    expect(launcher.calls).toBe(0);
+  });
+
+  it("maps an agent's `paused` answer to PAUSED (switch flipped after the heartbeat)", async () => {
+    agent = new FakeAgent(() => "ran");
+    agent.refuse = true;
+    await agent.start();
+    const transport = new FileIpcTransport({
+      instance: agent.id,
+      spawn: recordingSpawn(() => {}).spawn,
+    });
+
+    const res = await transport.execute({ code: "return 1;", label: "race", timeoutMs: 5_000 });
+
+    expect(res.errorCode).toBe("PAUSED");
+    expect(res.error).toContain("pannello Parlez!");
+    expect(await listMail(agent.dir, RESPONSE_PREFIX)).toEqual([]);
+  });
+
+  it("works again as soon as the heartbeat stops saying paused", async () => {
+    agent = new FakeAgent(() => "ran");
+    agent.beat = { paused: true };
+    await agent.start();
+    const transport = new FileIpcTransport({
+      instance: agent.id,
+      spawn: recordingSpawn(() => {}).spawn,
+    });
+    expect((await transport.execute({ code: "return 1;", timeoutMs: 5_000 })).errorCode).toBe(
+      "PAUSED",
+    );
+
+    agent.beat = { paused: false };
+    await agent.heartbeat();
+    const res = await transport.execute({ code: "return 1;", timeoutMs: 5_000 });
+    expect(res.ok, res.error ?? "").toBe(true);
+    expect(res.result).toBe("ran");
   });
 });
 

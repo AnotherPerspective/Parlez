@@ -25,6 +25,13 @@
 // flagged `busy` around a request so a stale timestamp during a long call
 // (ticks do not fire while a script runs) is not mistaken for a dead instance.
 //
+// Pause switch (Parlez!, nome provvisorio). Each tick also reads the switch the
+// panel writes (AE_MCP.isPaused, jsx/serve.jsx) and publishes it as `paused`
+// in the heartbeat — at once when it changes, so the server stops sending
+// within a tick. While paused the agent keeps ticking and heartbeating;
+// requests that still arrive are consumed and answered `paused` by
+// serveRequest without running, and counted as `refused`, not `served`.
+//
 // SECURITY: same trust boundary as the shared mailbox — whoever can write
 // into <runtime>/instances/<id>/ executes code inside this AE. The directory
 // sits under the per-user temp dir like the rest of the runtime. Two things
@@ -48,6 +55,7 @@
 #include "serve.jsx"
 
 (function agentEntry() {
+    // 2: stays out of the render engine (aerender) and knows the pause switch (`paused` / `refused` in the heartbeat).
     var AGENT_VERSION = 2;
     var TICK_MS = 250;
     var HEARTBEAT_MS = 1000;
@@ -180,6 +188,8 @@
             startedAt: new Date().getTime(),
             ticks: 0,
             served: 0,
+            refused: 0,
+            paused: false,
             busy: false,
             busySince: null,
             dir: null,
@@ -219,6 +229,8 @@
                 startedAt: state.startedAt,
                 ticks: state.ticks,
                 served: state.served,
+                refused: state.refused,
+                paused: state.paused,
                 busy: state.busy,
                 busySince: state.busySince,
                 lastError: state.lastError,
@@ -231,13 +243,16 @@
         function tick() {
             try {
                 state.ticks++;
+                var paused = AE_MCP.isPaused();
+                var pauseChanged = (paused !== state.paused);
+                state.paused = paused;
                 var dir = mailboxDir() + "/instances/" + state.id;
                 if (dir !== state.dir) {
                     if (!ensureDir(dir)) return;
                     state.dir = dir;
                     heartbeat(true);
                 }
-                heartbeat(false);
+                heartbeat(pauseChanged);
 
                 var request = AE_MCP.oldestRequestIn(state.dir);
                 if (request === null) return;
@@ -245,12 +260,14 @@
                 state.busy = true;
                 state.busySince = new Date().getTime();
                 heartbeat(true);
+                var outcome = null;
                 try {
-                    AE_MCP.serveRequest(request, state.dir, state.dir + "/agent.log");
+                    outcome = AE_MCP.serveRequest(request, state.dir, state.dir + "/agent.log");
                 } finally {
                     state.busy = false;
                     state.busySince = null;
-                    state.served++;
+                    if (outcome === "paused") state.refused++;
+                    else state.served++;
                     heartbeat(true);
                 }
             } catch (eTick) {
