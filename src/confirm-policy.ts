@@ -22,6 +22,7 @@
 // unchanged; eval.run is deliberately not listed (it stays off by default).
 
 import { ALLOWED_COMMANDS, FORBIDDEN_COMMANDS, commandVerdict } from "./command-policy.js";
+import { outputOverwriteReason } from "./operations/aerender-paths.js";
 import type { Denial } from "./policy.js";
 import type { DestructiveRule, Operation, OperationParam } from "./registry.js";
 
@@ -215,6 +216,12 @@ export const CONFIRM_RULES: Readonly<Record<string, ConfirmRule>> = {
         ? "toglie il proxy dal filmato (non è indicato path, solidColor né placeholder)"
         : null,
     reason: "solo senza path, solidColor e placeholder (toglie il proxy)",
+  },
+  "aerender.start": {
+    // Reads the disk: the same file (or frames of a [#####] sequence) aerender would write.
+    destructive: (args) => outputOverwriteReason(args),
+    reason:
+      "solo se il file di uscita (o i fotogrammi della sequenza) esiste già: verrebbe sovrascritto",
   },
 };
 

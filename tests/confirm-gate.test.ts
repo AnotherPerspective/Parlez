@@ -96,6 +96,7 @@ const CONDITIONAL = [
   "layer.convert_to_shapes",
   "project.purge",
   "footage.set_proxy",
+  "aerender.start",
 ].toSorted();
 
 const APP_CONFIG = [
@@ -327,9 +328,9 @@ const CONDITIONAL_CASES: Array<[string, Record<string, unknown>, boolean]> = [
 ];
 
 describe("operations that need confirm only with certain arguments", () => {
-  it("covers every conditional operation except command.execute (see command-policy tests)", () => {
+  it("covers every conditional operation except command.execute (see command-policy tests) and aerender.start (see aerender-ops tests: its rule reads the disk)", () => {
     const covered = new Set(CONDITIONAL_CASES.map(([name]) => name));
-    expect([...covered, "command.execute"].toSorted()).toEqual(CONDITIONAL);
+    expect([...covered, "command.execute", "aerender.start"].toSorted()).toEqual(CONDITIONAL);
   });
 
   it.each(CONDITIONAL_CASES)("%s %j → confirm needed: %s", async (name, args, needed) => {
