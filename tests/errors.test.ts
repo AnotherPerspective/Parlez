@@ -122,7 +122,8 @@ describe("ae_do failure propagation", () => {
     const res = await doTool.handler(
       {
         operation: "keyframe.remove",
-        args: { comp: "Main", layer: 9, property: ["x"], keyIndex: 1 },
+        // confirm: keyframe.remove deletes, so it needs it to reach AE (M3.2).
+        args: { comp: "Main", layer: 9, property: ["x"], keyIndex: 1, confirm: true },
       },
       transport,
     );

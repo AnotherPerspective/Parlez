@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { confirmCatalogInfo } from "../confirm-policy.js";
 import { errorResult } from "../errors.js";
 import { denyOperation, denyUnregisteredCategory, policySummary, readOnlyMode } from "../policy.js";
 import { listOps, type Operation } from "../registry.js";
@@ -13,6 +14,11 @@ import { defineTool, jsonResult } from "./define-tool.js";
  */
 function visibleOps(category?: string): Operation[] {
   return listOps(category).filter((op) => denyOperation(op) === null);
+}
+
+function withConfirmInfo(op: Operation): Record<string, unknown> {
+  const info = confirmCatalogInfo(op);
+  return info ? { confirm: info } : {};
 }
 
 function visibleCategories(): string[] {
@@ -50,6 +56,11 @@ export const catalogTool = defineTool({
         categories: summary,
         totalOperations: visibleOps().length,
         policy: policySummary(),
+        confirm:
+          "operations that delete, overwrite or rename run only with confirm: true — always, or only with certain arguments; ae_catalog({ category }) shows each one's `confirm` entry. Pass confirm: true only when the user explicitly agreed. Inside batch.run each child carries its own confirm.",
+        confirmRequired: visibleOps()
+          .filter((op) => confirmCatalogInfo(op) !== null)
+          .map((op) => op.name),
         undo: "every ae_do call runs in ONE automatic undo group — a single Ctrl+Z / project.undo reverts the whole call (batch.run included); never open an undo group yourself. undo/redo itself (project.undo, command.execute 16/2035) is the exception: it runs outside the group, so call it alone, never inside batch.run",
         ...(readOnlyMode()
           ? {
@@ -88,6 +99,9 @@ export const catalogTool = defineTool({
       // confirm: true, which the caller may pass only on the user's explicit
       // request. The injected `confirm` param carries the same contract.
       ...(op.appConfig ? { appConfig: true } : {}),
+      // Deletes, overwrites or renames: runs only with confirm: true (always,
+      // or only with the arguments `reason` names). See confirm-policy.ts.
+      ...withConfirmInfo(op),
       params: op.params.map((p) => ({
         name: p.name,
         type: p.type,

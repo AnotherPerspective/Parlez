@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import { z } from "zod";
 
+import { toolConfirmDenial } from "../confirm-policy.js";
 import { errorResult } from "../errors.js";
 import { validateAeProjectDoc } from "../validate.js";
 import { defineTool, jsonResult, toMcpResult } from "./define-tool.js";
@@ -11,7 +12,8 @@ export const projectImportTool = defineTool({
   title: "Import project JSON",
   description:
     "Rebuild the project from JSON (produced by ae_project_export_json). " +
-    "Supports `clearFirst`, `dryRun` (validate-only), `skipValidation`.",
+    "Supports `clearFirst`, `dryRun` (validate-only), `skipValidation`. " +
+    "`clearFirst` (outside a dry run) requires confirm: true — it deletes every item first.",
   group: "document",
   blockedInReadOnly: true,
   effect: "destructive",
@@ -44,8 +46,26 @@ export const projectImportTool = defineTool({
       .describe(
         "Skip Node-side schema validation. Only use if you trust the input and want to hand broken data to AE for diagnosis.",
       ),
+    confirm: z
+      .boolean()
+      .optional()
+      .describe(
+        "Required (true) with clearFirst: true, which deletes every item of the current project first. Set it only when the user agreed to that.",
+      ),
   },
   handler: async (args, transport) => {
+    // Parlez! M3.2: clearFirst empties the project. A dry run touches nothing,
+    // so it stays free — it is the way to look before confirming.
+    if (args.clearFirst === true && args.dryRun !== true && args.confirm !== true) {
+      const denial = toolConfirmDenial(
+        "ae_project_import_json",
+        "con clearFirst: true cancella tutti gli elementi del progetto aperto prima di importare",
+      );
+      return errorResult("FORBIDDEN", denial.message, {
+        details: { tool: "ae_project_import_json", confirmRequired: true },
+        hint: `${denial.hint} Con dryRun: true puoi vedere prima cosa verrebbe importato.`,
+      });
+    }
     let doc: unknown;
     if (args.inPath) {
       const abs = path.resolve(args.inPath);

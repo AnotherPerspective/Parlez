@@ -87,7 +87,12 @@ describe("e2e operations", () => {
 
       const renamed = await o().run<{ id: number; name: string; warnings: string[] }>(
         "item.set_props",
-        { item: "e2e_folder", name: "e2e_folder_renamed", comment: "written by the e2e suite" },
+        {
+          item: "e2e_folder",
+          name: "e2e_folder_renamed",
+          comment: "written by the e2e suite",
+          confirm: true,
+        },
       );
       expect(renamed.name).toBe("e2e_folder_renamed");
       expect(renamed.warnings, "no property should have been rejected").toEqual([]);
@@ -188,7 +193,11 @@ describe("e2e operations", () => {
       expect(afterMove.guides.map((g) => g.position)).toContain(480);
       expect(afterMove.guides.map((g) => g.position)).not.toContain(960);
 
-      await o().run("comp.remove_guide", { comp: "test_comp", guideIndex: added.guideIndex });
+      await o().run("comp.remove_guide", {
+        comp: "test_comp",
+        guideIndex: added.guideIndex,
+        confirm: true,
+      });
       const afterRemove = await o().run<{ count: number }>("comp.list_guides", {
         comp: "test_comp",
       });
@@ -272,6 +281,7 @@ describe("e2e operations", () => {
 
       const cleared = await o().run<{ proxy: string | null }>("footage.set_proxy", {
         item: "e2e_png",
+        confirm: true,
       });
       expect(cleared.proxy).toBeNull();
     });

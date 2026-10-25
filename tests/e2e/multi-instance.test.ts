@@ -121,7 +121,11 @@ describe("e2e multi-instance", () => {
     for (const name of [WORKER, MAIN]) {
       if (!(await liveIds()).includes(name)) continue;
       try {
-        await call("instance.stop", { name, discardChanges: true, timeoutMs: 20_000 }, name);
+        await call(
+          "instance.stop",
+          { name, discardChanges: true, timeoutMs: 20_000, confirm: true },
+          name,
+        );
       } catch (err) {
         printSkipBanner(
           "multi-instance",
@@ -139,7 +143,11 @@ describe("e2e multi-instance", () => {
     "starts a main instance and registers it under its name",
     async (ctx) => {
       if (!ready) return ctx.skip();
-      const res = await call("instance.start", { name: MAIN, timeoutMs: START_TIMEOUT }, MAIN);
+      const res = await call(
+        "instance.start",
+        { name: MAIN, timeoutMs: START_TIMEOUT, confirm: true },
+        MAIN,
+      );
       expect(res.instance).toBe(MAIN);
       expect(typeof res.pid).toBe("number");
       pids[MAIN] = res.pid as number;
@@ -159,7 +167,10 @@ describe("e2e multi-instance", () => {
       { name: "MainComp", width: 640, height: 360, fps: 24, duration: 2 },
       MAIN,
     );
-    const saved = await saveProject.handler({ path: mainProject, instance: MAIN }, transport);
+    const saved = await saveProject.handler(
+      { path: mainProject, instance: MAIN, confirm: true },
+      transport,
+    );
     expect(saved.isError, JSON.stringify(saved.structuredContent)).toBeFalsy();
     await expect(fs.access(mainProject)).resolves.toBeUndefined();
   }, 60_000);
@@ -170,7 +181,7 @@ describe("e2e multi-instance", () => {
       if (!ready) return ctx.skip();
       const res = await call(
         "instance.start",
-        { name: WORKER, copyFrom: mainProject, timeoutMs: START_TIMEOUT },
+        { name: WORKER, copyFrom: mainProject, timeoutMs: START_TIMEOUT, confirm: true },
         MAIN,
       );
       expect(res.instance).toBe(WORKER);
@@ -203,7 +214,7 @@ describe("e2e multi-instance", () => {
       { name: "FromWorker", width: 320, height: 180, fps: 24, duration: 1 },
       WORKER,
     );
-    const saved = await saveProject.handler({ instance: WORKER }, transport);
+    const saved = await saveProject.handler({ instance: WORKER, confirm: true }, transport);
     expect(saved.isError, JSON.stringify(saved.structuredContent)).toBeFalsy();
     const mainCtx = (await contextOf(MAIN)) as { project: { numItems: number } };
     expect(mainCtx.project.numItems).toBe(1);
@@ -226,13 +237,19 @@ describe("e2e multi-instance", () => {
 
   it("stops the worker (its project is saved, so no flag needed) and main (discarding the merge)", async (ctx) => {
     if (!ready) return ctx.skip();
-    const stoppedWorker = await call("instance.stop", { name: WORKER }, MAIN);
+    const stoppedWorker = await call("instance.stop", { name: WORKER, confirm: true }, MAIN);
     expect(stoppedWorker.stopped).toBe(true);
     expect(await liveIds()).not.toContain(WORKER);
 
     // Main is dirty after the merge: without a flag the stop must refuse.
-    await expect(call("instance.stop", { name: MAIN }, MAIN)).rejects.toThrow(/unsaved changes/);
-    const stoppedMain = await call("instance.stop", { name: MAIN, discardChanges: true }, MAIN);
+    await expect(call("instance.stop", { name: MAIN, confirm: true }, MAIN)).rejects.toThrow(
+      /unsaved changes/,
+    );
+    const stoppedMain = await call(
+      "instance.stop",
+      { name: MAIN, discardChanges: true, confirm: true },
+      MAIN,
+    );
     expect(stoppedMain.stopped).toBe(true);
     expect(await liveIds()).not.toContain(MAIN);
   }, 120_000);

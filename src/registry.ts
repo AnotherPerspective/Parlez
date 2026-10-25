@@ -5,7 +5,10 @@
 // The registry is the single source of truth for ae_catalog and ae_do.
 // Adding a new operation = adding one entry to this map.
 
+import { applyConfirmRule } from "./confirm-policy.js";
 import type { AeTransport } from "./transport/AeTransport.js";
+
+export type DestructiveRule = true | ((args: Record<string, unknown>) => string | null);
 
 export type ParamType = "string" | "number" | "boolean" | "array" | "object" | "any";
 
@@ -49,6 +52,18 @@ export interface Operation {
    * USER explicitly asked for this configuration change.
    */
   appConfig?: boolean;
+  /**
+   * Parlez! M3.2: the call deletes, overwrites or renames. `true` = always
+   * needs confirm: true; a function returns the reason when THESE arguments
+   * need it, null when they do not. Filled from the table in
+   * confirm-policy.ts by registerOp, which also injects an optional `confirm`
+   * param; ae_do and batch.run refuse via denyUnconfirmed.
+   */
+  destructive?: DestructiveRule;
+  /** Plain-Italian text for the gate's denial and for ae_catalog. */
+  destructiveReason?: string;
+  /** Non-null reason = refused even with confirm: true (forbidden menu commands). */
+  forbidden?(args: Record<string, unknown>): string | null;
   /**
    * Whether this call may run inside the dispatcher's automatic undo group.
    * Omitted means yes, which is right for everything that MUTATES the project.
@@ -99,6 +114,7 @@ export function registerOp(op: Operation): void {
   if (op.appConfig && !op.params.some((p) => p.name === APP_CONFIG_CONFIRM_PARAM.name)) {
     op.params = [...op.params, APP_CONFIG_CONFIRM_PARAM];
   }
+  applyConfirmRule(op);
   operations.set(op.name, op);
 }
 

@@ -93,7 +93,8 @@ describe("dialog suppression", () => {
   it("ae_do sends undoGroup:false but suppressDialogs:true for project.open", async () => {
     const transport = nullTransport(OK_RESPONSE);
     await doTool.handler(
-      { operation: "project.open", args: { path: "C:/missing.aep" } },
+      // confirm: project.open closes the current project (M3.2 confirm gate).
+      { operation: "project.open", args: { path: "C:/missing.aep", confirm: true } },
       transport,
     );
     expect(transport.calls[0].undoGroup).toBe(false);

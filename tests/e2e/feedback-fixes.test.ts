@@ -268,7 +268,9 @@ describe("e2e feedback fixes", () => {
     expect(entries.length, "rendered output should exist in the auto-created dir").toBeGreaterThan(
       0,
     );
-    extractStructured(await doTool.handler({ operation: "render.clear_queue" }, transport));
+    extractStructured(
+      await doTool.handler({ operation: "render.clear_queue", args: { confirm: true } }, transport),
+    );
   });
 
   it("ae_render_frame times: renders several frames in one call", async (ctx) => {

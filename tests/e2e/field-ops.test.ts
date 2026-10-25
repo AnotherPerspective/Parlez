@@ -133,6 +133,7 @@ describe("e2e field ops", () => {
           { time: 2, value: 40, interp: "ease" },
         ],
         replace: true,
+        confirm: true,
       },
     );
     expect(res.layers[0].numKeys).toBe(3);
@@ -185,6 +186,7 @@ describe("e2e field ops", () => {
           { time: 1, value: [100, 300] },
         ],
         replace: true,
+        confirm: true,
       },
     );
     expect(keyed.layers[0].separated).toBe(true);
@@ -272,7 +274,7 @@ describe("e2e field ops", () => {
       property: ["Contents", "box", "Contents", "Fill 1", "Color"],
     });
     expect(fill.value.slice(0, 3)).toEqual([0, 1, 0]);
-    await o().run("layer.delete", { comp: "fo_comp", layer: "fo_shape_copy" });
+    await o().run("layer.delete", { comp: "fo_comp", layer: "fo_shape_copy", confirm: true });
   });
 
   it("layer.split_groups: one layer per group, anchored on its own artwork, original removed", async (ctx) => {
@@ -281,7 +283,12 @@ describe("e2e field ops", () => {
     const res = await o().run<{
       created: number;
       layers: Array<{ name: string; group: string; anchorPoint: number[]; index: number }>;
-    }>("layer.split_groups", { comp: "fo_comp", layer: "fo_word", anchor: "center" });
+    }>("layer.split_groups", {
+      comp: "fo_comp",
+      layer: "fo_word",
+      anchor: "center",
+      confirm: true,
+    });
     expect(res.created).toBe(2);
     expect(res.layers.map((l) => l.name)).toEqual(["box", "dot"]);
     // Shape layers report a 3-component anchor ([x, y, 0]).
@@ -301,8 +308,8 @@ describe("e2e field ops", () => {
       960 + 100,
       540 + 50,
     ]);
-    await o().run("layer.delete", { comp: "fo_comp", layer: "box" });
-    await o().run("layer.delete", { comp: "fo_comp", layer: "dot" });
+    await o().run("layer.delete", { comp: "fo_comp", layer: "box", confirm: true });
+    await o().run("layer.delete", { comp: "fo_comp", layer: "dot", confirm: true });
   });
 
   it("layer.set_anchor preset keeps the layer where it was", async (ctx) => {
@@ -365,6 +372,7 @@ describe("e2e field ops", () => {
       comp: "fo_comp",
       layer: "fo_solid",
       maskIndex: added.maskIndex,
+      confirm: true,
     });
   });
 
@@ -375,6 +383,7 @@ describe("e2e field ops", () => {
       {
         comp: "fo_comp",
         entries: [{ layer: "fo_text", ranges: [[1, 2]] }],
+        confirm: true,
       },
     );
     expect(res.layers[0].numKeys).toBe(3);
@@ -403,7 +412,7 @@ describe("e2e field ops", () => {
       },
     );
     expect(adj.adjustmentLayer).toBe(true);
-    await o().run("layer.delete", { comp: "fo_comp", layer: "fo_adj" });
+    await o().run("layer.delete", { comp: "fo_comp", layer: "fo_adj", confirm: true });
   });
 
   it("comp.resize keeps centred content centred (keys included)", async (ctx) => {
@@ -417,6 +426,7 @@ describe("e2e field ops", () => {
         { time: 1, value: [1200, 540] },
       ],
       replace: true,
+      confirm: true,
     });
     const res = await o().run<{
       comps: Array<{ offset: number[]; layersMoved: number; to: number[] }>;
@@ -451,12 +461,14 @@ describe("e2e field ops", () => {
       scope: "layers",
       comp: "fo_comp",
       map: { fo_text: "fo_text_renamed" },
+      confirm: true,
     });
     expect(mapped.count).toBe(1);
     const back = await o().run<{ count: number }>("project.rename", {
       scope: "layers",
       pattern: "_renamed$",
       replacement: "",
+      confirm: true,
     });
     expect(back.count).toBe(1);
   });
@@ -520,6 +532,7 @@ describe("e2e field ops", () => {
       layer: "fo_vector",
       removeSource: true,
       removeFootage: true,
+      confirm: true,
     });
     expect(res.converted).toBe(1);
     expect(res.layers[0].name).toBe("fo_vector");

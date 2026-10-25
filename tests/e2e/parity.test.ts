@@ -194,6 +194,7 @@ describe("e2e: layer parity", () => {
       comp: COMP,
       layer: "enum_solid",
       guideIndex: add.guideIndex,
+      confirm: true,
     });
     expect(removed.numGuides).toBe(add.numGuides - 1);
   });
@@ -515,9 +516,12 @@ describe("e2e: render queue parity", () => {
     expect(flags.warnings).toEqual([]);
     const dup = await o().run<{ numItems: number }>("render.duplicate_item", {});
     expect(dup.numItems).toBe(2);
-    const removed = await o().run<{ remaining: number }>("render.remove_item", { queueIndex: 2 });
+    const removed = await o().run<{ remaining: number }>("render.remove_item", {
+      queueIndex: 2,
+      confirm: true,
+    });
     expect(removed.remaining).toBe(1);
-    await o().run("render.clear_queue", {});
+    await o().run("render.clear_queue", { confirm: true });
   });
 });
 
@@ -602,6 +606,7 @@ describe("e2e: effect and property parity", () => {
         layer: "fx_solid",
         effect: "Color Choice",
         items: ["Red", "Green", "-", "Blue"],
+        confirm: true,
       },
     );
     expect(set.itemCount).toBe(4);
@@ -712,15 +717,20 @@ describe("e2e: footage parity", () => {
       solidColor: [0, 0, 0],
     });
     expect(proxied.proxy).toBe("solid");
-    await o().run("footage.set_proxy", { item: "parity_png" }); // clear
+    await o().run("footage.set_proxy", { item: "parity_png", confirm: true }); // clear
 
     // replaceWith* renames the item, so address it by id from here on.
     await o().run("footage.replace_with_solid", {
       item: imported.id,
       color: [1, 0, 0],
       name: "now_solid",
+      confirm: true,
     });
-    await o().run("footage.replace_with_placeholder", { item: imported.id, name: "now_ph" });
+    await o().run("footage.replace_with_placeholder", {
+      item: imported.id,
+      name: "now_ph",
+      confirm: true,
+    });
     const missing = await o().run<{ count: number; items: Array<{ name: string }> }>(
       "footage.list_missing",
       {},
@@ -801,7 +811,10 @@ describe("e2e: egp / viewer / project / shape", () => {
     expect(got.length).toBeGreaterThan(0);
     // AE re-serializes the packet on write (whitespace, reordered fields), so
     // asserting exact length would test Adobe's serializer, not this op.
-    const set = await o().run<{ length: number }>("project.set_xmp", { xmp: got.xmp });
+    const set = await o().run<{ length: number }>("project.set_xmp", {
+      xmp: got.xmp,
+      confirm: true,
+    });
     expect(set.length).toBeGreaterThan(0);
   });
 
@@ -828,7 +841,7 @@ describe("e2e: egp / viewer / project / shape", () => {
 
   it("project.new discards the fixture last (restore happens in afterAll)", async (ctx) => {
     if (!ready) return ctx.skip();
-    const res = await o().run<{ numItems: number }>("project.new", { save: false });
+    const res = await o().run<{ numItems: number }>("project.new", { save: false, confirm: true });
     expect(res.numItems).toBe(0);
   });
 
@@ -1017,6 +1030,7 @@ describe("e2e: low-priority parity ops", () => {
       sourceLayer: "src_text",
       sourceStart: 0,
       sourceEnd: 6,
+      confirm: true,
     });
     expect(pasted.text.startsWith("SOURCE")).toBe(true);
     const reset = await o().run<{ warnings: string[] }>("text.reset_style", {
@@ -1103,6 +1117,6 @@ describe("e2e: low-priority parity ops", () => {
       queueNotify: false,
     });
     expect(notify.warnings).toEqual([]);
-    await o().run("render.clear_queue", {});
+    await o().run("render.clear_queue", { confirm: true });
   });
 });

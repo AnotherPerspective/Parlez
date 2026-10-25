@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { denyUnconfirmed } from "../confirm-policy.js";
 import { type AeErrorCode, errorResult } from "../errors.js";
 import { summarizeParams, suggestName, validateOpArgs } from "../opschema.js";
 import { denyOperation, denyUnregisteredOperation } from "../policy.js";
@@ -25,6 +26,8 @@ export const doTool = defineTool({
     "the entire call, and a batch.run counts as one call. Never call app.beginUndoGroup/endUndoGroup " +
     "in eval.run code — the wrapper already did. The exception is undo/redo itself (project.undo, " +
     "command.execute id 16/2035): those run outside the group and cannot ride inside a batch.run. " +
+    "Operations that delete, overwrite or rename (ae_catalog marks them with `confirm`) are refused unless " +
+    "args.confirm is true — ask the user first and pass it only with their explicit yes. " +
     "Response includes ambient context (active comp, selected layers, project state) at zero extra round trips. " +
     "Example: ae_do({ operation: 'keyframe.add', args: { comp: 'Main', layer: 1, " +
     "property: ['Transform','Position'], time: 2, value: [960,540] } })",
@@ -116,6 +119,21 @@ export const doTool = defineTool({
       return errorResult("FORBIDDEN", consent, {
         details: { operation: op.name, category: op.category },
         hint: "Ask the user first if they have not explicitly requested this change.",
+      });
+    }
+
+    // Deletions, overwrites and renames need the user's yes (confirm-policy.ts);
+    // forbidden menu commands are refused outright. Checked on validated args
+    // because the conditional rules read them (props.name, replace, dryRun…).
+    const unconfirmed = denyUnconfirmed(op, validated.value);
+    if (unconfirmed) {
+      return errorResult("FORBIDDEN", unconfirmed.message, {
+        details: {
+          operation: op.name,
+          category: op.category,
+          confirmRequired: unconfirmed.confirmable,
+        },
+        hint: unconfirmed.hint,
       });
     }
 

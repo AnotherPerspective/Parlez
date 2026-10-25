@@ -1,6 +1,7 @@
 // Menu command operations — execute AE menu commands by ID.
 // Reference: https://hyperbrew.co/blog/2025-after-effects-command-ids/
 
+import { FORBIDDEN_MENU_NAMES } from "../command-policy.js";
 import { registerOp, jsxVal } from "../registry.js";
 
 /** Menu command IDs for Undo and Redo — the two that drive the undo stack. */
@@ -17,7 +18,10 @@ registerOp({
   category: "command",
   description:
     "Execute an AE menu command by its numeric ID. Use command.list to discover common IDs. " +
-    "Undo (16) and Redo (2035) run outside this call's undo group, so they revert/replay the PREVIOUS call.",
+    "Undo (16) and Redo (2035) run outside this call's undo group, so they revert/replay the PREVIOUS call. " +
+    "Harmless commands (ae_catalog's confirm.allowedIds) run as is; forbidden ones (confirm.forbiddenIds, " +
+    "plus Save/Close/Quit/New/Open Project and similar, matched by menu name) are always refused; " +
+    "every other id needs confirm: true.",
   params: [{ name: "id", type: "number", description: "Menu command ID", required: true }],
   // Undo/Redo must not be executed inside an open undo group — AE applies them
   // to that group and the requested step survives. Everything else groups
@@ -27,7 +31,22 @@ registerOp({
   // Undo/Redo would resolve against, so they skip it too.
   suppressDialogs: (args) => !isUndoRedoCommandId(args.id),
   toJsx(args) {
-    return `
+    // Second net for commands whose ids are unknown here (command-policy.ts):
+    // resolve each forbidden menu NAME inside AE and refuse on a match. A name
+    // AE does not know resolves to 0 and blocks nothing. Undo/Redo skip it so
+    // their generated code stays exactly what it was.
+    const nameGuard = isUndoRedoCommandId(args.id)
+      ? ""
+      : `
+            var _blocked = ${jsxVal(FORBIDDEN_MENU_NAMES)};
+            for (var _bi = 0; _bi < _blocked.length; _bi++) {
+                var _bid = 0;
+                try { _bid = app.findMenuCommandId(_blocked[_bi].name); } catch (eFind) { _bid = 0; }
+                if (_bid && _bid === ${jsxVal(args.id)}) {
+                    return { ok: false, error: ${jsxVal("il comando di menu ")} + _bid + " (" + _blocked[_bi].name + ")" + ${jsxVal(" è vietato: ")} + _blocked[_bi].reason + ${jsxVal(". Non l'ho eseguito, e confirm: true non cambia nulla.")} };
+                }
+            }`;
+    return `${nameGuard}
             app.executeCommand(${jsxVal(args.id)});
             return { ok: true, commandId: ${jsxVal(args.id)} };
         `;

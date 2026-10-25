@@ -2,6 +2,7 @@
 // This was the #1 pain point: parallel ae_do calls conflict on file IPC.
 // ae_do("batch.run", { ops: [...] }) executes them sequentially in one shot.
 
+import { denyUnconfirmed } from "../confirm-policy.js";
 import { summarizeParams, validateOpArgs } from "../opschema.js";
 import { denyOperation, denyUnregisteredOperation } from "../policy.js";
 import { denyAppConfig, getOp, jsxVal, registerOp, wantsUndoGroup } from "../registry.js";
@@ -14,6 +15,8 @@ registerOp({
     "Operations run sequentially inside ONE undo group — a single Ctrl+Z reverts the whole batch, " +
     "however many ops it contained. That group is also why undo/redo children (project.undo, " +
     "command.execute id 16/2035) are rejected here: call those as their own ae_do. " +
+    "Children that delete, overwrite or rename need their own confirm: true in their args — " +
+    "one confirmed child never confirms another. " +
     "If one fails, subsequent ops still run unless stopOnError. " +
     "Results array matches input order; the response reports how many failed. " +
     "Mix in read/verify children — comp.info, layer.info, render.frame — to mutate AND verify in " +
@@ -91,6 +94,14 @@ registerOp({
       const consent = denyAppConfig(op, validated.value);
       if (consent) {
         opBlocks.push(rejectBlock(i, consent, stopOnError));
+        continue;
+      }
+
+      // Nor past the delete/overwrite/rename gate: each child carries its own
+      // confirm, so one confirmed child never unlocks its siblings.
+      const unconfirmed = denyUnconfirmed(op, validated.value);
+      if (unconfirmed) {
+        opBlocks.push(rejectBlock(i, denialText(unconfirmed), stopOnError));
         continue;
       }
 

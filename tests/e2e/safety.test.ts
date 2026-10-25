@@ -98,6 +98,7 @@ describe("e2e safety", () => {
       comp: "test_comp",
       layer: "red_layer",
       property: [],
+      confirm: true,
     });
     expect(err.message).toContain("empty");
 
@@ -184,14 +185,18 @@ describe("e2e safety", () => {
 
     // nearestKeyIndex has no distance limit, so "remove the marker at 3s" used
     // to delete the only marker there was, at 0s.
-    const err = await o().expectRefusal("marker.remove", { comp: "test_comp", time: 3 });
+    const err = await o().expectRefusal("marker.remove", {
+      comp: "test_comp",
+      time: 3,
+      confirm: true,
+    });
     expect(err.message).toMatch(/no marker at/i);
 
     const after = await o().run<{ count: number }>("marker.list", { comp: "test_comp" });
     expect(after.count, "the distant marker must survive").toBe(before.count);
 
     // Targeting the real time still works.
-    await o().run("marker.remove", { comp: "test_comp", time: 0 });
+    await o().run("marker.remove", { comp: "test_comp", time: 0, confirm: true });
     const cleared = await o().run<{ count: number }>("marker.list", { comp: "test_comp" });
     expect(cleared.count).toBe(0);
   });
@@ -205,6 +210,7 @@ describe("e2e safety", () => {
       comp: "test_comp",
       layer: "red_layer",
       maskIndex: 7,
+      confirm: true,
     });
     expect(err.message).toMatch(/no mask at index 7/i);
   });
