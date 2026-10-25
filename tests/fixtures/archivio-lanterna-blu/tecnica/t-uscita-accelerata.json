@@ -1,0 +1,36 @@
+{
+  "format": "parlez.card/0.1",
+  "kind": "technique",
+  "id": "t-uscita-accelerata",
+  "version": 1,
+  "status": "approved",
+  "role": "exit",
+  "title": "Uscita accelerata in ordine inverso",
+  "summary": "Uscita in 10f accelerando, 24u verso sinistra, in ordine inverso, 2f tra le righe.",
+  "use": "Testi che lasciano lo schermo prima del fondo che li porta.",
+  "header": {
+    "confidentiality": "libero",
+    "toClaude": { "numbers": true, "descriptions": true, "images": true },
+    "sources": [
+      {
+        "type": "inventato",
+        "ref": "esempio",
+        "label": "Numeri inventati, verosimili",
+        "ownership": "libero"
+      }
+    ],
+    "approval": { "by": "Anthony", "date": "2026-11-10" },
+    "client": null
+  },
+  "motion": {
+    "property": "position + opacity",
+    "direction": "verso sinistra",
+    "distance": "24u",
+    "duration": "10f@25",
+    "stagger": "-2f@25",
+    "order": "inverso dell'entrata",
+    "endsBefore": "8f@25 prima della fine",
+    "curve": "accelera"
+  },
+  "example": { "recipe": "r-lower-third-barra", "where": "titolo e sottotitolo, uscita" }
+}

@@ -1,0 +1,63 @@
+{
+  "format": "parlez.archive/0.1",
+  "id": "lanterna-blu",
+  "title": "Lanterna Blu (studio immaginario)",
+  "summary": "Archivio di esempio inventato: notte, carta e ambra; movimenti brevi e decelerati.",
+  "owner": "esempio",
+  "confidentiality": "libero",
+  "roles": {
+    "style": "s-lanterna",
+    "technique": {
+      "bar-open": "t-barra-apertura",
+      "text-entry": "t-entrata-scorrimento",
+      "exit": "t-uscita-accelerata"
+    }
+  },
+  "index": [
+    {
+      "id": "s-lanterna",
+      "kind": "style",
+      "version": 3,
+      "file": "stile/s-lanterna.json",
+      "summary": "Notte, carta e ambra; Inter Bold e Regular; margini 5%; 16:9 e 9:16 a 25 fps."
+    },
+    {
+      "id": "t-barra-apertura",
+      "kind": "technique",
+      "role": "bar-open",
+      "version": 1,
+      "file": "tecnica/t-barra-apertura.json",
+      "summary": "Fondo che si apre da sinistra in 12f, decelerando; si richiude uguale alla fine."
+    },
+    {
+      "id": "t-entrata-scorrimento",
+      "kind": "technique",
+      "role": "text-entry",
+      "version": 2,
+      "file": "tecnica/t-entrata-scorrimento.json",
+      "summary": "Testi da sinistra di 40u in 12f, decelerando, 5f dopo il fondo, sfalsati di 3f."
+    },
+    {
+      "id": "t-uscita-accelerata",
+      "kind": "technique",
+      "role": "exit",
+      "version": 1,
+      "file": "tecnica/t-uscita-accelerata.json",
+      "summary": "Uscita in 10f accelerando, 24u verso sinistra, in ordine inverso, 2f tra le righe."
+    },
+    {
+      "id": "c-lt-001",
+      "kind": "sample",
+      "version": 1,
+      "file": "campioni/c-lt-001.json",
+      "summary": "Lower third su fondo grafico: barra notte, due righe, tenuta 3,4 s."
+    },
+    {
+      "id": "c-int-002",
+      "kind": "sample",
+      "version": 1,
+      "file": "campioni/c-int-002.json",
+      "summary": "Lo stesso lower third su un'intervista: solo descrizione e numeri (persone in campo)."
+    }
+  ]
+}

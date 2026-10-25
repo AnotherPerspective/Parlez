@@ -1,0 +1,93 @@
+{
+  "format": "parlez.card/0.1",
+  "kind": "style",
+  "id": "s-lanterna",
+  "version": 3,
+  "status": "approved",
+  "title": "Stile Lanterna Blu",
+  "summary": "Notte, carta e ambra; Inter Bold e Regular; margini 5%; 16:9 e 9:16 a 25 fps.",
+  "header": {
+    "confidentiality": "libero",
+    "toClaude": { "numbers": true, "descriptions": true, "images": true },
+    "sources": [
+      {
+        "type": "inventato",
+        "ref": "esempio",
+        "label": "Stile inventato per la documentazione",
+        "ownership": "libero"
+      }
+    ],
+    "approval": { "by": "Anthony", "date": "2026-11-10", "note": "v3: ambra un po' più calda" },
+    "client": null
+  },
+  "colors": {
+    "notte": { "hex": "#14213D", "use": "fondi e barre" },
+    "carta": { "hex": "#F5F1E8", "use": "testo su fondo scuro, fondi chiari" },
+    "ambra": { "hex": "#F2A541", "use": "accento: ruoli, numeri, una parola per volta" },
+    "inchiostro": { "hex": "#1B1B1B", "use": "testo su fondo chiaro" }
+  },
+  "fonts": {
+    "titolo": {
+      "family": "Inter",
+      "style": "Bold",
+      "postscript": "Inter-Bold",
+      "fallback": ["Arial-BoldMT"],
+      "capHeight": 0.73,
+      "license": "OFL-1.1"
+    },
+    "testo": {
+      "family": "Inter",
+      "style": "Regular",
+      "postscript": "Inter-Regular",
+      "fallback": ["ArialMT"],
+      "capHeight": 0.73,
+      "license": "OFL-1.1"
+    }
+  },
+  "roles": {
+    "color": {
+      "primary": "notte",
+      "onPrimary": "carta",
+      "accent": "ambra",
+      "text": "inchiostro",
+      "background": "carta"
+    },
+    "font": { "title": "titolo", "body": "testo" }
+  },
+  "sizes": {
+    "lowerThirdTitle": "56u",
+    "lowerThirdSub": "32u",
+    "titleCard": "120u",
+    "minText": "28u"
+  },
+  "logo": {
+    "files": [
+      { "ref": "logo/lanterna-blu.svg", "kind": "vettoriale", "variant": "positivo su notte" }
+    ],
+    "clearSpace": "metà dell'altezza del simbolo su ogni lato",
+    "minSize": "48u",
+    "notOn": ["ambra"]
+  },
+  "formats": {
+    "16:9": {
+      "width": 1920,
+      "height": 1080,
+      "fps": 25,
+      "safe": { "action": { "all": 0.035 }, "title": { "all": 0.05 } }
+    },
+    "9:16": {
+      "width": 1080,
+      "height": 1920,
+      "fps": 25,
+      "safe": {
+        "action": { "all": 0.035 },
+        "title": { "left": 0.05, "right": 0.05, "top": 0.12, "bottom": 0.2 }
+      }
+    }
+  },
+  "rules": [
+    "L'ambra mai su più di una riga per inquadratura.",
+    "Testo mai sotto 28u: sul telefono non si legge.",
+    "Su fondo carta il testo è inchiostro, mai notte."
+  ]
+}

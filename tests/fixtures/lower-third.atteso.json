@@ -1,0 +1,396 @@
+{
+  "note": "Scritto a mano da the recipe format spec §12.2 e §13 (non generato dal programma): lower third con title 'Mario Rossi', subtitle 'Direttrice della fotografia', archivio Lanterna Blu, framesDir /tmp/parlez-test. Differenze volute dalla specifica: niente replace: true in keyframe.apply (chiederebbe la conferma, e i livelli sono nuovi); le letture di verifica stanno in coda allo stesso batch.run.",
+  "operation": "batch.run",
+  "args": {
+    "stopOnError": true,
+    "ops": [
+      {
+        "operation": "comp.create",
+        "args": {
+          "name": "LT – Mario Rossi",
+          "width": 1920,
+          "height": 1080,
+          "fps": 25,
+          "duration": 5,
+          "bgColor": [0, 0, 0]
+        }
+      },
+      {
+        "operation": "layer.create_null",
+        "args": { "comp": "LT – Mario Rossi", "name": "LT Controllo" }
+      },
+      {
+        "operation": "transform.set",
+        "args": { "comp": "LT – Mario Rossi", "layer": "LT Controllo", "position": [96, 969.88] }
+      },
+
+      {
+        "operation": "layer.create_shape",
+        "args": { "comp": "LT – Mario Rossi", "name": "LT Barra" }
+      },
+      {
+        "operation": "shape.add_group",
+        "args": { "comp": "LT – Mario Rossi", "layer": "LT Barra", "name": "Barra" }
+      },
+      {
+        "operation": "shape.add_rect",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Barra",
+          "groupIndex": 1,
+          "size": [600, 112.24],
+          "position": [300, 0],
+          "roundness": 0
+        }
+      },
+      {
+        "operation": "shape.add_fill",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Barra",
+          "groupIndex": 1,
+          "color": [0.0784, 0.1294, 0.2392, 1]
+        }
+      },
+      {
+        "operation": "effect.add",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Barra",
+          "matchName": "ADBE Slider Control",
+          "name": "Apertura"
+        }
+      },
+      {
+        "operation": "layer.set_parent",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Barra",
+          "parentLayer": "LT Controllo",
+          "jump": true
+        }
+      },
+      {
+        "operation": "transform.set",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Barra",
+          "position": [0, 0],
+          "anchorPoint": [0, 0]
+        }
+      },
+
+      {
+        "operation": "layer.create_text",
+        "args": { "comp": "LT – Mario Rossi", "name": "LT Titolo", "text": "Mario Rossi" }
+      },
+      {
+        "operation": "text.set_style",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Titolo",
+          "font": "Inter-Bold",
+          "fontSize": 56,
+          "fillColor": [0.9608, 0.9451, 0.9098],
+          "justification": "left"
+        }
+      },
+      {
+        "operation": "layer.set_parent",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Titolo",
+          "parentLayer": "LT Controllo",
+          "jump": true
+        }
+      },
+      {
+        "operation": "transform.set",
+        "args": { "comp": "LT – Mario Rossi", "layer": "LT Titolo", "position": [28, 2.76] }
+      },
+
+      {
+        "operation": "layer.create_text",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "name": "LT Sottotitolo",
+          "text": "Direttrice della fotografia"
+        }
+      },
+      {
+        "operation": "text.set_style",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Sottotitolo",
+          "font": "Inter-Regular",
+          "fontSize": 32,
+          "fillColor": [0.949, 0.6471, 0.2549],
+          "justification": "left",
+          "tracking": 20
+        }
+      },
+      {
+        "operation": "layer.set_parent",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Sottotitolo",
+          "parentLayer": "LT Controllo",
+          "jump": true
+        }
+      },
+      {
+        "operation": "transform.set",
+        "args": { "comp": "LT – Mario Rossi", "layer": "LT Sottotitolo", "position": [28, 38.12] }
+      },
+
+      {
+        "operation": "expression.set",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Barra",
+          "property": [
+            "ADBE Root Vectors Group",
+            "Barra",
+            "ADBE Vectors Group",
+            "ADBE Vector Shape - Rect",
+            "ADBE Vector Rect Size"
+          ],
+          "expression": "var r = [thisComp.layer(\"LT Titolo\").sourceRectAtTime(time, false), thisComp.layer(\"LT Sottotitolo\").sourceRectAtTime(time, false)];\nvar w = 0;\nfor (var i = 0; i < r.length; i++) w = Math.max(w, r[i].left + r[i].width);\n[w + 2 * 28, 112.24]"
+        }
+      },
+      {
+        "operation": "expression.set",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Barra",
+          "property": [
+            "ADBE Root Vectors Group",
+            "Barra",
+            "ADBE Vectors Group",
+            "ADBE Vector Shape - Rect",
+            "ADBE Vector Rect Position"
+          ],
+          "expression": "[thisProperty.propertyGroup(1).size[0] / 2, 0]"
+        }
+      },
+      {
+        "operation": "expression.set",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Barra",
+          "property": ["ADBE Transform Group", "ADBE Scale"],
+          "expression": "[effect(\"Apertura\")(1), value[1]]"
+        }
+      },
+
+      {
+        "operation": "keyframe.apply",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Barra",
+          "property": ["ADBE Effect Parade", "Apertura", "ADBE Slider Control-0001"],
+          "keys": [
+            { "time": 0, "value": 0, "outInfluence": 5, "outSpeed": 2916.67 },
+            { "time": 0.48, "value": 100, "inInfluence": 90, "inSpeed": 0, "outType": "linear" },
+            { "time": 4.48, "value": 100, "inType": "linear", "outInfluence": 30, "outSpeed": 0 },
+            { "time": 4.96, "value": 0, "inInfluence": 20, "inSpeed": -885.42 }
+          ]
+        }
+      },
+      {
+        "operation": "keyframe.apply",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Titolo",
+          "property": ["ADBE Transform Group", "ADBE Position"],
+          "spatialTangents": "linear",
+          "keys": [
+            { "time": 0.2, "value": [-12, 2.76], "outInfluence": 5, "outSpeed": 1166.67 },
+            {
+              "time": 0.68,
+              "value": [28, 2.76],
+              "inInfluence": 90,
+              "inSpeed": 0,
+              "outType": "linear"
+            },
+            {
+              "time": 4.24,
+              "value": [28, 2.76],
+              "inType": "linear",
+              "outInfluence": 30,
+              "outSpeed": 0
+            },
+            { "time": 4.64, "value": [4, 2.76], "inInfluence": 20, "inSpeed": 255 }
+          ]
+        }
+      },
+      {
+        "operation": "keyframe.apply",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Titolo",
+          "property": ["ADBE Transform Group", "ADBE Opacity"],
+          "keys": [
+            { "time": 0.2, "value": 0, "outInfluence": 5, "outSpeed": 3500 },
+            { "time": 0.6, "value": 100, "inInfluence": 90, "inSpeed": 0, "outType": "linear" },
+            { "time": 4.24, "value": 100, "inType": "linear", "outInfluence": 30, "outSpeed": 0 },
+            { "time": 4.64, "value": 0, "inInfluence": 20, "inSpeed": -1062.5 }
+          ]
+        }
+      },
+      {
+        "operation": "keyframe.apply",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Sottotitolo",
+          "property": ["ADBE Transform Group", "ADBE Position"],
+          "spatialTangents": "linear",
+          "keys": [
+            { "time": 0.32, "value": [-12, 38.12], "outInfluence": 5, "outSpeed": 1166.67 },
+            {
+              "time": 0.8,
+              "value": [28, 38.12],
+              "inInfluence": 90,
+              "inSpeed": 0,
+              "outType": "linear"
+            },
+            {
+              "time": 4.16,
+              "value": [28, 38.12],
+              "inType": "linear",
+              "outInfluence": 30,
+              "outSpeed": 0
+            },
+            { "time": 4.56, "value": [4, 38.12], "inInfluence": 20, "inSpeed": 255 }
+          ]
+        }
+      },
+      {
+        "operation": "keyframe.apply",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Sottotitolo",
+          "property": ["ADBE Transform Group", "ADBE Opacity"],
+          "keys": [
+            { "time": 0.32, "value": 0, "outInfluence": 5, "outSpeed": 3500 },
+            { "time": 0.72, "value": 100, "inInfluence": 90, "inSpeed": 0, "outType": "linear" },
+            { "time": 4.16, "value": 100, "inType": "linear", "outInfluence": 30, "outSpeed": 0 },
+            { "time": 4.56, "value": 0, "inInfluence": 20, "inSpeed": -1062.5 }
+          ]
+        }
+      },
+
+      {
+        "operation": "marker.add_comp",
+        "args": { "comp": "LT – Mario Rossi", "time": 0.8, "comment": "entrata completa" }
+      },
+      {
+        "operation": "marker.add_comp",
+        "args": { "comp": "LT – Mario Rossi", "time": 4.16, "comment": "inizio uscita" }
+      },
+      {
+        "operation": "item.set_props",
+        "args": {
+          "item": "LT – Mario Rossi",
+          "comment": "Parlez! · ricetta r-lower-third-barra v1 · schede: s-lanterna v3; t-barra-apertura v1, t-entrata-scorrimento v2, t-uscita-accelerata v1"
+        }
+      },
+
+      {
+        "operation": "layer.bounds",
+        "args": { "comp": "LT – Mario Rossi", "layer": "LT Barra", "time": 2.48 }
+      },
+      {
+        "operation": "layer.bounds",
+        "args": { "comp": "LT – Mario Rossi", "layer": "LT Titolo", "time": 2.48 }
+      },
+      {
+        "operation": "layer.bounds",
+        "args": { "comp": "LT – Mario Rossi", "layer": "LT Sottotitolo", "time": 2.48 }
+      },
+      { "operation": "text.measure", "args": { "comp": "LT – Mario Rossi", "layer": "LT Titolo" } },
+      {
+        "operation": "text.measure",
+        "args": { "comp": "LT – Mario Rossi", "layer": "LT Sottotitolo" }
+      },
+      {
+        "operation": "property.get",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Barra",
+          "property": ["ADBE Transform Group", "ADBE Scale"],
+          "time": 0
+        }
+      },
+      {
+        "operation": "property.get",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Barra",
+          "property": ["ADBE Transform Group", "ADBE Scale"],
+          "time": 4.96
+        }
+      },
+      {
+        "operation": "property.get",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Titolo",
+          "property": ["ADBE Transform Group", "ADBE Opacity"],
+          "time": 0
+        }
+      },
+      {
+        "operation": "property.get",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Titolo",
+          "property": ["ADBE Transform Group", "ADBE Opacity"],
+          "time": 4.96
+        }
+      },
+      {
+        "operation": "property.get",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Sottotitolo",
+          "property": ["ADBE Transform Group", "ADBE Opacity"],
+          "time": 0
+        }
+      },
+      {
+        "operation": "property.get",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "layer": "LT Sottotitolo",
+          "property": ["ADBE Transform Group", "ADBE Opacity"],
+          "time": 4.96
+        }
+      },
+      {
+        "operation": "render.frame",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "time": 0.8,
+          "outPath": "/tmp/parlez-test/r-lower-third-barra-020f.png"
+        }
+      },
+      {
+        "operation": "render.frame",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "time": 2.48,
+          "outPath": "/tmp/parlez-test/r-lower-third-barra-062f.png"
+        }
+      },
+      {
+        "operation": "render.frame",
+        "args": {
+          "comp": "LT – Mario Rossi",
+          "time": 4.44,
+          "outPath": "/tmp/parlez-test/r-lower-third-barra-111f.png"
+        }
+      }
+    ]
+  }
+}

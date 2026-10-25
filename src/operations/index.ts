@@ -38,6 +38,7 @@ import "./motion.js";
 // Parlez! M6.3: named curves, stagger, expression templates (nome del file provvisorio).
 import "./animation-helpers.js";
 import "./aerender.js";
+import "./recipe.js";
 
 // eval.run executes arbitrary ExtendScript (file I/O, system.callSystem,
 // Socket, …). Opt-in: it enters the registry only when AE_MCP_ENABLE_EVAL=1

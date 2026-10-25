@@ -1,0 +1,46 @@
+{
+  "format": "parlez.card/0.1",
+  "kind": "sample",
+  "id": "c-lt-001",
+  "version": 1,
+  "status": "approved",
+  "title": "Lower third su fondo grafico",
+  "summary": "Lower third su fondo grafico: barra notte, due righe, tenuta 3,4 s.",
+  "header": {
+    "confidentiality": "libero",
+    "toClaude": { "numbers": true, "descriptions": true, "images": true },
+    "sources": [
+      {
+        "type": "inventato",
+        "ref": "esempio",
+        "label": "Fatto con r-lower-third-barra",
+        "ownership": "libero"
+      }
+    ],
+    "approval": { "by": "Anthony", "date": "2026-11-10" },
+    "client": null
+  },
+  "people": false,
+  "description": "In basso a sinistra, dentro l'area del titolo, una barra blu notte alta circa un decimo dello schermo. Sopra, il nome in carta, grande e in grassetto, e sotto il ruolo in ambra, più piccolo e spaziato. La barra si apre da sinistra, poi arrivano le due righe a breve distanza; alla fine escono al contrario.",
+  "measurements": {
+    "format": "16:9",
+    "fps": 25,
+    "barIn": "12f",
+    "textLead": "5f",
+    "stagger": "3f",
+    "hold": "3.4s",
+    "barHeight": "112u",
+    "textMarginLeft": "28u",
+    "colors": [
+      { "hex": "#14213D", "share": 0.07 },
+      { "hex": "#F5F1E8", "share": 0.012 },
+      { "hex": "#F2A541", "share": 0.004 }
+    ]
+  },
+  "thumbnails": [],
+  "note": "Nel fixture di prova la miniatura non c'è: il campione serve solo a ricostruire l'archivio di the archive format spec §10.",
+  "links": {
+    "recipe": "r-lower-third-barra",
+    "techniques": ["t-barra-apertura", "t-entrata-scorrimento", "t-uscita-accelerata"]
+  }
+}

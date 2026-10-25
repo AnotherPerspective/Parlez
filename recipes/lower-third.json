@@ -1,0 +1,267 @@
+{
+  "format": "parlez.recipe/0.1",
+  "kind": "recipe",
+  "id": "r-lower-third-barra",
+  "version": 1,
+  "status": "draft",
+  "title": "Lower third con barra",
+  "summary": "Barra che si apre da sinistra, titolo e sottotitolo che entrano sfalsati; uscita in ordine inverso.",
+  "note": "Specifica: the recipe format spec §12. Bozza: da approvare con Anthony dopo la prima prova in After Effects.",
+  "header": {
+    "confidentiality": "libero",
+    "toClaude": { "numbers": true, "descriptions": true, "images": true },
+    "sources": [
+      {
+        "type": "idea",
+        "ref": "ishu86/after-effects-mcp src/ae-integration/generators/templateGenerators.ts:64-209",
+        "ownership": "libero",
+        "note": "struttura dal lower third di ishu86 (MIT), riscritta come dati"
+      }
+    ],
+    "approval": null
+  },
+  "requires": { "ae": "24.0", "capabilities": [] },
+
+  "params": {
+    "title": { "type": "text", "default": "Nome Cognome", "maxChars": 32 },
+    "subtitle": { "type": "text", "default": "Ruolo", "optional": true, "maxChars": 48 },
+    "format": { "type": "format", "default": "16:9" },
+    "duration": { "type": "time", "default": "5s", "min": "3s" },
+    "barColor": {
+      "type": "color",
+      "default": { "$ref": "style:color/primary", "default": "#14213D" }
+    },
+    "titleColor": {
+      "type": "color",
+      "default": { "$ref": "style:color/onPrimary", "default": "#FFFFFF" }
+    },
+    "subColor": {
+      "type": "color",
+      "default": { "$ref": "style:color/accent", "default": "#F2A541" }
+    },
+    "titleFont": {
+      "type": "font",
+      "default": { "$ref": "style:font/title", "default": "Arial-BoldMT" }
+    },
+    "subFont": { "type": "font", "default": { "$ref": "style:font/body", "default": "ArialMT" } },
+    "titleSize": {
+      "type": "length",
+      "default": { "$ref": "style:size/lowerThirdTitle", "default": "56u" }
+    },
+    "subSize": {
+      "type": "length",
+      "default": { "$ref": "style:size/lowerThirdSub", "default": "32u" }
+    },
+    "barIn": {
+      "type": "time",
+      "default": { "$ref": "technique:bar-open/duration", "default": "12f" }
+    },
+    "textLead": {
+      "type": "time",
+      "default": { "$ref": "technique:text-entry/delay", "default": "5f" }
+    },
+    "textIn": {
+      "type": "time",
+      "default": { "$ref": "technique:text-entry/duration", "default": "12f" }
+    },
+    "fadeIn": {
+      "type": "time",
+      "default": { "$ref": "technique:text-entry/fade", "default": "10f" }
+    },
+    "stagger": {
+      "type": "time",
+      "default": { "$ref": "technique:text-entry/stagger", "default": "3f" }
+    },
+    "textMove": {
+      "type": "length",
+      "default": { "$ref": "technique:text-entry/distance", "default": "40u" }
+    },
+    "curveIn": {
+      "type": "curve",
+      "default": { "$ref": "technique:text-entry/curve", "default": "decelera" }
+    },
+    "outLen": {
+      "type": "time",
+      "default": { "$ref": "technique:exit/duration", "default": "10f" }
+    },
+    "outMove": {
+      "type": "length",
+      "default": { "$ref": "technique:exit/distance", "default": "24u" }
+    },
+    "curveOut": {
+      "type": "curve",
+      "default": { "$ref": "technique:exit/curve", "default": "accelera" }
+    }
+  },
+
+  "let": {
+    "padX": "28u",
+    "padY": "18u",
+    "gap": "12u",
+    "titleCap": "= titleSize * titleFont.capHeight",
+    "subCap": "= subSize * subFont.capHeight",
+    "H": "= if(subtitle, padY*2 + titleCap + gap + subCap, padY*2 + titleCap)",
+    "titleY": "= -H/2 + padY + titleCap",
+    "subY": "= titleY + gap + subCap",
+    "inDone": "= textLead + if(subtitle, stagger, 0) + textIn",
+    "textOutEnd": "= end - 8f",
+    "outStart": "= textOutEnd - outLen - if(subtitle, 2f, 0)",
+    "holdMid": "= round((inDone + outStart) / 2)"
+  },
+
+  "comp": {
+    "create": true,
+    "name": "LT – {title}",
+    "format": "= format",
+    "duration": "= duration",
+    "bgColor": "#000000"
+  },
+
+  "layers": [
+    {
+      "id": "ctrl",
+      "type": "null",
+      "name": "LT Controllo",
+      "transform": { "position": "= [safe.title.left, safe.title.bottom - H/2]" }
+    },
+    {
+      "id": "bar",
+      "type": "shape",
+      "name": "LT Barra",
+      "parent": "ctrl",
+      "shapes": [
+        {
+          "group": "Barra",
+          "rect": { "size": "= [600u, H]", "position": "= [300u, 0]" },
+          "fill": { "color": "= barColor" }
+        }
+      ],
+      "controls": [{ "slider": "Apertura", "value": 0 }],
+      "transform": { "position": [0, 0], "anchorPoint": [0, 0] },
+      "expressions": {
+        "shape:Barra/rect.size": {
+          "template": "fitText",
+          "layers": ["title", "subtitle"],
+          "padX": "= padX",
+          "height": "= H"
+        },
+        "shape:Barra/rect.position": "[thisProperty.propertyGroup(1).size[0] / 2, 0]",
+        "scale": "[effect(\"Apertura\")(1), value[1]]"
+      }
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "name": "LT Titolo",
+      "parent": "ctrl",
+      "text": "{title}",
+      "style": {
+        "font": "= titleFont",
+        "fontSize": "= titleSize",
+        "fillColor": "= titleColor",
+        "justification": "left"
+      },
+      "transform": { "position": "= [padX, titleY]" }
+    },
+    {
+      "id": "subtitle",
+      "type": "text",
+      "name": "LT Sottotitolo",
+      "parent": "ctrl",
+      "when": "= subtitle",
+      "text": "{subtitle}",
+      "style": {
+        "font": "= subFont",
+        "fontSize": "= subSize",
+        "fillColor": "= subColor",
+        "justification": "left",
+        "tracking": 20
+      },
+      "transform": { "position": "= [padX, subY]" }
+    }
+  ],
+
+  "animation": [
+    {
+      "layer": "bar",
+      "property": "control:Apertura",
+      "keys": [
+        { "at": "0f", "value": 0 },
+        { "at": "= barIn", "value": 100, "curve": "= curveIn" },
+        { "at": "= end - barIn", "value": 100, "curve": "linear", "phase": "out" },
+        { "at": "= end", "value": 0, "curve": "= curveOut", "phase": "out" }
+      ]
+    },
+    {
+      "layers": ["title", "subtitle"],
+      "stagger": { "in": "= stagger", "out": "-2f" },
+      "property": "position",
+      "relative": true,
+      "spatial": "linear",
+      "keys": [
+        { "at": "= textLead", "offset": "= [-textMove, 0]" },
+        { "at": "= textLead + textIn", "offset": [0, 0], "curve": "= curveIn" },
+        { "at": "= textOutEnd - outLen", "offset": [0, 0], "curve": "linear", "phase": "out" },
+        { "at": "= textOutEnd", "offset": "= [-outMove, 0]", "curve": "= curveOut", "phase": "out" }
+      ]
+    },
+    {
+      "layers": ["title", "subtitle"],
+      "stagger": { "in": "= stagger", "out": "-2f" },
+      "property": "opacity",
+      "keys": [
+        { "at": "= textLead", "value": 0 },
+        { "at": "= textLead + fadeIn", "value": 100, "curve": "= curveIn" },
+        { "at": "= textOutEnd - outLen", "value": 100, "curve": "linear", "phase": "out" },
+        { "at": "= textOutEnd", "value": 0, "curve": "= curveOut", "phase": "out" }
+      ]
+    }
+  ],
+
+  "markers": [
+    { "at": "= inDone", "comment": "entrata completa" },
+    { "at": "= outStart", "comment": "inizio uscita" }
+  ],
+
+  "acceptance": {
+    "checks": [
+      {
+        "check": "insideSafeArea",
+        "layers": ["bar", "title", "subtitle"],
+        "area": "title",
+        "at": "= holdMid"
+      },
+      {
+        "check": "inside",
+        "layers": ["title", "subtitle"],
+        "container": "bar",
+        "margin": "8u",
+        "at": "= holdMid"
+      },
+      { "check": "fontIs", "layer": "title", "font": "= titleFont" },
+      { "check": "fontIs", "layer": "subtitle", "font": "= subFont" },
+      {
+        "check": "value",
+        "layer": "bar",
+        "property": "scale",
+        "at": ["0f", "= end"],
+        "equals": [0, 100]
+      },
+      {
+        "check": "value",
+        "layers": ["title", "subtitle"],
+        "property": "opacity",
+        "at": ["0f", "= end"],
+        "equals": 0
+      },
+      { "check": "frames", "at": ["= inDone", "= holdMid", "= textOutEnd - 5f"] }
+    ],
+    "look": [
+      "Al marcatore «entrata completa» la barra è aperta e titolo e sottotitolo sono fermi, allineati a sinistra con lo stesso margine.",
+      "L'ordine d'entrata si legge: prima la barra, poi il titolo, poi il sottotitolo. All'uscita il sottotitolo va via per primo e la barra si chiude per ultima.",
+      "Il primo e l'ultimo fotogramma sono vuoti.",
+      "Se si riscrive il titolo con un nome più lungo, la barra si allarga da sola.",
+      "Un solo Ctrl+Z toglie tutto, composizione compresa."
+    ]
+  }
+}

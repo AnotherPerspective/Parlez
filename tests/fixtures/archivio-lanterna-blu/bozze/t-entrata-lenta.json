@@ -1,0 +1,25 @@
+{
+  "format": "parlez.card/0.1",
+  "kind": "technique",
+  "id": "t-entrata-lenta",
+  "version": 1,
+  "status": "draft",
+  "role": "text-entry",
+  "title": "Entrata lenta (bozza della macinatura)",
+  "summary": "Bozza non approvata: l'esecutore non deve mai usarla.",
+  "header": {
+    "confidentiality": "libero",
+    "toClaude": { "numbers": true, "descriptions": true, "images": true },
+    "sources": [{ "type": "inventato", "ref": "esempio", "ownership": "libero" }],
+    "approval": null,
+    "client": null
+  },
+  "motion": {
+    "distance": "90u",
+    "duration": "30f@25",
+    "delay": "0f@25",
+    "stagger": "9f@25",
+    "fade": "30f@25",
+    "curve": "dolce"
+  }
+}
