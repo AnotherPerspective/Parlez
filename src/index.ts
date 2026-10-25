@@ -7,6 +7,7 @@ import { runCli } from "./cli.js";
 import { RUNTIME_DIR, instanceTargetFromEnv } from "./config.js";
 import { errorResult } from "./errors.js";
 import { denyTool, policySummary, readOnlyMode } from "./policy.js";
+import { guardToolCall } from "./privacy.js";
 import { FileIpcTransport } from "./transport/FileIpcTransport.js";
 
 // Load all operations into the registry (must run before catalog/do handle calls).
@@ -54,7 +55,7 @@ function register(tool: AnyTool): void {
     },
     async (args: unknown) => {
       try {
-        return await tool.handler(args as any, transport);
+        return await guardToolCall(tool.name, args, (a) => tool.handler(a as any, transport));
       } catch (err) {
         // A handler throwing is a bug in this server, not a modelling error —
         // report it under its own code so it is never mistaken for a
