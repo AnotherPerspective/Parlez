@@ -1,15 +1,18 @@
 // Command-line subcommands of the `mcp-aftereffects` binary. Without
 // arguments the binary is the MCP server (stdio); with one it is a small
 // maintenance tool for the pull path — installing the resident agent into
-// After Effects' Startup folders and looking at which instances are live.
+// After Effects' Startup folders, the switch panel (Parlez!, nome provvisorio)
+// into its ScriptUI Panels folders, and looking at which instances are live.
 
 import { INSTANCES_DIR, RUNTIME_DIR } from "./config.js";
 import {
+  type StubStatus,
   aeProfileRoot,
   agentInstallStatus,
   installAgent,
   uninstallAgent,
 } from "./agent-install.js";
+import { installPanel, panelInstallStatus, uninstallPanel } from "./panel-install.js";
 import { describeInstance, listInstances } from "./transport/instances.js";
 
 export const USAGE = `mcp-aftereffects — MCP server for Adobe After Effects
@@ -20,12 +23,18 @@ export const USAGE = `mcp-aftereffects — MCP server for Adobe After Effects
                                       with \`AfterFX.exe -m\`. Restart After Effects afterwards.
   mcp-aftereffects uninstall-agent    remove it again
   mcp-aftereffects agent-status       show where the agent is installed and whether it is current
+  mcp-aftereffects install-panel      install the switch panel ("Claude can work" / "Claude stopped")
+                                      into the user-level Scripts/ScriptUI Panels folder(s); it shows
+                                      under Window after restarting After Effects
+  mcp-aftereffects uninstall-panel    remove it again
+  mcp-aftereffects panel-status       show where the panel is installed and whether it is current
   mcp-aftereffects instances          list the After Effects instances whose agent is live
   mcp-aftereffects help               this text
 
-Options for install-agent / uninstall-agent / agent-status:
+Options for install-/uninstall-/…-status of the agent and the panel:
   --version <major.minor>   only that After Effects version folder (e.g. 26.3); default: all present
-  --dir <path>              an explicit Scripts/Startup folder instead of the profile-derived ones
+  --dir <path>              an explicit Scripts/Startup (agent) or Scripts/ScriptUI Panels (panel)
+                            folder instead of the profile-derived ones
   --dry-run                 report what would change without writing
 
 Address an instance from the server side with AE_MCP_INSTANCE=<id or project file name>; name an
@@ -93,22 +102,33 @@ export async function runCli(
         return 0;
       }
 
-      case "agent-status": {
-        const statuses = await agentInstallStatus(opts);
-        if (statuses.length === 0) {
-          out(`no After Effects version folder under ${aeProfileRoot()}`);
-          return 1;
-        }
-        for (const s of statuses) {
-          const state = !s.installed
-            ? "not installed"
-            : s.current
-              ? "installed"
-              : "installed (stale — run install-agent)";
-          out(`${s.version.padEnd(8)} ${state.padEnd(40)} ${s.stubPath}`);
+      case "agent-status":
+        return printStatus(await agentInstallStatus(opts), "install-agent", out);
+
+      case "install-panel": {
+        const report = await installPanel(opts);
+        for (const p of report.written) out(`${args.dryRun ? "would write" : "wrote"}    ${p}`);
+        for (const p of report.unchanged) out(`up to date  ${p}`);
+        if (report.written.length > 0 && !args.dryRun) {
+          out("");
+          out(
+            "Restart After Effects, then open the panel from the Window menu. It starts on " +
+              '"Claude fermo" (Claude stopped) until you switch it on.',
+          );
         }
         return 0;
       }
+
+      case "uninstall-panel": {
+        const report = await uninstallPanel(opts);
+        if (report.removed.length === 0 && report.foreign.length === 0) out("nothing to remove");
+        for (const p of report.removed) out(`${args.dryRun ? "would remove" : "removed"}  ${p}`);
+        for (const p of report.foreign) out(`left alone  ${p} (not written by install-panel)`);
+        return 0;
+      }
+
+      case "panel-status":
+        return printStatus(await panelInstallStatus(opts), "install-panel", out);
 
       case "instances": {
         const instances = await listInstances();
@@ -132,4 +152,21 @@ export async function runCli(
     out(`error: ${err instanceof Error ? err.message : String(err)}`);
     return 1;
   }
+}
+
+/** agent-status / panel-status: one line per After Effects version folder. */
+function printStatus(statuses: StubStatus[], installCommand: string, out: (line: string) => void) {
+  if (statuses.length === 0) {
+    out(`no After Effects version folder under ${aeProfileRoot()}`);
+    return 1;
+  }
+  for (const s of statuses) {
+    const state = !s.installed
+      ? "not installed"
+      : s.current
+        ? "installed"
+        : `installed (stale — run ${installCommand})`;
+    out(`${s.version.padEnd(8)} ${state.padEnd(40)} ${s.stubPath}`);
+  }
+  return 0;
 }

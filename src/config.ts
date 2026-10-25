@@ -339,6 +339,25 @@ export const AGENT_JSX = path.join(PACKAGE_ROOT, "jsx", "agent.jsx");
 /** Name of the bootstrap stub `install-agent` drops into Scripts/Startup. */
 export const AGENT_STUB_FILENAME = "mcp-aftereffects-agent.jsx";
 
+// --- The pause switch (nome provvisorio) ---------------------------------------
+//
+// A ScriptUI panel inside After Effects (jsx/panel.jsx, copied into the
+// user-level Scripts/ScriptUI Panels folder by `install-panel`) lets the user
+// stop Claude without leaving AE. The switch is one app.settings entry —
+// "1" = Claude may work, "0" = stopped — read by jsx/serve.jsx before every
+// request on both paths and reported by the agent in heartbeat.json as
+// `paused`, which is how this side learns of it. The same section and key are
+// written literally in jsx/serve.jsx and jsx/panel.jsx; tests keep the three
+// in step.
+
+export const PANEL_JSX = path.join(PACKAGE_ROOT, "jsx", "panel.jsx");
+
+/** File name in ScriptUI Panels — After Effects lists the panel under Window by it. */
+export const PANEL_FILENAME = "Parlez (provvisorio).jsx";
+
+export const PAUSE_SETTINGS_SECTION = "Parlez";
+export const PAUSE_SETTINGS_KEY = "claudeEnabled";
+
 export const INSTANCE_ID_MAX_LENGTH = 64;
 
 /**

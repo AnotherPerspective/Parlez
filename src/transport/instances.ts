@@ -32,6 +32,10 @@ export interface Heartbeat {
   startedAt?: number;
   ticks?: number;
   served?: number;
+  /** Requests answered `paused` instead of run (agent version 2+). */
+  refused?: number;
+  /** The user stopped Claude with the panel's switch (agent version 2+). */
+  paused?: boolean;
   busy?: boolean;
   busySince?: number | null;
   lastError?: string | null;
@@ -158,9 +162,26 @@ export function instanceLabel(instance: InstanceInfo): string {
   return `${project} [${instance.id}]`;
 }
 
+/** True only when a live agent says the user switched Claude off. */
+export function isPaused(instance: InstanceInfo): boolean {
+  return instance.alive && instance.heartbeat?.paused === true;
+}
+
+/**
+ * What a call to a paused instance answers (Parlez!, nome provvisorio). Italian
+ * because it is meant to be relayed to the user as is; the hint tells the
+ * model not to work around it.
+ */
+export const PAUSED_MESSAGE =
+  "Claude è in pausa in After Effects: accendi l'interruttore nel pannello Parlez!";
+export const PAUSED_HINT =
+  "L'utente ha fermato Claude dal pannello in After Effects (menu Finestra, «Parlez (provvisorio)»). " +
+  "Non riprovare e non cercare altre strade: chiedi all'utente di scegliere «Claude può lavorare» " +
+  "nel pannello e riprova solo quando lo dice.";
+
 export function describeInstance(instance: InstanceInfo): string {
   const hb = instance.heartbeat;
-  const state = instance.alive ? (hb?.busy ? "busy" : "live") : "stale";
+  const state = instance.alive ? (hb?.busy ? "busy" : hb?.paused ? "paused" : "live") : "stale";
   const seen =
     instance.ageMs === null ? "never seen" : `seen ${Math.round(instance.ageMs / 1000)}s ago`;
   return `${instanceLabel(instance)} (${state}, ${seen})`;

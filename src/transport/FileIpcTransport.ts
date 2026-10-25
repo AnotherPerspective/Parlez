@@ -34,7 +34,10 @@ import { type AeDialog, dialogBlockMessage, dialogHint, scanAeDialogs } from "./
 import {
   type InstanceInfo,
   type TargetResolution,
+  PAUSED_HINT,
+  PAUSED_MESSAGE,
   describeInstance,
+  isPaused,
   listInstances,
   readInstance,
   resolveTarget,
@@ -115,6 +118,8 @@ interface DispatcherResponse {
   line?: number | null;
   stack: string | null;
   logs: string[];
+  /** Refused by the pause switch in After Effects (serve.jsx); nothing ran. */
+  paused?: boolean;
 }
 
 /**
@@ -262,6 +267,12 @@ export class FileIpcTransport implements AeTransport {
         durationMs: Date.now() - started,
         hint: target.hint,
       });
+    }
+    // The heartbeat already says the user stopped Claude: answer now rather
+    // than queue a request the agent would only refuse. Pull only — a paused
+    // instance is still live, so resolveTarget never falls back to push for it.
+    if (target.mode === "pull" && isPaused(target.instance)) {
+      return pausedFailure(Date.now() - started);
     }
 
     const request: MailboxRequest = {
@@ -731,6 +742,9 @@ export class FileIpcTransport implements AeTransport {
   }
 
   private toEvalResult(parsed: DispatcherResponse, durationMs: number): EvalResult {
+    // The switch went off between our heartbeat check and the agent's tick
+    // (or this came in on the push path, which has no heartbeat to check).
+    if (!parsed.ok && parsed.paused === true) return pausedFailure(durationMs);
     if (parsed.ok) {
       return {
         ok: true,
@@ -831,6 +845,10 @@ function failure(
     durationMs: extra.durationMs ?? 0,
     ...(extra.dialogs ? { dialogs: extra.dialogs } : {}),
   };
+}
+
+function pausedFailure(durationMs: number): EvalResult {
+  return failure("PAUSED", PAUSED_MESSAGE, { durationMs, hint: PAUSED_HINT });
 }
 
 /** DIALOG_OPEN: what the dialogs say first, then what became of the call. */

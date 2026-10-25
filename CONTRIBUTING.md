@@ -121,6 +121,7 @@ Every tool failure returns the same shape — `{ ok: false, error: { code, messa
 | `AE_NOT_FOUND`                    | `AfterFX.exe` could not be located                                             | Set `AE_MCP_EXE`                                                          |
 | `NO_INSTANCE`                     | No After Effects instance could take the call (the message lists what is live) | Name one (`AE_MCP_INSTANCE` / `instance`), install the agent, or start AE |
 | `DIALOG_OPEN`                     | AE shows a modal; `details.dialogs` quotes it (macOS text needs Accessibility) | `instance.dismiss_dialog { id }` (macOS: needs Accessibility), else ask   |
+| `PAUSED`                          | The user stopped Claude with the switch panel inside AE                        | Stop; ask the user to switch it back on — never work around it            |
 | `INVALID_ARGS`                    | Arguments failed the operation's parameter schema                              | Fix the args (`details.issues` says how)                                  |
 | `UNKNOWN_OPERATION` / `_CATEGORY` | No such operation/category                                                     | `ae_catalog`; `details.suggestion` may name it                            |
 | `FORBIDDEN`                       | Blocked by the capability policy                                               | Stop — this is a deployment decision, not a bug                           |
@@ -141,8 +142,10 @@ src/                         TypeScript MCP server
 ├── registry.ts              Operation registry + JSX generation helpers
 ├── opschema.ts              Argument validation derived from OperationParam[]
 ├── schema.ts / validate.ts  Project-JSON schema + validation
-├── cli.ts                   `install-agent` / `uninstall-agent` / `agent-status` / `instances` subcommands
+├── cli.ts                   `install-agent` / `uninstall-agent` / `agent-status` / `install-panel` /
+│                            `uninstall-panel` / `panel-status` / `instances` subcommands
 ├── agent-install.ts         Writes the Startup-folder stub that loads jsx/agent.jsx
+├── panel-install.ts         Copies jsx/panel.jsx (the pause switch) into ScriptUI Panels
 ├── transport/
 │   ├── AeTransport.ts       Transport interface (execute → EvalResult)
 │   ├── launcher.ts          Per-platform launch plans (AfterFX.exe -r / osascript; AfterFX.exe -m)
@@ -160,6 +163,7 @@ src/                         TypeScript MCP server
 jsx/                         ExtendScript that runs inside After Effects
 ├── dispatcher.jsx           Push entry (`-r` / DoScript): find the mailbox, serve one request
 ├── agent.jsx                Pull entry (Scripts/Startup): resident poller for one instance's mailbox
+├── panel.jsx                ScriptUI panel (Window menu): the "Claude can work / stopped" switch
 ├── serve.jsx                Serve one request: consume, undo group, dialogs, write response (shared)
 ├── helpers.jsx              AE.* lookup helpers shared by generated code
 ├── toolkit.jsx              Higher-level building blocks (separated-dimension writes,

@@ -1,4 +1,5 @@
-import { instanceLabel, listInstances } from "../transport/instances.js";
+import { errorResult } from "../errors.js";
+import { instanceLabel, isPaused, listInstances } from "../transport/instances.js";
 import { defineTool, toMcpResult } from "./define-tool.js";
 
 const CODE = `
@@ -137,7 +138,7 @@ export const contextTool = defineTool({
   inputShape: {},
   handler: async (_args, transport) => {
     const result = await transport.execute({ code: CODE, label: "context" });
-    if (!result.ok) return toMcpResult(result);
+    if (!result.ok && result.errorCode !== "PAUSED") return toMcpResult(result);
     // Node-side view of the instance landscape: which AE instances have a
     // live agent, and how THIS server reaches its one. The JSX above can only
     // describe the instance that answered.
@@ -145,6 +146,24 @@ export const contextTool = defineTool({
       listInstances(),
       transport.describeTarget ? transport.describeTarget() : Promise.resolve(null),
     ]);
+    const instanceSummaries = instances.map((i) => ({
+      label: instanceLabel(i),
+      id: i.id,
+      alive: i.alive,
+      busy: i.heartbeat?.busy ?? false,
+      paused: i.heartbeat?.paused ?? false,
+      project: i.heartbeat?.project ?? null,
+      aeVersion: i.heartbeat?.aeVersion ?? null,
+      lastSeenMsAgo: i.ageMs,
+    }));
+    if (!result.ok) {
+      // Paused: After Effects ran nothing, but the Node-side picture is still
+      // true and is exactly what explains the refusal.
+      return errorResult("PAUSED", result.error ?? "paused", {
+        details: { instances: instanceSummaries },
+        durationMs: result.durationMs,
+      });
+    }
     const base =
       result.result !== null && typeof result.result === "object" && !Array.isArray(result.result)
         ? (result.result as Record<string, unknown>)
@@ -155,19 +174,11 @@ export const contextTool = defineTool({
         target === null
           ? null
           : target.mode === "pull"
-            ? { mode: "pull", instance: target.instance.id }
+            ? { mode: "pull", instance: target.instance.id, paused: isPaused(target.instance) }
             : target.mode === "push"
               ? { mode: "push" }
               : { mode: "error", message: target.message },
-      instances: instances.map((i) => ({
-        label: instanceLabel(i),
-        id: i.id,
-        alive: i.alive,
-        busy: i.heartbeat?.busy ?? false,
-        project: i.heartbeat?.project ?? null,
-        aeVersion: i.heartbeat?.aeVersion ?? null,
-        lastSeenMsAgo: i.ageMs,
-      })),
+      instances: instanceSummaries,
     };
     return toMcpResult({ ...result, result: merged });
   },

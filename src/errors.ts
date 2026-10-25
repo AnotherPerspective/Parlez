@@ -28,6 +28,11 @@ export type AeErrorCode =
    * macOS; on macOS the text needs Accessibility permission).
    */
   | "DIALOG_OPEN"
+  /**
+   * The user stopped Claude with the switch in the After Effects panel
+   * (Parlez!, nome provvisorio). Not retryable: only the user can turn it back on.
+   */
+  | "PAUSED"
   /** AE never wrote a response before the deadline. */
   | "TIMEOUT"
   /** Node-side failure: spawn, filesystem, JSON write. */
