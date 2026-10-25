@@ -170,6 +170,14 @@ export const CONFIRM_RULES: Readonly<Record<string, ConfirmRule>> = {
         : null,
     reason: "solo con replace: true (cancella i keyframe esistenti)",
   },
+  // M6.3: same replace switch as keyframe.apply.
+  "keyframe.apply_ease": {
+    destructive: (args) =>
+      args.replace === true
+        ? "cancella i keyframe che la proprietà ha già prima di scrivere quelli nuovi (replace: true)"
+        : null,
+    reason: "solo con replace: true (cancella i keyframe esistenti)",
+  },
   "layer.set_visibility_schedule": {
     // toJsx: `args.mode ?? "opacity"`; any other value is rejected there.
     destructive: (args) =>
