@@ -3,22 +3,40 @@ import * as path from "node:path";
 import { z } from "zod";
 
 import { measureCaptureTransfer, calibrationKey } from "../color/calibration.js";
+import {
+  encodeInlineImages,
+  INLINE_DEFAULT_MAX_SIZE,
+  INLINE_MAX_BYTES,
+  inlineWorkWidth,
+  selectInlineSources,
+  type InlineMode,
+} from "../color/inline.js";
 import { decodePng, encodePngSrgb8 } from "../color/png16.js";
 import { readFileSettled } from "../color/settled-read.js";
 import {
   analyzeFrame,
   composeContactSheet,
   frameLabel,
+  resample,
+  SHEET_THUMB_WIDTH,
   type FrameAnalysis,
+  type Raster,
 } from "../color/sheet.js";
+import {
+  drawTimelineStrip,
+  ENERGY_THUMB_W,
+  motionEnergy,
+  type TimelineLayer,
+} from "../color/strip.js";
 import { profileForWorkingSpace, sceneLinearToDisplaySrgb } from "../color/transform.js";
 import { rejectedOutputPath } from "../config.js";
 import { errorResult } from "../errors.js";
 import { readOnlyMode } from "../policy.js";
-import { RENDER_FRAME_FN } from "../operations/snippets.js";
+import { RENDER_FRAME_FN, TIMELINE_KEYS_FN } from "../operations/snippets.js";
 import { jsxVal } from "../registry.js";
 import type { AeTransport } from "../transport/AeTransport.js";
 import { defineTool, toMcpResult } from "./define-tool.js";
+import type { ImageContent } from "./types.js";
 
 interface RenderedFrame {
   ok: boolean;
@@ -37,6 +55,33 @@ interface ContactSheetReport {
   rows: number;
   thumbSize: [number, number];
   frames: number;
+}
+
+/** What the JSX returns for the strip (consumed on the Node side, never echoed). */
+interface TimelineData {
+  duration: number;
+  frameRate: number;
+  displayStartTime: number;
+  layers: Array<TimelineLayer & { keysTruncated?: boolean }>;
+  layersTruncated?: boolean;
+}
+
+interface TimelineStripReport {
+  writtenTo: string;
+  size: [number, number];
+  duration: number;
+  /** Change between consecutive frames in time order, 0..1 (mean grey difference). */
+  motion: Array<{ from: number; to: number; fromIndex: number; toIndex: number; energy: number }>;
+  /** One per strip row, top to bottom; `layer` null = merged overflow row. */
+  rows: Array<{
+    row: number;
+    layer: number | null;
+    name: string;
+    keyframes: number;
+    keyTimes: number[];
+    keyTimesTruncated?: boolean;
+  }>;
+  layersOmitted?: number;
 }
 
 interface RenderFramePayload {
@@ -58,6 +103,11 @@ interface RenderFramePayload {
   analysisWarning?: string;
   contactSheet?: ContactSheetReport;
   contactSheetWarning?: string;
+  timeline?: TimelineData;
+  timelineError?: string;
+  timelineStrip?: TimelineStripReport;
+  timelineStripWarning?: string;
+  inlineWarning?: string;
 }
 
 interface ContactSheetArgs {
@@ -65,6 +115,19 @@ interface ContactSheetArgs {
   thumbWidth?: number;
   outPath?: string;
 }
+
+interface TimelineStripArgs {
+  width?: number;
+  outPath?: string;
+}
+
+/** Default strip width (px): wide enough to read seconds and keyframes. */
+const STRIP_DEFAULT_WIDTH = 1024;
+/** JSX caps for the keyframe walk — see TIMELINE_KEYS_FN. */
+const STRIP_MAX_LAYERS = 100;
+const STRIP_MAX_KEYS = 200;
+/** Key times listed per row in the text answer; the image shows them all. */
+const STRIP_REPORT_KEYS = 64;
 
 export const renderFrameTool = defineTool({
   name: "ae_render_frame",
@@ -77,6 +140,13 @@ export const renderFrameTool = defineTool({
     "`contactSheet` tiles every frame into one labelled PNG (<stem>_sheet.png) so a motion check is one image; " +
     "`analyze` measures each capture (uniform edge bands = black bars / transparent margins, content bounds, coverage) " +
     "so off-frame elements and letterboxing are caught numerically. " +
+    "`timelineStrip` draws one wide image of the comp's time axis (<stem>_strip.png): seconds, the rendered " +
+    "frames, motion energy between consecutive frames, and each layer's span and keyframes. " +
+    "Images also come back INLINE, after the JSON text, so you can look without opening files: " +
+    "`inline: 'auto'` (default) sends the contact sheet if requested, else the frames (a labelled grid " +
+    "when there are more than 4), plus the strip; 'all' sends every frame too; 'none' sends paths only. " +
+    "Inline images are scaled to `inlineMaxSize` px on the long edge (default 1024) and kept under a total " +
+    "byte budget — shrunk further or omitted with an `inlineWarning` when over it; files on disk stay full size. " +
     "In color-managed projects (workingSpace != None) the capture applies AE's own " +
     "display transform via a transient OCIO Display Transform adjustment layer, and the PNG comes back " +
     "viewer-accurate and sRGB-tagged. Where that layer cannot be used — read-only mode, an AE without the " +
@@ -158,6 +228,42 @@ export const renderFrameTool = defineTool({
       .describe(
         "Tile all rendered frames into ONE labelled PNG (#index + time above each tile). Pass {} for defaults.",
       ),
+    timelineStrip: z
+      .object({
+        width: z
+          .number()
+          .int()
+          .min(256)
+          .max(4096)
+          .optional()
+          .describe(`Strip width in px (default ${STRIP_DEFAULT_WIDTH}).`),
+        outPath: z.string().optional().describe("Strip path (default <outPath stem>_strip.png)."),
+      })
+      .optional()
+      .describe(
+        "Draw the comp's timeline as one wide, low PNG: second ticks, rendered frame times (#index), " +
+          "motion energy between consecutive frames (orange bars), and per layer its in–out span with " +
+          "keyframe diamonds (row label = layer index; `timelineStrip.rows` maps rows to layer names). " +
+          "Reads keyframes without changing the project. Pass {} for defaults.",
+      ),
+    inline: z
+      .enum(["auto", "none", "all"])
+      .optional()
+      .describe(
+        "Images returned inside the response, after the JSON. 'auto' (default): the contact sheet if " +
+          "requested, else the frames (a labelled grid when more than 4), plus the strip. " +
+          "'all': every frame, then sheet and strip. 'none': paths and measurements only.",
+      ),
+    inlineMaxSize: z
+      .number()
+      .int()
+      .min(64)
+      .max(2048)
+      .optional()
+      .describe(
+        `Long edge in px of each inline image (default ${INLINE_DEFAULT_MAX_SIZE}); never upscaled. ` +
+          "Files on disk keep full size.",
+      ),
   },
   handler: async (args, transport) => {
     if ((args.time === undefined) === (args.times === undefined)) {
@@ -182,16 +288,25 @@ export const renderFrameTool = defineTool({
         });
       }
     }
+    if (args.timelineStrip?.outPath !== undefined) {
+      const stripRejection = rejectedOutputPath(args.timelineStrip.outPath);
+      if (stripRejection !== null) {
+        return errorResult("IO", stripRejection, {
+          details: { outPath: path.resolve(args.timelineStrip.outPath) },
+          hint: "Write the timeline strip to a path outside the mailbox.",
+        });
+      }
+    }
     return nativeFlow(args, abs, transport);
   },
 });
 
-/** Default sheet path: the frame stem plus `_sheet`. */
-function sheetPathFor(abs: string, explicit: string | undefined): string {
+/** Default companion path: the frame stem plus a suffix (`_sheet`, `_strip`). */
+function companionPathFor(abs: string, suffix: string, explicit: string | undefined): string {
   if (explicit !== undefined) return path.resolve(explicit).replace(/\\/g, "/");
   const ext = path.extname(abs) || ".png";
   const stem = abs.slice(0, abs.length - (path.extname(abs).length || 0));
-  return `${stem}_sheet${ext}`;
+  return `${stem}${suffix}${ext}`;
 }
 
 /**
@@ -205,10 +320,11 @@ async function attachAnalysis(
   frames: RenderedFrame[],
   written: string[],
   multi: boolean,
+  read: SettledRead,
 ): Promise<void> {
   try {
     for (const [i, file] of written.entries()) {
-      const analysis = analyzeFrame(decodePng(await readFileSettled(file)));
+      const analysis = analyzeFrame(decodePng(await read(file)));
       if (multi) frames[i].analysis = analysis;
       else payload.analysis = analysis;
     }
@@ -217,18 +333,62 @@ async function attachAnalysis(
   }
 }
 
-/** Tile the FINAL files (after color processing) into one labelled sheet. */
+type SettledRead = (file: string) => Promise<Buffer>;
+
+/**
+ * readFileSettled once per file per call. Its stability wait (≥250 ms) is
+ * only needed while AE may still be writing; after the first settled read —
+ * and our own awaited rewrites — a plain read is enough, so analysis, color
+ * processing and the sheet/strip/inline pass do not each pay it again.
+ */
+function settledReader(): SettledRead {
+  const settled = new Set<string>();
+  return async (file) => {
+    if (settled.has(file)) return fs.readFile(file);
+    const buf = await readFileSettled(file);
+    settled.add(file);
+    return buf;
+  };
+}
+
+function errText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Decode the FINAL files (after color processing) for everything that needs
+ * pixels — sheet, strip, inline images — one at a time, each shrunk at once
+ * to the width those need (`workWidth`). Never all full-resolution frames in
+ * memory together: 32 frames of 1080p would be ~1.6 GB of floating point.
+ */
+async function loadFinals(
+  written: string[],
+  read: SettledRead,
+  workWidth: (width: number, height: number) => number,
+): Promise<Raster[]> {
+  const out: Raster[] = [];
+  for (const file of written) {
+    const img = decodePng(await read(file));
+    const tw = Math.min(img.width, Math.max(1, Math.round(workWidth(img.width, img.height))));
+    if (tw >= img.width) {
+      out.push({ width: img.width, height: img.height, rgb: img.rgb });
+    } else {
+      const th = Math.max(1, Math.round((img.height * tw) / img.width));
+      out.push({ width: tw, height: th, rgb: resample(img, tw, th) });
+    }
+  }
+  return out;
+}
+
+/** Tile the final frames into one labelled sheet; returns it for inline use. */
 async function attachContactSheet(
   payload: RenderFramePayload,
-  frames: RenderedFrame[],
-  written: string[],
+  images: Raster[],
+  labels: string[],
   sheetPath: string,
   opts: ContactSheetArgs,
-): Promise<void> {
+): Promise<Raster | undefined> {
   try {
-    const images = [];
-    for (const file of written) images.push(decodePng(await readFileSettled(file)));
-    const labels = frames.map((f, i) => frameLabel(i, f.time));
     const sheet = composeContactSheet(images, {
       columns: opts.columns,
       thumbWidth: opts.thumbWidth,
@@ -244,8 +404,125 @@ async function attachContactSheet(
       thumbSize: [sheet.thumbWidth, sheet.thumbHeight],
       frames: images.length,
     };
+    return sheet;
   } catch (err) {
-    payload.contactSheetWarning = `contact sheet failed: ${err instanceof Error ? err.message : String(err)}`;
+    payload.contactSheetWarning = `contact sheet failed: ${errText(err)}`;
+    return undefined;
+  }
+}
+
+const round = (v: number, digits: number): number => {
+  const f = 10 ** digits;
+  return Math.round(v * f) / f;
+};
+
+/**
+ * Draw the timeline strip from the final frames and the keyframe data the
+ * JSX collected. Missing keyframe data still yields a strip (ruler, frames,
+ * motion) plus a warning; any other failure is a warning, never a failed
+ * render. Returns the strip for inline use.
+ */
+async function attachTimelineStrip(
+  payload: RenderFramePayload,
+  images: Raster[],
+  times: number[],
+  stripPath: string,
+  opts: TimelineStripArgs,
+): Promise<Raster | undefined> {
+  const timeline = payload.timeline;
+  const timelineError = payload.timelineError;
+  // Raw AE data is an input to the drawing, not part of the answer: the
+  // report below carries what is worth reading, in a bounded size.
+  delete payload.timeline;
+  delete payload.timelineError;
+  try {
+    const motion = motionEnergy(images, times);
+    const layers = timeline?.layers ?? [];
+    const duration = timeline && timeline.duration > 0 ? timeline.duration : Math.max(0, ...times);
+    const strip = drawTimelineStrip({
+      width: opts.width ?? STRIP_DEFAULT_WIDTH,
+      duration,
+      frameTimes: times,
+      motion,
+      layers,
+    });
+    await fs.mkdir(path.dirname(stripPath), { recursive: true });
+    await fs.writeFile(
+      stripPath,
+      encodePngSrgb8(strip.width, strip.height, strip.rgb, { adaptiveFilter: true }),
+    );
+    const byIndex = new Map(layers.map((l) => [l.index, l]));
+    payload.timelineStrip = {
+      writtenTo: stripPath,
+      size: [strip.width, strip.height],
+      duration: round(duration, 4),
+      motion: motion.map((m) => ({
+        from: m.from,
+        to: m.to,
+        fromIndex: m.fromIndex,
+        toIndex: m.toIndex,
+        energy: round(m.energy, 4),
+      })),
+      rows: strip.rows.map((r) => {
+        const members = r.layerIndexes.map((i) => byIndex.get(i)).filter((l) => l !== undefined);
+        const keyTimes = [...new Set(members.flatMap((l) => l.keys.map((k) => round(k, 3))))].sort(
+          (a, b) => a - b,
+        );
+        const truncated =
+          keyTimes.length > STRIP_REPORT_KEYS || members.some((l) => l.keysTruncated === true);
+        return {
+          row: r.row,
+          layer: r.merged ? null : r.layerIndexes[0],
+          name: r.merged ? `${members.length} more layers` : (members[0]?.name ?? ""),
+          keyframes: r.keyCount,
+          keyTimes: keyTimes.slice(0, STRIP_REPORT_KEYS),
+          ...(truncated ? { keyTimesTruncated: true } : {}),
+        };
+      }),
+      ...(strip.layersOmitted > 0 ? { layersOmitted: strip.layersOmitted } : {}),
+    };
+    const notes: string[] = [];
+    if (!timeline) {
+      notes.push(
+        `keyframe data unavailable${timelineError ? ` (${timelineError})` : ""} — strip shows frames and motion only`,
+      );
+    } else if (timeline.layersTruncated) {
+      notes.push(`only the first ${STRIP_MAX_LAYERS} layers were read`);
+    }
+    if (notes.length > 0) payload.timelineStripWarning = notes.join("; ");
+    return strip;
+  } catch (err) {
+    payload.timelineStripWarning = `timeline strip failed: ${errText(err)}`;
+    return undefined;
+  }
+}
+
+/**
+ * Pick, shrink and encode the images that ride along in the response. The
+ * JSON answer never depends on them — only `inlineWarning` mentions them,
+ * and only when the byte budget forced a change — so a client (or a privacy
+ * filter) that drops image blocks loses nothing else.
+ */
+function buildInlineImages(
+  payload: RenderFramePayload,
+  mode: InlineMode,
+  maxSize: number,
+  rendered: {
+    frames: Raster[];
+    sheet?: Raster;
+    strip?: Raster;
+    frameLabels: string[];
+    maxSize: number;
+  },
+): ImageContent[] {
+  try {
+    const sources = selectInlineSources(mode, rendered);
+    const plan = encodeInlineImages(sources, { maxSize, maxBytes: INLINE_MAX_BYTES });
+    if (plan.warning) payload.inlineWarning = plan.warning;
+    return plan.images.map((img) => ({ type: "image", data: img.data, mimeType: img.mimeType }));
+  } catch (err) {
+    payload.inlineWarning = `inline images failed, open the files at writtenTo: ${errText(err)}`;
+    return [];
   }
 }
 
@@ -268,6 +545,9 @@ async function nativeFlow(
     colorManaged?: "auto" | "off";
     analyze?: boolean;
     contactSheet?: ContactSheetArgs;
+    timelineStrip?: TimelineStripArgs;
+    inline?: InlineMode;
+    inlineMaxSize?: number;
   },
   abs: string,
   transport: AeTransport,
@@ -275,6 +555,12 @@ async function nativeFlow(
   const multi = args.times !== undefined;
   const times = args.times ?? [args.time as number];
   const paths = framePaths(abs, times.length, multi);
+  const wantStrip = args.timelineStrip !== undefined;
+  // Built apart from the main template: a template nested inside an
+  // interpolation would hide the rest of this file from the codegen lint.
+  const timelineCall = wantStrip
+    ? `try { _out.timeline = _tlCollect(comp, ${jsxVal(STRIP_MAX_LAYERS)}, ${jsxVal(STRIP_MAX_KEYS)}); } catch (eTl) { _out.timelineError = AE.errText(eTl); }`
+    : "";
   // Color-managed projects: instead of reimplementing the view transform,
   // make AE apply its own — drop a transient adjustment layer carrying an
   // "OCIO Display Transform" effect on top of the comp and capture that.
@@ -288,6 +574,7 @@ async function nativeFlow(
   const tryOcio = args.colorManaged !== "off" && !readOnlyMode();
   const code = `
         ${RENDER_FRAME_FN}
+        ${wantStrip ? TIMELINE_KEYS_FN : ""}
         var _arg = ${jsxVal(args.compNameOrId)};
         var comp = AE.findCompByNameOrId(_arg);
         if (!comp) return { ok: false, error: "no comp matching " + String(_arg) };
@@ -340,6 +627,7 @@ async function nativeFlow(
             _out.workingSpace = _ws;
             _out.bitsPerChannel = AE.safeGet(function () { return app.project.bitsPerChannel; }, 8);
             _out.projectFile = app.project.file ? app.project.file.fsName.replace(/\\\\/g, "/") : null;
+            ${timelineCall}
         }
         return _out;
     `;
@@ -367,22 +655,79 @@ async function nativeFlow(
     (p): p is string => typeof p === "string",
   );
   // Analysis first: it wants the raw capture, alpha channel included.
-  if (args.analyze) await attachAnalysis(payload, frames, written, multi);
+  const read = settledReader();
+  if (args.analyze) await attachAnalysis(payload, frames, written, multi, read);
   if (args.colorManaged !== "off") {
     payload.method = "native";
-    await colorPostProcess(payload, written, transport);
+    await colorPostProcess(payload, written, transport, read);
   }
-  // The sheet last, from the files as they will be viewed.
-  if (args.contactSheet) {
-    await attachContactSheet(
-      payload,
-      frames,
-      written,
-      sheetPathFor(abs, args.contactSheet.outPath),
-      args.contactSheet,
-    );
+  // Sheet, strip and inline images last, from the files as they will be viewed.
+  const inlineMode: InlineMode = args.inline ?? "auto";
+  let images: ImageContent[] = [];
+  if (args.contactSheet || args.timelineStrip || inlineMode !== "none") {
+    const inlineMaxSize = args.inlineMaxSize ?? INLINE_DEFAULT_MAX_SIZE;
+    const sheetWidth = args.contactSheet ? (args.contactSheet.thumbWidth ?? SHEET_THUMB_WIDTH) : 0;
+    const workWidth = (width: number, height: number): number =>
+      Math.max(
+        sheetWidth,
+        inlineWorkWidth(
+          inlineMode,
+          { width, height },
+          written.length,
+          inlineMaxSize,
+          args.contactSheet !== undefined,
+        ),
+        args.timelineStrip ? ENERGY_THUMB_W : 0,
+      );
+    let finals: Raster[] | null = null;
+    try {
+      finals = await loadFinals(written, read, workWidth);
+    } catch (err) {
+      const msg = `could not read the rendered files back: ${errText(err)}`;
+      if (args.contactSheet) payload.contactSheetWarning = `contact sheet failed: ${msg}`;
+      if (args.timelineStrip) payload.timelineStripWarning = `timeline strip failed: ${msg}`;
+      if (inlineMode !== "none") payload.inlineWarning = `inline images failed: ${msg}`;
+    }
+    if (finals) {
+      const frameTimes = multi
+        ? frames.map((f, i) => f.time ?? times[i])
+        : [payload.time ?? times[0]];
+      const labels = frameTimes.map((t, i) => frameLabel(i, t));
+      const sheet = args.contactSheet
+        ? await attachContactSheet(
+            payload,
+            finals,
+            labels,
+            companionPathFor(abs, "_sheet", args.contactSheet.outPath),
+            args.contactSheet,
+          )
+        : undefined;
+      const strip = args.timelineStrip
+        ? await attachTimelineStrip(
+            payload,
+            finals,
+            frameTimes,
+            companionPathFor(abs, "_strip", args.timelineStrip.outPath),
+            args.timelineStrip,
+          )
+        : undefined;
+      images = buildInlineImages(payload, inlineMode, inlineMaxSize, {
+        frames: finals,
+        sheet,
+        strip,
+        frameLabels: labels,
+        maxSize: inlineMaxSize,
+      });
+    }
   }
-  return toMcpResult(result);
+  // Raw keyframe data never reaches the answer, whatever happened above.
+  delete payload.timeline;
+  delete payload.timelineError;
+  const out = toMcpResult(result);
+  // Images go after the JSON text: content[0] stays the full answer for
+  // clients that read only the first block or do not render images.
+  if (!out.isError) out.content.push(...images);
+  return out;
 }
 
 /**
@@ -394,6 +739,7 @@ async function colorPostProcess(
   payload: RenderFramePayload,
   written: string[],
   transport: AeTransport,
+  read: SettledRead,
 ): Promise<void> {
   const workingSpace = payload.workingSpace ?? "None";
   try {
@@ -401,7 +747,7 @@ async function colorPostProcess(
       // Values are already display-referred; the only fix needed is an
       // explicit color tag so viewers stop guessing at the 16-bit file.
       for (const file of written) {
-        const img = decodePng(await readFileSettled(file));
+        const img = decodePng(await read(file));
         await fs.writeFile(file, encodePngSrgb8(img.width, img.height, img.rgb));
       }
       payload.colorPipeline = "untagged 16-bit → 8-bit sRGB-tagged (values unchanged)";
@@ -424,7 +770,7 @@ async function colorPostProcess(
         return;
       }
       for (const file of written) {
-        const img = decodePng(await readFileSettled(file));
+        const img = decodePng(await read(file));
         for (let i = 0; i < img.rgb.length; i++) img.rgb[i] *= gain;
         await fs.writeFile(file, encodePngSrgb8(img.width, img.height, img.rgb));
       }
@@ -451,7 +797,7 @@ async function colorPostProcess(
       return;
     }
     for (const file of written) {
-      const img = decodePng(await readFileSettled(file));
+      const img = decodePng(await read(file));
       for (let i = 0; i < img.rgb.length; i++) img.rgb[i] *= gain;
       sceneLinearToDisplaySrgb(img.rgb, profile.toRec709);
       await fs.writeFile(file, encodePngSrgb8(img.width, img.height, img.rgb));

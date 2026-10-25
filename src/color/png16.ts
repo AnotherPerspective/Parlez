@@ -160,26 +160,82 @@ function chunk(type: string, data: Buffer): Buffer {
   return Buffer.concat([head, data, crc]);
 }
 
+export interface EncodeOptions {
+  /**
+   * Pick the best of the five PNG row filters per scanline (the usual
+   * minimum-sum-of-differences heuristic). Costs a few passes per row and
+   * makes photographic frames markedly smaller — worth it for images that
+   * travel inline in a tool result, where every byte is base64 in the chat.
+   */
+  adaptiveFilter?: boolean;
+}
+
+/** Bytes per pixel of the 8-bit RGB output. */
+const OUT_BPP = 3;
+
+/** Filter one scanline into `out` (filter type byte excluded); returns the cost. */
+function filterRow(type: number, cur: Buffer, prev: Buffer, out: Buffer): number {
+  let cost = 0;
+  for (let i = 0; i < cur.length; i++) {
+    const left = i >= OUT_BPP ? cur[i - OUT_BPP] : 0;
+    const up = prev[i];
+    const upLeft = i >= OUT_BPP ? prev[i - OUT_BPP] : 0;
+    let pred = 0;
+    if (type === 1) pred = left;
+    else if (type === 2) pred = up;
+    else if (type === 3) pred = (left + up) >> 1;
+    else if (type === 4) pred = paeth(left, up, upLeft);
+    const v = (cur[i] - pred) & 0xff;
+    out[i] = v;
+    cost += v < 128 ? v : 256 - v;
+  }
+  return cost;
+}
+
 /**
  * Encode normalized RGB into an 8-bit PNG carrying explicit sRGB tags
  * (sRGB + gAMA), so every viewer agrees on the color space — the untagged
  * output of saveFrameToPng was one of the two sources of "wrong color"
  * reports.
  */
-export function encodePngSrgb8(width: number, height: number, rgb: Float64Array): Buffer {
+export function encodePngSrgb8(
+  width: number,
+  height: number,
+  rgb: Float64Array,
+  opts: EncodeOptions = {},
+): Buffer {
   const stride = width * 3;
   const raw = Buffer.alloc(height * (stride + 1));
+  const cur = Buffer.alloc(stride);
+  const prev = Buffer.alloc(stride);
+  const trial = Buffer.alloc(stride);
+  const best = Buffer.alloc(stride);
   for (let y = 0; y < height; y++) {
     const rowStart = y * (stride + 1);
-    raw[rowStart] = 0; // filter: none — zlib still compresses flat regions well
     for (let x = 0; x < width; x++) {
       const src = (y * width + x) * 3;
-      const dst = rowStart + 1 + x * 3;
       for (let ch = 0; ch < 3; ch++) {
-        const v = Math.round(Math.min(1, Math.max(0, rgb[src + ch])) * 255);
-        raw[dst + ch] = v;
+        cur[x * 3 + ch] = Math.round(Math.min(1, Math.max(0, rgb[src + ch])) * 255);
       }
     }
+    if (!opts.adaptiveFilter) {
+      raw[rowStart] = 0; // filter: none — zlib still compresses flat regions well
+      cur.copy(raw, rowStart + 1);
+    } else {
+      let bestType = 0;
+      let bestCost = filterRow(0, cur, prev, best);
+      for (let type = 1; type <= 4; type++) {
+        const cost = filterRow(type, cur, prev, trial);
+        if (cost < bestCost) {
+          bestCost = cost;
+          bestType = type;
+          trial.copy(best);
+        }
+      }
+      raw[rowStart] = bestType;
+      best.copy(raw, rowStart + 1);
+    }
+    cur.copy(prev);
   }
 
   const ihdr = Buffer.alloc(13);

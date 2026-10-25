@@ -12,6 +12,7 @@ import * as path from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { decodePng } from "../../src/color/png16.js";
 import "../../src/operations/index.js"; // side-effect import: fills the operation registry
 import { renderFrameTool } from "../../src/tools/render-frame.js";
 import type { FileIpcTransport } from "../../src/transport/FileIpcTransport.js";
@@ -631,5 +632,45 @@ describe("e2e field ops", () => {
     expect(result.contactSheet?.frames).toBe(3);
     const stat = await fs.stat(result.contactSheet?.writtenTo as string);
     expect(stat.size).toBeGreaterThan(0);
+  });
+
+  it("ae_render_frame: a 3×3 sheet and the timeline strip come back inline", async (ctx) => {
+    if (!ready || !transport) return ctx.skip();
+    const base = path.join(E2E_SCRATCH_DIR, `inline_${Date.now()}`, "f.png").replace(/\\/g, "/");
+    const res = (await renderFrameTool.handler(
+      {
+        compNameOrId: "fo_comp",
+        times: [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4],
+        outPath: base,
+        contactSheet: { columns: 3 },
+        timelineStrip: {},
+      },
+      transport,
+    )) as {
+      isError?: boolean;
+      content: Array<{ type: string; data?: string; mimeType?: string }>;
+      structuredContent?: { result?: Record<string, unknown> };
+    };
+    expect(res.isError, JSON.stringify(res.structuredContent)).toBeFalsy();
+    const result = res.structuredContent?.result as {
+      contactSheet?: { writtenTo: string };
+      timelineStrip?: { writtenTo: string; motion: unknown[]; rows: Array<{ name: string }> };
+      timelineStripWarning?: string;
+      inlineWarning?: string;
+    };
+    expect(result.timelineStripWarning).toBeUndefined();
+    expect(result.inlineWarning).toBeUndefined();
+    expect(result.timelineStrip?.motion).toHaveLength(8);
+    expect(result.timelineStrip?.rows.map((r) => r.name)).toContain("fo_solid");
+    await fs.stat(result.timelineStrip?.writtenTo as string);
+    // auto + contactSheet: the JSON first, then the sheet, then the strip.
+    expect(res.content[0].type).toBe("text");
+    const images = res.content.filter((c) => c.type === "image");
+    expect(images).toHaveLength(2);
+    for (const img of images) {
+      expect(img.mimeType).toBe("image/png");
+      const png = decodePng(Buffer.from(img.data as string, "base64"));
+      expect(Math.max(png.width, png.height)).toBeLessThanOrEqual(1024);
+    }
   });
 });
