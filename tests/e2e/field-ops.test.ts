@@ -432,13 +432,18 @@ describe("e2e field ops", () => {
     const res = await o().run<{
       comps: Array<{ offset: number[]; layersMoved: number; to: number[] }>;
     }>("comp.resize", { comp: "fo_comp", width: 1440, anchor: "center" });
-    expect(res.comps[0].to).toEqual([1440, 1080]);
-    expect(res.comps[0].offset).toEqual([-240, 0]);
-    const k0 = await sampleAt("fo_comp", "fo_shape", 0);
-    const k1 = await sampleAt("fo_comp", "fo_shape", 1);
-    expect((k0.values["Transform/Position"] as number[]).slice(0, 2)).toEqual([720, 540]);
-    expect((k1.values["Transform/Position"] as number[]).slice(0, 2)).toEqual([960, 540]);
-    await o().run("comp.resize", { comp: "fo_comp", width: 1920, anchor: "center" });
+    // Restore in `finally`: on 25/10 (AE 26.5) a timeout here left fo_comp at
+    // 1440 and the later render test read that as a 1440-wide analysis.
+    try {
+      expect(res.comps[0].to).toEqual([1440, 1080]);
+      expect(res.comps[0].offset).toEqual([-240, 0]);
+      const k0 = await sampleAt("fo_comp", "fo_shape", 0);
+      const k1 = await sampleAt("fo_comp", "fo_shape", 1);
+      expect((k0.values["Transform/Position"] as number[]).slice(0, 2)).toEqual([720, 540]);
+      expect((k1.values["Transform/Position"] as number[]).slice(0, 2)).toEqual([960, 540]);
+    } finally {
+      await o().run("comp.resize", { comp: "fo_comp", width: 1920, anchor: "center" });
+    }
   });
 
   it("project.rename: dry run, map, and regex", async (ctx) => {

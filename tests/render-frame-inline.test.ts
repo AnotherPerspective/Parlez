@@ -10,6 +10,7 @@ import * as path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { decodePng, encodePngSrgb8 } from "../src/color/png16.js";
+import { analyzeFrame } from "../src/color/sheet.js";
 import { RUNTIME_DIR } from "../src/config.js";
 import { renderFrameTool } from "../src/tools/render-frame.js";
 import type { ImageContent, ToolResult } from "../src/tools/types.js";
@@ -269,6 +270,37 @@ describe("ae_render_frame inline images", { timeout: 30_000 }, () => {
     const { res } = await render({ time: 0 }, transport as FakeAe);
     expect(res.isError).toBe(true);
     expect(images(res)).toEqual([]);
+  });
+});
+
+describe("ae_render_frame analyze with inline images on", { timeout: 30_000 }, () => {
+  // Field report 25/10 (AE 26.5): analysis.width came back 1440 for a 1920
+  // comp. The cause was the comp itself — the comp.resize e2e test had left
+  // it at 1440 after an AE timeout — but this pins the contract anyway: the
+  // inline pass shrinks its own copies, never what `analyze` measures.
+  it("measures the full-size capture (1920×1080), the same with inline on or off", async () => {
+    const args = {
+      times: [0, 1],
+      analyze: true,
+      contactSheet: { columns: 3, thumbWidth: 240 },
+    };
+    const on = await render(args, fakeAe({ width: 1920, height: 1080 }));
+    const off = await render({ ...args, inline: "none" }, fakeAe({ width: 1920, height: 1080 }));
+    expect(images(on.res).length).toBeGreaterThan(0);
+    type Frame = { writtenTo: string; analysis: Record<string, unknown> };
+    const framesOn = payloadOf(on.res).frames as Frame[];
+    const framesOff = payloadOf(off.res).frames as Frame[];
+    const a = framesOn[1].analysis;
+    expect(a.width).toBe(1920);
+    expect(a.height).toBe(1080);
+    // the white square of t = 1 s, in the frame's own pixels
+    expect(a.contentBounds).toEqual({ left: 60, top: 80, width: 20, height: 20 });
+    expect(a.coverage).toBeCloseTo(400 / (1920 * 1080), 12);
+    // identical to measuring the file directly, and to the inline-off run
+    for (const [i, f] of framesOn.entries()) {
+      expect(f.analysis).toEqual(analyzeFrame(decodePng(await fs.readFile(f.writtenTo))));
+      expect(f.analysis).toEqual(framesOff[i].analysis);
+    }
   });
 });
 
