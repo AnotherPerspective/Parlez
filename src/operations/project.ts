@@ -789,7 +789,15 @@ registerOp({
     return `
             var _xmp = null;
             try { _xmp = app.project.xmpPacket; } catch (eX) { return { ok: false, error: "xmpPacket read failed: " + AE.errText(eX) }; }
-            return { ok: true, length: _xmp ? _xmp.length : 0, xmp: _xmp };
+            // On AE 26.5 the packet reached Node with a length but without the
+            // xmp field, so set_xmp got nothing to write back. A value that is
+            // not a primitive string (a String or XML object) can be dropped or
+            // mangled by the response serializer; hand back plain text, and say
+            // what AE gave us so the next run shows the cause.
+            var _type = typeof _xmp;
+            if (_type === "function") return { ok: false, error: "xmpPacket is a function on this After Effects, not text", xmpType: _type };
+            var _text = (_xmp === null || _xmp === undefined) ? null : ("" + _xmp);
+            return { ok: true, length: _text === null ? 0 : _text.length, xmp: _text, xmpType: _type };
         `;
   },
 });

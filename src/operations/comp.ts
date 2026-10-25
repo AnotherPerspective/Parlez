@@ -1,6 +1,7 @@
 // Composition operations — create, set properties, delete.
 
-import { registerOp, jsxVal, jsxCompPreamble } from "../registry.js";
+import { GUIDE_ORIENTATION_JSX, guideAddJsx } from "../guide-enums.js";
+import { registerOp, jsxVal, jsxCompPreamble, jsxFail } from "../registry.js";
 
 registerOp({
   name: "comp.create",
@@ -191,12 +192,15 @@ registerOp({
     },
   ],
   toJsx(args) {
+    // Anything else used to become a horizontal guide without a word.
+    if (args.orientation !== "horizontal" && args.orientation !== "vertical") {
+      return jsxFail("orientation must be horizontal|vertical");
+    }
     return `
             ${jsxCompPreamble(args)}
             if (typeof _comp.addGuide !== "function") return { ok: false, error: "guides need AE 16.1+" };
-            var _orient = ${jsxVal(args.orientation)} === "vertical" ? 1 : 0;
-            var _idx = _comp.addGuide(_orient, ${jsxVal(args.position)});
-            return { ok: true, guideIndex: _idx, numGuides: _comp.guides.length };
+            ${GUIDE_ORIENTATION_JSX}
+            ${guideAddJsx("_comp", jsxVal(args.orientation), jsxVal(args.position))}
         `;
   },
 });
@@ -259,13 +263,14 @@ registerOp({
   toJsx(args) {
     return `
             ${jsxCompPreamble(args)}
+            ${GUIDE_ORIENTATION_JSX}
             var _guides = [];
             try {
                 for (var _gi = 0; _gi < _comp.guides.length; _gi++) {
                     var _g = _comp.guides[_gi];
                     _guides.push({
                         index: _gi,
-                        orientation: _g.orientationType === 1 ? "vertical" : "horizontal",
+                        orientation: _guideOrientName(_g.orientationType),
                         position: _g.position
                     });
                 }
