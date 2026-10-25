@@ -79,9 +79,35 @@ describe("test projects for comp.audit", () => {
     const precompIds = new Set(comps.map((c: { id: number }) => c.id));
     expect(main.layers.some((l: { sourceId?: number }) => precompIds.has(l.sourceId!))).toBe(true);
     expect(clean.items.some((i: { sourceKind?: string }) => i.sourceKind === "solid")).toBe(true);
-    const keys = JSON.stringify(clean).match(/"inInterp": ?6614/g) ?? [];
+    // Eased = BEZIER (6613) with an ease; no linear (6612) and no hold (6614) anywhere.
+    const keys = JSON.stringify(clean).match(/"inInterp": ?6613/g) ?? [];
     expect(keys.length).toBeGreaterThanOrEqual(4);
-    expect(JSON.stringify(clean)).not.toMatch(/"inInterp": ?6613/);
+    expect(JSON.stringify(clean)).not.toMatch(/"(in|out)Interp": ?(6612|6614)/);
+  });
+
+  it.each([
+    ["progetto-prova.json", clean],
+    ["errori-3.json", planted],
+  ])("%s uses After Effects' own interpolation numbers, and names that agree", (_f, doc) => {
+    // The numbers are what jsx/import.jsx applies (setInterpolationTypeAtKey);
+    // the names are informational. They must say the same thing.
+    const NAMES: Record<number, string> = { 6612: "linear", 6613: "bezier", 6614: "hold" };
+    const seen: Array<{
+      inInterp: number;
+      outInterp: number;
+      inInterpName?: string;
+      outInterpName?: string;
+    }> = [];
+    JSON.stringify(doc, (k, v) => {
+      if (k === "keyframes") seen.push(...(v as typeof seen));
+      return v;
+    });
+    expect(seen.length).toBeGreaterThan(0);
+    for (const kf of seen) {
+      expect(Object.keys(NAMES).map(Number)).toContain(kf.inInterp);
+      expect(kf.inInterpName).toBe(NAMES[kf.inInterp]);
+      expect(kf.outInterpName).toBe(NAMES[kf.outInterp]);
+    }
   });
 
   it("errori-3 is the clean project plus exactly the three planted changes", () => {
@@ -104,7 +130,15 @@ describe("test projects for comp.audit", () => {
       const dotPos = dot.transformGroup.properties[0];
       // 3. linear position keys on the circle
       if (dotPos.keyframes) {
-        expect(dotPos.keyframes.map((k: { inInterp: number }) => k.inInterp)).toEqual([6613, 6613]);
+        expect(
+          dotPos.keyframes.map((k: { inInterp: number; outInterp: number }) => [
+            k.inInterp,
+            k.outInterp,
+          ]),
+        ).toEqual([
+          [6612, 6612],
+          [6612, 6612],
+        ]);
         delete dotPos.keyframes;
       }
       return d;
@@ -161,6 +195,41 @@ describe("test projects for comp.audit", () => {
     );
     expect(res.riepilogo.testo).toBe(
       "3 problemi su 3 livelli, 3 segnalazioni (1 errore, 2 avvisi).",
+    );
+  });
+});
+
+describe("the first run on After Effects 26.5 (25/10/2026)", () => {
+  // What happened: errori-3.json then wrote the circle's keys as 6613, after
+  // a comment in src/schema.ts that calls 6613 LINEAR. After Effects reads
+  // 6613 as BEZIER (6612 is LINEAR), so the import made bezier keys and the
+  // linear-keyframe rule rightly said nothing: 3 findings instead of 4. The
+  // fake now uses After Effects' numbers (tests/helpers/audit-fakes.ts), so
+  // it reproduces that run — and shows the corrected project gives all 4.
+  const withCircleKeys = (interp: number) => {
+    const d = structuredClone(planted);
+    const main = d.items.find((i: { name: string }) => i.name === "Principale");
+    const dot = main.layers.find((l: { name: string }) => l.name === "Cerchio");
+    for (const k of dot.transformGroup.properties[0].keyframes) {
+      k.inInterp = interp;
+      k.outInterp = interp;
+      delete k.inInterpName;
+      delete k.outInterpName;
+    }
+    return d;
+  };
+
+  it("with the old 6613 keys the rule stays silent, as it did in After Effects", () => {
+    const res = auditDoc(withCircleKeys(6613), { profondita: 1 });
+    expect(res.segnalazioni.map((f) => ({ regola: f.regola, livello: f.livello }))).toEqual(
+      EXPECTED_ERRORI_3.filter((e) => e.regola !== "keyframe-lineari"),
+    );
+  });
+
+  it("with 6612 (LINEAR) keys the rule finds the circle", () => {
+    const res = auditDoc(withCircleKeys(6612), { profondita: 1 });
+    expect(res.segnalazioni.map((f) => ({ regola: f.regola, livello: f.livello }))).toEqual(
+      EXPECTED_ERRORI_3,
     );
   });
 });

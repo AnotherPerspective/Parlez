@@ -76,7 +76,11 @@ export type PropertyValue =
 export interface KeyframeSpec {
   time: number;
   value: PropertyValue;
-  /** KeyframeInterpolationType enum value (e.g. 6613=LINEAR, 6614=BEZIER). */
+  /**
+   * KeyframeInterpolationType enum value: 6612=LINEAR, 6613=BEZIER, 6614=HOLD
+   * (as exported by AE 26.5; this comment used to say 6613=LINEAR, which made
+   * the M4 test project write bezier keys where it meant linear ones).
+   */
   inInterp: number | null;
   outInterp: number | null;
   /** Readable twins of inInterp/outInterp: "linear" | "bezier" | "hold". Informational. */
