@@ -807,8 +807,17 @@ describe("e2e: egp / viewer / project / shape", () => {
 
   it("project.get_xmp / set_xmp round-trip", async (ctx) => {
     if (!ready) return ctx.skip();
-    const got = await o().run<{ length: number; xmp: string }>("project.get_xmp", {});
+    const got = await o().run<{ length: number; xmp: string; xmpType?: string }>(
+      "project.get_xmp",
+      {},
+    );
     expect(got.length).toBeGreaterThan(0);
+    // On AE 26.5 the first run failed one step later, in set_xmp, with
+    // "xmp — missing required parameter": get_xmp had returned a length but no
+    // xmp text. Check it here so a failure names the real culprit and shows
+    // what type After Effects handed back.
+    expect(typeof got.xmp, `get_xmp returned no text (xmpType: ${got.xmpType})`).toBe("string");
+    expect(got.xmp.length).toBe(got.length);
     // AE re-serializes the packet on write (whitespace, reordered fields), so
     // asserting exact length would test Adobe's serializer, not this op.
     const set = await o().run<{ length: number }>("project.set_xmp", {

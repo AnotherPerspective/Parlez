@@ -1,6 +1,7 @@
 // Layer operations — create, delete, duplicate, set properties.
 
-import { registerOp, jsxVal, jsxCompPreamble, jsxCompLayerPreamble } from "../registry.js";
+import { GUIDE_ORIENTATION_JSX, guideAddJsx } from "../guide-enums.js";
+import { registerOp, jsxVal, jsxCompPreamble, jsxCompLayerPreamble, jsxFail } from "../registry.js";
 
 registerOp({
   name: "layer.create_solid",
@@ -638,12 +639,15 @@ registerOp({
     },
   ],
   toJsx(args) {
+    // Anything else used to become a horizontal guide without a word.
+    if (args.orientation !== "horizontal" && args.orientation !== "vertical") {
+      return jsxFail("orientation must be horizontal|vertical");
+    }
     return `
             ${jsxCompLayerPreamble(args)}
             if (typeof _layer.addGuide !== "function") return { ok: false, error: "layer guides need AE 16.1+" };
-            var _orient = ${jsxVal(args.orientation)} === "vertical" ? 1 : 0;
-            var _idx = _layer.addGuide(_orient, ${jsxVal(args.position)});
-            return { ok: true, guideIndex: _idx, numGuides: _layer.guides.length };
+            ${GUIDE_ORIENTATION_JSX}
+            ${guideAddJsx("_layer", jsxVal(args.orientation), jsxVal(args.position))}
         `;
   },
 });
@@ -726,9 +730,10 @@ registerOp({
             var _guides = null;
             try { _guides = _layer.guides; } catch (eG) {}
             if (!_guides) return { ok: false, error: "layer guides need AE 16.1+" };
+            ${GUIDE_ORIENTATION_JSX}
             var _out = [];
             for (var _i = 0; _i < _guides.length; _i++) {
-                _out.push({ index: _i, orientation: _guides[_i].orientationType === 1 ? "vertical" : "horizontal", position: _guides[_i].position });
+                _out.push({ index: _i, orientation: _guideOrientName(_guides[_i].orientationType), position: _guides[_i].position });
             }
             return { ok: true, count: _out.length, guides: _out };
         `;

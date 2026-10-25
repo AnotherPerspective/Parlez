@@ -641,7 +641,9 @@ describe("small parity ops", () => {
       orientation: "vertical",
       position: 100,
     });
-    expect(add).toContain("_layer.addGuide(_orient, 100)");
+    // AE 26.5 fix: the orientation is tried as enum constant / old integers
+    // and read back (src/guide-enums.ts, tests/guide-enums.test.ts).
+    expect(add).toContain("_layer.addGuide(_cands[_ci], 100)");
     const move = getOp("layer.move_guide")!.toJsx({
       comp: "Main",
       layer: 1,
