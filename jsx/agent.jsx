@@ -25,12 +25,24 @@
 // flagged `busy` around a request so a stale timestamp during a long call
 // (ticks do not fire while a script runs) is not mistaken for a dead instance.
 //
-// Pause switch (Parlez!, nome provvisorio). Each tick also reads the switch the
-// panel writes (AE_MCP.isPaused, jsx/serve.jsx) and publishes it as `paused`
-// in the heartbeat — at once when it changes, so the server stops sending
-// within a tick. While paused the agent keeps ticking and heartbeating;
-// requests that still arrive are consumed and answered `paused` by
-// serveRequest without running, and counted as `refused`, not `served`.
+// The Parlez! panel's switches. Each tick also reads the two switches the
+// panel writes (AE_MCP.isPaused / isReadOnly, jsx/serve.jsx) and publishes
+// them as `paused` / `readOnly` in the heartbeat — at once when one changes,
+// so the server stops sending within a tick. While paused the agent keeps
+// ticking and heartbeating; requests that still arrive are consumed and
+// answered `paused` by serveRequest without running, and counted as
+// `refused`, not `served` (the same for `readOnly` and a request that may
+// change the project).
+//
+// Where the panel is installed, the pause switch starts on "stopped": at
+// startup, with no choice saved yet, the agent saves "0" itself. Before,
+// only the panel did that, the first time it opened — so until someone
+// opened it, Claude could work (seen on AE 26.5, 2026-10-25).
+//
+// The heartbeat also carries the last RECENT_MAX requests (time, label,
+// outcome) and when the last one arrived, for the panel's "Ultime azioni".
+// Labels are operation or tool names chosen by the server; the request's
+// code and payload are never recorded.
 //
 // SECURITY: same trust boundary as the shared mailbox — whoever can write
 // into <runtime>/instances/<id>/ executes code inside this AE. The directory
@@ -56,7 +68,12 @@
 
 (function agentEntry() {
     // 2: stays out of the render engine (aerender) and knows the pause switch (`paused` / `refused` in the heartbeat).
-    var AGENT_VERSION = 2;
+    // 3: "Sola lettura" (`readOnly`), recent requests (`recent`, `lastRequestAt`), "stopped" by default where the panel is installed.
+    var AGENT_VERSION = 3;
+    var RECENT_MAX = 8;
+    var LABEL_MAX = 60;
+    // Mirrored in src/config.ts (PAUSE_SETTINGS_*, PANEL_FILENAME, LEGACY_PANEL_FILENAMES).
+    var PANEL_FILENAMES = ["Parlez!.jsx", "Parlez (provvisorio).jsx"];
     var TICK_MS = 250;
     var HEARTBEAT_MS = 1000;
 
@@ -171,6 +188,58 @@
         return false;
     }
 
+    /**
+     * This After Effects version's user-level Scripts folder, derived the way
+     * src/agent-install.ts derives it (that is where install-panel copies the
+     * panel), or null. The version folder is app.version's major.minor
+     * ("26.5x87" -> "26.5").
+     */
+    function userScriptsDir() {
+        var m = /^(\d+\.\d+)/.exec(String(app.version));
+        if (!m) return null;
+        if (String($.os).indexOf("Windows") >= 0) {
+            var appData = null;
+            try { appData = $.getenv("APPDATA"); } catch (eEnv) { /* no env access */ }
+            if (!appData) {
+                try { appData = Folder.userData.fsName; } catch (eUd) { /* unknown */ }
+            }
+            if (!appData) return null;
+            return normalizePath(appData) + "/Adobe/After Effects/" + m[1] + "/Scripts";
+        }
+        return "~/Library/Preferences/Adobe/After Effects/" + m[1] + "/Scripts";
+    }
+
+    function panelInstalled() {
+        var scripts = userScriptsDir();
+        if (scripts === null) return false;
+        for (var i = 0; i < PANEL_FILENAMES.length; i++) {
+            try {
+                if (new File(scripts + "/ScriptUI Panels/" + PANEL_FILENAMES[i]).exists) return true;
+            } catch (eExists) { /* keep looking */ }
+        }
+        return false;
+    }
+
+    /** Where the panel is installed and no choice is saved yet, save "stopped". */
+    function defaultToStopped() {
+        try {
+            if (app.settings.haveSetting(AE_MCP.PAUSE_SECTION, AE_MCP.PAUSE_KEY)) return false;
+            if (!panelInstalled()) return false;
+            app.settings.saveSetting(AE_MCP.PAUSE_SECTION, AE_MCP.PAUSE_KEY, "0");
+            return true;
+        } catch (eDefault) {
+            return false;
+        }
+    }
+
+    /** A label fit for the panel: one line, bounded, never empty. */
+    function cleanLabel(label) {
+        if (typeof label !== "string" || label.length === 0) return "(senza nome)";
+        var s = label.replace(/[\x00-\x1f\x7f]+/g, " ");
+        if (s.length > LABEL_MAX) s = s.substring(0, LABEL_MAX - 3) + "...";
+        return s;
+    }
+
     function agentMain() {
         // One agent per process. A second evaluation (a `-r` run of this file,
         // a second stub) must not install a second poller: two tasks would
@@ -190,6 +259,10 @@
             served: 0,
             refused: 0,
             paused: false,
+            readOnly: false,
+            pauseDefaulted: false,
+            lastRequestAt: null,
+            recent: [],
             busy: false,
             busySince: null,
             dir: null,
@@ -231,6 +304,9 @@
                 served: state.served,
                 refused: state.refused,
                 paused: state.paused,
+                readOnly: state.readOnly,
+                lastRequestAt: state.lastRequestAt,
+                recent: state.recent,
                 busy: state.busy,
                 busySince: state.busySince,
                 lastError: state.lastError,
@@ -240,34 +316,60 @@
             state.lastHeartbeatAt = now;
         }
 
+        /**
+         * Add a request to `recent`. `undoable`: it ran to completion inside
+         * an undo group and may have changed the project — so one Undo right
+         * after reverts it (what the panel's "Annulla" button relies on).
+         */
+        function remember(summary, outcome) {
+            try {
+                var entry = {
+                    t: state.lastRequestAt,
+                    label: cleanLabel(summary ? summary.label : null),
+                    outcome: outcome,
+                    undoable: !!(summary && outcome === "ok" && summary.mutates && summary.undoGroup)
+                };
+                var next = [];
+                var from = state.recent.length - (RECENT_MAX - 1);
+                for (var i = (from > 0 ? from : 0); i < state.recent.length; i++) next.push(state.recent[i]);
+                next.push(entry);
+                state.recent = next;
+            } catch (eRemember) { /* the list is a convenience; serving goes on */ }
+        }
+
         function tick() {
             try {
                 state.ticks++;
                 var paused = AE_MCP.isPaused();
-                var pauseChanged = (paused !== state.paused);
+                var readOnly = AE_MCP.isReadOnly();
+                var switchChanged = (paused !== state.paused) || (readOnly !== state.readOnly);
                 state.paused = paused;
+                state.readOnly = readOnly;
                 var dir = mailboxDir() + "/instances/" + state.id;
                 if (dir !== state.dir) {
                     if (!ensureDir(dir)) return;
                     state.dir = dir;
                     heartbeat(true);
                 }
-                heartbeat(pauseChanged);
+                heartbeat(switchChanged);
 
                 var request = AE_MCP.oldestRequestIn(state.dir);
                 if (request === null) return;
 
                 state.busy = true;
                 state.busySince = new Date().getTime();
+                state.lastRequestAt = state.busySince;
                 heartbeat(true);
-                var outcome = null;
+                var summary = null;
                 try {
-                    outcome = AE_MCP.serveRequest(request, state.dir, state.dir + "/agent.log");
+                    summary = AE_MCP.serveRequest(request, state.dir, state.dir + "/agent.log");
                 } finally {
                     state.busy = false;
                     state.busySince = null;
-                    if (outcome === "paused") state.refused++;
+                    var outcome = (summary && typeof summary.outcome === "string") ? summary.outcome : "error";
+                    if (outcome === "paused" || outcome === "readonly") state.refused++;
                     else state.served++;
+                    remember(summary, outcome);
                     heartbeat(true);
                 }
             } catch (eTick) {
@@ -289,6 +391,7 @@
                 state.taskId = null;
             }
         };
+        state.pauseDefaulted = defaultToStopped();
         // Run once now so the instance is registered before the first
         // scheduled tick, then keep going for the life of the process.
         tick();

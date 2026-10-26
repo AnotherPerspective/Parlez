@@ -13,6 +13,7 @@ import {
   wantsDialogSuppression,
   wantsUndoGroup,
 } from "../registry.js";
+import { readOnlyTransport } from "../transport/AeTransport.js";
 import { defineTool, jsonResult, jsxReportedFailure } from "./define-tool.js";
 import type { ImageContent } from "./types.js";
 
@@ -146,7 +147,11 @@ export const doTool = defineTool({
       const started = Date.now();
       let opResult: unknown;
       try {
-        opResult = await op.run(validated.value, transport);
+        // A read-only operation's calls pass the panel's "Sola lettura" switch.
+        opResult = await op.run(
+          validated.value,
+          op.readOnly ? readOnlyTransport(transport) : transport,
+        );
       } catch (err) {
         return errorResult(
           "TRANSPORT",
@@ -205,6 +210,9 @@ export const doTool = defineTool({
       // — the suppression scope would swallow the undo the same way a group
       // does. Project boundary ops keep suppression despite running ungrouped.
       suppressDialogs: wantsDialogSuppression(op, validated.value),
+      // The same flag AE_MCP_READONLY goes by; the panel's "Sola lettura"
+      // switch refuses every call not marked false.
+      mutates: op.readOnly !== true,
       timeoutMs: doArgs.timeoutMs ?? 60_000,
     });
 

@@ -38,6 +38,16 @@ export interface Heartbeat {
   refused?: number;
   /** The user stopped Claude with the panel's switch (agent version 2+). */
   paused?: boolean;
+  /** The panel's "Sola lettura" switch: only non-mutating requests run (agent version 3+). */
+  readOnly?: boolean;
+  /** Epoch ms of the last request the agent took off its queue (agent version 3+). */
+  lastRequestAt?: number | null;
+  /**
+   * The last few requests, newest last (agent version 3+): when, the
+   * request's label (an operation or tool name — never code or project data)
+   * and how it ended. For the panel; the server only passes it on.
+   */
+  recent?: Array<{ t: number; label: string; outcome: string }>;
   busy?: boolean;
   busySince?: number | null;
   lastError?: string | null;
@@ -219,21 +229,42 @@ export function isPaused(instance: InstanceInfo): boolean {
   return instance.alive && instance.heartbeat?.paused === true;
 }
 
+/** True only when a live agent says the user allowed reading only. */
+export function isReadOnly(instance: InstanceInfo): boolean {
+  return instance.alive && instance.heartbeat?.readOnly === true;
+}
+
 /**
- * What a call to a paused instance answers (Parlez!, nome provvisorio). Italian
- * because it is meant to be relayed to the user as is; the hint tells the
- * model not to work around it.
+ * What a call to a paused instance answers. Italian because it is meant to be
+ * relayed to the user as is; the hint tells the model not to work around it.
  */
 export const PAUSED_MESSAGE =
   "Claude è in pausa in After Effects: accendi l'interruttore nel pannello Parlez!";
 export const PAUSED_HINT =
-  "L'utente ha fermato Claude dal pannello in After Effects (menu Finestra, «Parlez (provvisorio)»). " +
-  "Non riprovare e non cercare altre strade: chiedi all'utente di scegliere «Claude può lavorare» " +
+  "L'utente ha fermato Claude dal pannello in After Effects (menu Finestra › Parlez!). " +
+  "Non riprovare e non cercare altre strade: chiedi all'utente di premere «Lascia lavorare Claude» " +
   "nel pannello e riprova solo quando lo dice.";
+
+/** What a mutating call answers while the panel says "Sola lettura". */
+export const READ_ONLY_MESSAGE =
+  "Claude è in sola lettura in After Effects: può guardare il progetto ma non modificarlo. " +
+  "Per lasciarlo modificare, spegni «Sola lettura» nel pannello Parlez!";
+export const READ_ONLY_HINT =
+  "L'utente ha scelto «Sola lettura» nel pannello Parlez!: le operazioni che leggono funzionano, " +
+  "quelle che modificano il progetto no. Non cercare altre strade per modificarlo: continua con " +
+  "le sole letture, oppure chiedi all'utente di spegnere «Sola lettura».";
 
 export function describeInstance(instance: InstanceInfo): string {
   const hb = instance.heartbeat;
-  const state = instance.alive ? (hb?.busy ? "busy" : hb?.paused ? "paused" : "live") : "stale";
+  const state = instance.alive
+    ? hb?.busy
+      ? "busy"
+      : hb?.paused
+        ? "paused"
+        : hb?.readOnly
+          ? "read-only"
+          : "live"
+    : "stale";
   const seen =
     instance.ageMs === null ? "never seen" : `seen ${Math.round(instance.ageMs / 1000)}s ago`;
   return `${instanceLabel(instance)} (${state}, ${seen})`;

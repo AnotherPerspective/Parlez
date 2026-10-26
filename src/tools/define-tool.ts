@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import { errorResult } from "../errors.js";
 import type { ToolEffect } from "../policy.js";
-import type { AeTransport, EvalResult } from "../transport/AeTransport.js";
+import { type AeTransport, type EvalResult, readOnlyTransport } from "../transport/AeTransport.js";
 import type { ToolResult } from "./types.js";
 
 export type ToolGroup = "inspect" | "document" | "render" | "operations";
@@ -38,6 +38,20 @@ export type ToolSpec<S extends z.ZodRawShape> = {
  */
 export function defineTool<S extends z.ZodRawShape>(spec: ToolSpec<S>): ToolSpec<S> {
   return spec;
+}
+
+/**
+ * The transport a tool's handler gets. Tools AE_MCP_READONLY keeps — they do
+ * not change the project — mark every call `mutates: false`, so they keep
+ * working while the Parlez! panel says "Sola lettura". `ae_do` is the
+ * exception: it stays registered in read-only mode only because it gates
+ * operation by operation, and it marks each call itself.
+ */
+export function transportForTool(
+  tool: { name: string; blockedInReadOnly: boolean },
+  transport: AeTransport,
+): AeTransport {
+  return tool.blockedInReadOnly || tool.name === "ae_do" ? transport : readOnlyTransport(transport);
 }
 
 /** Wraps a successful payload into a standard MCP ToolResult. */

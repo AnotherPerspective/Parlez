@@ -1,8 +1,8 @@
 // Command-line subcommands of the `mcp-aftereffects` binary. Without
 // arguments the binary is the MCP server (stdio); with one it is a small
 // maintenance tool for the pull path — installing the resident agent into
-// After Effects' Startup folders, the switch panel (Parlez!, nome provvisorio)
-// into its ScriptUI Panels folders, and looking at which instances are live.
+// After Effects' Startup folders, the Parlez! panel into its ScriptUI Panels
+// folders, and looking at which instances are live.
 
 import { INSTANCES_DIR, RUNTIME_DIR } from "./config.js";
 import {
@@ -23,7 +23,7 @@ export const USAGE = `mcp-aftereffects — MCP server for Adobe After Effects
                                       with \`AfterFX.exe -m\`. Restart After Effects afterwards.
   mcp-aftereffects uninstall-agent    remove it again
   mcp-aftereffects agent-status       show where the agent is installed and whether it is current
-  mcp-aftereffects install-panel      install the switch panel ("Claude can work" / "Claude stopped")
+  mcp-aftereffects install-panel      install the Parlez! panel (Claude on/off, read-only, last actions)
                                       into the user-level Scripts/ScriptUI Panels folder(s); it shows
                                       under Window after restarting After Effects
   mcp-aftereffects uninstall-panel    remove it again
@@ -109,11 +109,14 @@ export async function runCli(
         const report = await installPanel(opts);
         for (const p of report.written) out(`${args.dryRun ? "would write" : "wrote"}    ${p}`);
         for (const p of report.unchanged) out(`up to date  ${p}`);
-        if (report.written.length > 0 && !args.dryRun) {
+        for (const p of report.removedLegacy) {
+          out(`${args.dryRun ? "would remove" : "removed"}  ${p} (old name)`);
+        }
+        if ((report.written.length > 0 || report.removedLegacy.length > 0) && !args.dryRun) {
           out("");
           out(
-            "Restart After Effects, then open the panel from the Window menu. It starts on " +
-              '"Claude fermo" (Claude stopped) until you switch it on.',
+            "Restart After Effects, then open the panel from Window > Parlez!. With no choice saved " +
+              'yet it starts on "Claude fermo" (Claude stopped) until you switch it on.',
           );
         }
         return 0;
@@ -121,14 +124,24 @@ export async function runCli(
 
       case "uninstall-panel": {
         const report = await uninstallPanel(opts);
-        if (report.removed.length === 0 && report.foreign.length === 0) out("nothing to remove");
+        const removed = report.removed.length + report.removedLegacy.length;
+        if (removed === 0 && report.foreign.length === 0) out("nothing to remove");
         for (const p of report.removed) out(`${args.dryRun ? "would remove" : "removed"}  ${p}`);
+        for (const p of report.removedLegacy) {
+          out(`${args.dryRun ? "would remove" : "removed"}  ${p} (old name)`);
+        }
         for (const p of report.foreign) out(`left alone  ${p} (not written by install-panel)`);
         return 0;
       }
 
-      case "panel-status":
-        return printStatus(await panelInstallStatus(opts), "install-panel", out);
+      case "panel-status": {
+        const statuses = await panelInstallStatus(opts);
+        const code = printStatus(statuses, "install-panel", out);
+        for (const s of statuses) {
+          for (const p of s.legacy) out(`old name still present: ${p} — install-panel removes it`);
+        }
+        return code;
+      }
 
       case "instances": {
         const instances = await listInstances();

@@ -12,6 +12,7 @@ import { FileIpcTransport } from "./transport/FileIpcTransport.js";
 
 // Load all operations into the registry (must run before catalog/do handle calls).
 import "./operations/index.js";
+import { transportForTool } from "./tools/define-tool.js";
 import { ALL_TOOLS, type AnyTool } from "./tools/index.js";
 
 // Read the real package version at runtime so the server never self-reports a
@@ -45,6 +46,7 @@ function annotationsFor(tool: AnyTool): { readOnlyHint?: boolean; destructiveHin
 }
 
 function register(tool: AnyTool): void {
+  const toolTransport = transportForTool(tool, transport);
   server.registerTool(
     tool.name,
     {
@@ -55,7 +57,7 @@ function register(tool: AnyTool): void {
     },
     async (args: unknown) => {
       try {
-        return await guardToolCall(tool.name, args, (a) => tool.handler(a as any, transport));
+        return await guardToolCall(tool.name, args, (a) => tool.handler(a as any, toolTransport));
       } catch (err) {
         // A handler throwing is a bug in this server, not a modelling error —
         // report it under its own code so it is never mistaken for a

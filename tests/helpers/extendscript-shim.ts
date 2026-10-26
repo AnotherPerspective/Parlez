@@ -17,6 +17,7 @@ import {
   unlinkSync,
   writeFileSync,
   appendFileSync,
+  copyFileSync,
 } from "node:fs";
 import * as path from "node:path";
 
@@ -80,6 +81,22 @@ export class EsFile {
   remove(): boolean {
     try {
       unlinkSync(this.path);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  get parent(): EsFolder {
+    return new EsFolder(path.posix.dirname(this.path));
+  }
+  /** Size in bytes, -1 when the file is missing (as ExtendScript reports it). */
+  get length(): number {
+    return this.exists ? statSync(this.path).size : -1;
+  }
+  /** ExtendScript's File#copy overwrites an existing target. */
+  copy(target: string | EsFile): boolean {
+    try {
+      copyFileSync(this.path, typeof target === "string" ? norm(target) : target.path);
       return true;
     } catch {
       return false;
@@ -169,8 +186,22 @@ export function makeApp() {
   const app = {
     version: "26.5x1",
     settings: new EsSettings(),
-    project: { dirty: false, numItems: 0, file: null as EsFile | null },
+    project: {
+      dirty: false,
+      numItems: 0,
+      file: null as EsFile | null,
+      saves: 0,
+      save(): void {
+        app.project.saves++;
+        app.project.dirty = false;
+      },
+    },
     undoGroups: 0,
+    /** Menu command ids passed to app.executeCommand (16 = Undo). */
+    commands: [] as number[],
+    executeCommand(id: number): void {
+      app.commands.push(id);
+    },
     tasks,
     scheduleTask(code: string, delay: number, repeat: boolean): number {
       const task = { id: tasks.length + 1, code, delay, repeat, cancelled: false };
@@ -198,6 +229,8 @@ export interface EsEngine {
   app: EsApp;
   global: Record<string, unknown>;
   env: Record<string, string>;
+  /** What confirm() answers next, and what alert()/confirm() were shown. */
+  dialogs: { answer: boolean; shown: string[] };
   run(source: string, thisObj?: unknown, extra?: Record<string, unknown>): unknown;
 }
 
@@ -208,15 +241,25 @@ export function makeEngine(tempDir: string): EsEngine {
   const env: Record<string, string> = {};
   const dollar = {
     global,
+    os: "Windows 10.0",
     getenv: (name: string) => (name in env ? env[name] : null),
+  };
+  const dialogs = { answer: true, shown: [] as string[] };
+  const confirm = (text: string) => {
+    dialogs.shown.push(String(text));
+    return dialogs.answer;
+  };
+  const alert = (text: string) => {
+    dialogs.shown.push(String(text));
   };
   return {
     app,
     global,
     env,
+    dialogs,
     run(source, thisObj, extra = {}) {
-      const names = ["app", "$", "File", "Folder", ...Object.keys(extra)];
-      const values = [app, dollar, EsFile, EsFolder, ...Object.values(extra)];
+      const names = ["app", "$", "File", "Folder", "confirm", "alert", ...Object.keys(extra)];
+      const values = [app, dollar, EsFile, EsFolder, confirm, alert, ...Object.values(extra)];
       const fn = new Function(...names, source);
       return fn.apply(thisObj, values);
     },

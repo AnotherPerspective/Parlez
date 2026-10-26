@@ -38,8 +38,11 @@ import {
   type TargetResolution,
   PAUSED_HINT,
   PAUSED_MESSAGE,
+  READ_ONLY_HINT,
+  READ_ONLY_MESSAGE,
   describeInstance,
   isPaused,
+  isReadOnly,
   listInstances,
   readInstance,
   recentlyAliveAgent,
@@ -102,6 +105,8 @@ interface MailboxRequest {
   payload: unknown;
   undoGroup: boolean;
   suppressDialogs: boolean;
+  /** For the panel's "Sola lettura" switch (serve.jsx); see EvalRequest.mutates. */
+  mutates: boolean;
 }
 
 interface DispatcherResponse {
@@ -123,6 +128,8 @@ interface DispatcherResponse {
   logs: string[];
   /** Refused by the pause switch in After Effects (serve.jsx); nothing ran. */
   paused?: boolean;
+  /** Refused by the "Sola lettura" switch (serve.jsx); nothing ran. */
+  readOnly?: boolean;
 }
 
 /**
@@ -346,6 +353,10 @@ export class FileIpcTransport implements AeTransport {
     if (target.mode === "pull" && isPaused(target.instance)) {
       return pausedFailure(Date.now() - started);
     }
+    // Same for "Sola lettura", which only stops calls that change something.
+    if (target.mode === "pull" && req.mutates !== false && isReadOnly(target.instance)) {
+      return readOnlyFailure(Date.now() - started);
+    }
 
     const request: MailboxRequest = {
       id: randomUUID(),
@@ -357,6 +368,9 @@ export class FileIpcTransport implements AeTransport {
       // surviving the trip.
       undoGroup: req.undoGroup !== false,
       suppressDialogs: req.suppressDialogs !== false,
+      // Explicit for the same reason: a missing field reads as "changes
+      // something" on the JSX side, which is the safe reading.
+      mutates: req.mutates !== false,
     };
 
     if (target.mode === "pull") {
@@ -817,6 +831,7 @@ export class FileIpcTransport implements AeTransport {
     // The switch went off between our heartbeat check and the agent's tick
     // (or this came in on the push path, which has no heartbeat to check).
     if (!parsed.ok && parsed.paused === true) return pausedFailure(durationMs);
+    if (!parsed.ok && parsed.readOnly === true) return readOnlyFailure(durationMs);
     if (parsed.ok) {
       return {
         ok: true,
@@ -921,6 +936,10 @@ function failure(
 
 function pausedFailure(durationMs: number): EvalResult {
   return failure("PAUSED", PAUSED_MESSAGE, { durationMs, hint: PAUSED_HINT });
+}
+
+function readOnlyFailure(durationMs: number): EvalResult {
+  return failure("READ_ONLY", READ_ONLY_MESSAGE, { durationMs, hint: READ_ONLY_HINT });
 }
 
 /** DIALOG_OPEN: what the dialogs say first, then what became of the call. */
