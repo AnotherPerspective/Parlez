@@ -86,11 +86,12 @@ const DEFAULT_CATEGORY = "CLIENTE";
 const PATH_START =
   String.raw`(?:(?<![A-Za-z0-9])[A-Za-z]:[\\/]` +
   String.raw`|(?<![\w\\])\\\\[\w.$-]+\\` +
-  // Named roots only: a bare "/x/y" is also expression.disable_all's property
-  // path ("/2/1/4"). /var and /private are where macOS keeps os.tmpdir() —
-  // the IPC mailbox lives there — and /tmp, /home are the Linux equivalents
-  // (the CI runs on Linux; the mailbox path leaked through before).
-  String.raw`|(?<![\w.~:/\\])\/(?:Users|Volumes|Library|Applications|System|Network|private|var|tmp|home|opt|mnt|media|srv|root|usr|etc)\/` +
+  // Any absolute POSIX path with at least two segments: /var/folders and
+  // /private (where macOS keeps os.tmpdir(), so the IPC mailbox), /tmp and
+  // /home (Linux, the CI), but also a NAS mounted at /data. Two exceptions:
+  // a first segment made only of digits is expression.disable_all's property
+  // path ("/2/1/4"), and the lookbehind keeps it off URLs ("host/a", "//").
+  String.raw`|(?<![\w.~:/\\])\/(?=[^/\s"<>|*?]*[^\d/\s"<>|*?])[^/\s"<>|*?]+\/(?=[^/\s"<>|*?])` +
   String.raw`|(?<![\w.~:/\\])\/[A-Za-z]\/` +
   String.raw`|(?<![\w.~/\\])~[\\/])`;
 

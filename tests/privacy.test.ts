@@ -213,6 +213,9 @@ describe("stripPaths", () => {
     // Linux (the CI): temp and home.
     ["/tmp/mcp-aftereffects/runtime/Rossi.json", "Rossi.json"],
     ["/home/anthony/Lavori/Rossi/spot.aep", "spot.aep"],
+    ["/opt/render/Rossi/out.mov", "out.mov"],
+    // Any other root, e.g. a NAS mounted on Linux.
+    ["/data/clienti/Rossi Spa/spot.aep", "spot.aep"],
   ])("reduces %s to the file name", (input, expected) => {
     expect(stripPaths(input)).toBe(expected);
   });
@@ -246,6 +249,9 @@ describe("stripPaths", () => {
     "https://example.com/tmp/x.png",
     "var/let are not ES3-safe",
     "/var",
+    "/2/1/4/12",
+    "frame 24/25 at /30",
+    "http://localhost:8000/history/abc",
     "",
   ])("leaves %j alone", (input) => {
     expect(stripPaths(input)).toBe(input);
