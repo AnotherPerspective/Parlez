@@ -9,6 +9,7 @@ import path from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 
+import { XMP_EMPTY_NOTE } from "../src/operations/project.js";
 import { getOp, jsxVal } from "../src/registry.js";
 import "../src/operations/index.js";
 import { lintJsxFile } from "./helpers/lint-jsx.js";
@@ -172,7 +173,14 @@ describe("project.get_xmp hands back plain text", () => {
     new Function("app", "AE", getOp("project.get_xmp")!.toJsx({}))(
       { project: { xmpPacket } },
       { errText: (e: unknown) => String(e) },
-    ) as { ok: boolean; xmp?: unknown; length?: number; xmpType?: string; error?: string };
+    ) as {
+      ok: boolean;
+      xmp?: unknown;
+      length?: number;
+      xmpType?: string;
+      error?: string;
+      note?: string;
+    };
 
   it("a primitive string comes back unchanged", () => {
     expect(run("<x:xmpmeta/>")).toEqual({
@@ -192,9 +200,25 @@ describe("project.get_xmp hands back plain text", () => {
     expect(res.xmpType).toBe("object");
   });
 
-  it("no packet is length 0 and xmp null, never a missing field", () => {
-    expect(run(null)).toEqual({ ok: true, length: 0, xmp: null, xmpType: "object" });
-  });
+  // Second 26.5 run: a fresh, never-saved project answered xmpType "undefined".
+  it.each([
+    ["undefined", undefined],
+    ["null", null],
+    ["an empty string", ""],
+  ])(
+    "no packet (%s) is an empty string with length 0 and a note, never a missing field",
+    (_label, value) => {
+      const res = run(value);
+      expect(res).toEqual({
+        ok: true,
+        length: 0,
+        xmp: "",
+        xmpType: typeof value === "string" ? "string" : value === null ? "object" : "undefined",
+        note: XMP_EMPTY_NOTE,
+      });
+      expect(res.note).toContain("salvalo una volta");
+    },
+  );
 
   it("a function is reported, not passed on as its source text", () => {
     const res = run(function () {});
