@@ -371,46 +371,31 @@ describe("agent.jsx for the panel's live state", () => {
     expect(heartbeat().pending).toBe(0);
   });
 
-  it("asks the panel to redraw right before and after each request, busy in between", () => {
+  it("never calls into the panel (an earlier build did, and After Effects crashed)", () => {
     setEnabled("1");
     const agent = startAgent();
-    const seen: boolean[] = [];
-    engine.global.AE_MCP_PANEL = { onAgent: () => seen.push(agent.state.busy) };
-    putRequest("a");
-    agent.tick();
-    expect(seen).toEqual([true, false]);
-  });
-
-  it("serves on even when the panel's redraw throws", () => {
-    setEnabled("1");
-    const agent = startAgent();
+    let calls = 0;
     engine.global.AE_MCP_PANEL = {
-      onAgent: () => {
-        throw new Error("panel gone");
-      },
+      onAgent: () => calls++,
+      refresh: () => calls++,
     };
     putRequest("a");
     agent.tick();
     expect(response("a")).toMatchObject({ ok: true });
+    expect(calls).toBe(0);
+    expect(readFileSync(AGENT_JSX, "utf8")).not.toContain("AE_MCP_PANEL");
   });
 
-  it("never serves a second request from inside the first (a redraw may let a tick run)", () => {
+  it("never serves a second request while one is running", () => {
     setEnabled("1");
     const agent = startAgent();
-    let nested = 0;
-    engine.global.AE_MCP_PANEL = {
-      onAgent: () => {
-        if (agent.state.busy) {
-          nested++;
-          agent.tick();
-        }
-      },
-    };
     putRequest("a");
-    putRequest("b");
+    agent.state.busy = true;
     agent.tick();
-    expect(nested).toBe(1);
-    expect(agent.state.served).toBe(1);
+    expect(existsSync(path.join(instanceDir(), "request-a.json"))).toBe(true);
+    agent.state.busy = false;
+    agent.tick();
+    expect(response("a")).toMatchObject({ ok: true });
   });
 });
 

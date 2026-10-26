@@ -45,9 +45,9 @@
 // historyFile). Labels and titles are operation or tool names chosen by the
 // server; the request's code and payload are never recorded.
 //
-// Around each request the agent asks the panel to redraw
-// ($.global.AE_MCP_PANEL.onAgent), because no scheduled refresh can run
-// while a request does: that is the only moment "sta elaborando" can show.
+// The agent never calls into the panel: an earlier build asked it to redraw
+// around each request, from inside this scheduled task, and After Effects
+// kept crashing (2026-10-26). The panel reads the agent; never the reverse.
 //
 // SECURITY: same trust boundary as the shared mailbox — whoever can write
 // into <runtime>/instances/<id>/ executes code inside this AE. The directory
@@ -374,14 +374,6 @@
             } catch (eHistory) { /* the history is a convenience; serving goes on */ }
         }
 
-        /** Let an open panel redraw now: no scheduled refresh runs during a request. */
-        function notifyPanel() {
-            try {
-                var panel = $.global.AE_MCP_PANEL;
-                if (panel && typeof panel.onAgent === "function") panel.onAgent();
-            } catch (ePanel) { /* the panel is a convenience; serving goes on */ }
-        }
-
         function countPending() {
             try {
                 var files = new Folder(state.dir).getFiles("request-*.json");
@@ -392,8 +384,7 @@
         }
 
         function tick() {
-            // A panel redraw during a request may let After Effects run a
-            // scheduled tick; one request at a time.
+            // One request at a time, whatever re-enters this task.
             if (state.busy) return;
             try {
                 state.ticks++;
@@ -423,7 +414,6 @@
                 state.lastRequestAt = state.busySince;
                 state.pending = (pending > 0) ? pending - 1 : 0;
                 heartbeat(true);
-                notifyPanel();
                 var summary = null;
                 try {
                     summary = AE_MCP.serveRequest(request, state.dir, state.dir + "/agent.log");
@@ -436,7 +426,6 @@
                     else state.served++;
                     remember(summary, outcome, ms);
                     heartbeat(true);
-                    notifyPanel();
                 }
             } catch (eTick) {
                 state.lastError = describeError(eTick);
