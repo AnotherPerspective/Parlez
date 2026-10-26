@@ -4,7 +4,15 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { runCli } from "./cli.js";
-import { RUNTIME_DIR, instanceTargetFromEnv } from "./config.js";
+import { anyAgentInstalled } from "./agent-install.js";
+import {
+  PULL_ONLY_ENV,
+  RUNTIME_DIR,
+  instanceTargetFromEnv,
+  pullOnlyMode,
+  pullOnlySetting,
+  resolvePullOnlyDefault,
+} from "./config.js";
 import { errorResult } from "./errors.js";
 import { denyTool, policySummary, readOnlyMode } from "./policy.js";
 import { guardToolCall } from "./privacy.js";
@@ -24,7 +32,7 @@ const { version } = require("../package.json") as { version: string };
 const transport = new FileIpcTransport();
 
 const server = new McpServer({
-  name: "mcp-aftereffects",
+  name: "parlez",
   version,
 });
 
@@ -89,7 +97,10 @@ async function instanceBanner(): Promise<string> {
     case "pull":
       return `instance: ${target.instance.id} (resident agent${named ? `, AE_MCP_INSTANCE=${named}` : ", the only live one"})`;
     case "push":
-      return "instance: none registered yet — calls launch AfterFX.exe -r into the running After Effects (instances started with -m need the agent: `mcp-aftereffects install-agent`)";
+      if (pullOnlyMode()) {
+        return "instance: none live yet — calls wait for the resident agent (start After Effects; it registers about ten seconds after launch)";
+      }
+      return "instance: none registered yet — calls launch AfterFX.exe -r into the running After Effects (instances started with -m need the agent: `parlez install-agent`)";
     case "error":
       return `instance: UNRESOLVED — ${target.message}`;
   }
@@ -104,6 +115,19 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Parlez!'s default: an installed agent means the pull path only, unless
+  // AE_MCP_PULL_ONLY says otherwise (config.ts, resolvePullOnlyDefault). Set
+  // once here because the transport reads the variable at call time.
+  const setting = pullOnlySetting();
+  if (setting === "auto" && resolvePullOnlyDefault(setting, await anyAgentInstalled())) {
+    process.env[PULL_ONLY_ENV] = "1";
+    console.error(
+      `[mcp-aftereffects] pull only: the startup script is installed, so calls never use AfterFX.exe -r ` +
+        `(${PULL_ONLY_ENV}=0 to allow it)`,
+    );
+  } else if (setting === "on") {
+    console.error(`[mcp-aftereffects] pull only: ${PULL_ONLY_ENV}=1`);
+  }
   console.error(`[mcp-aftereffects] policy: ${policySummary()}`);
   console.error(`[mcp-aftereffects] mailbox: ${RUNTIME_DIR}`);
   console.error(`[mcp-aftereffects] ${await instanceBanner()}`);

@@ -1,281 +1,174 @@
-![MCP for After Effects](https://raw.githubusercontent.com/kumoproductions/mcp-aftereffects/main/assets/ogp.png)
+# Parlez! per Adobe® After Effects®
 
-# mcp-aftereffects
-
-[![CI](https://github.com/kumoproductions/mcp-aftereffects/actions/workflows/ci.yml/badge.svg)](https://github.com/kumoproductions/mcp-aftereffects/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D24-informational)](package.json)
-[![After Effects](https://img.shields.io/badge/After%20Effects-2024%E2%80%932026-informational)](https://www.adobe.com/products/aftereffects.html)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-informational)](#requirements)
 
-English | [日本語](./README.ja.md)
+**Italiano** · [English](#english)
 
-An MCP server that enables AI to control Adobe After Effects.
+Parlez! fa lavorare **Claude dentro After Effects**. Scrivi a Claude cosa vuoi, in parole normali («anima questo titolo con un rimbalzo morbido», «controlla se in questa composizione c'è qualcosa che non va»), e Claude lo fa nel progetto aperto, mentre tu guardi.
 
-You can connect MCP-compatible clients such as Claude Code or Claude Desktop to a running instance of After Effects, allowing the AI to handle everything from project inspection and editing to rendering.
+È gratuito e open source (licenza MIT). Nasce da [mcp-aftereffects](https://github.com/kumoproductions/mcp-aftereffects) di kumo.productions (vedi [Crediti](#crediti)).
 
-There is no need to provide detailed instructions on how to operate After Effects. Simply explain what you want to achieve in natural language, and the AI will check the project status and perform the necessary operations.
+> [!IMPORTANT]
+> **Stato delle prove.** Parlez! è **provato su After Effects 2026 (26.5) / Windows 10**. Il Mac, After Effects 2024 e After Effects 2025 sono **scritti per funzionare ma non ancora provati**. Il render in sottofondo (aerender) non è ancora riuscito dal programma. È una versione di prova (0.1): usala prima su una copia di un progetto, non sul lavoro vero.
 
-**Windows / macOS · After Effects 2024–2026 · Node.js 24+**
+## Cosa serve
 
-> [!CAUTION]
-> **This tool directly manipulates After Effects projects via AI.**
->
-> The AI can read project contents and modify compositions, layers, effects, keyframes, and more.
->
-> Additionally, information the AI reads from the project may be sent to the AI service you are using. This may include composition names, layer names, expressions, keyframes, footage file paths, etc.
->
-> If using this for projects under NDA or unreleased works, please check the data retention policy of the AI service you are using and the logs of your MCP client beforehand.
->
-> For first-time use, we recommend trying it with a backup or a test .aep file rather than a critical project.
+| Cosa                                  | Note                                                                                                                                                            |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **After Effects 2024, 2025 o 2026**   | Su Windows o Mac.                                                                                                                                               |
+| **Node.js 24 o più recente**          | Il «motore» che fa girare Parlez!. Si scarica da [nodejs.org](https://nodejs.org) (versione LTS). Per controllare: apri il terminale e scrivi `node --version`. |
+| **Claude Code oppure Claude Desktop** | Il programma dove scrivi a Claude.                                                                                                                              |
 
-## Capabilities
+Il terminale su Windows è **PowerShell** (cercalo nel menu Start); sul Mac è **Terminale**.
 
-With mcp-aftereffects, you can request the AI to perform After Effects tasks.
+## Installazione in tre comandi
 
-- Inspect project contents
-- Investigate compositions and layers
-- Edit layers and properties
-- Add or modify keyframes
-- Edit effects and masks
-- Edit text and shapes
-- Set expressions
-- Save projects
-- Create and restore project backups
-- Render frames to preview changes
+**1. Installa Parlez!**
 
-For example, you can give instructions like these:
+```bash
+npm install -g parlez
+```
 
-> "Import this Illustrator file and create some nice-looking text motion."
+> Finché Parlez! non è pubblicato su npm, al posto di questo comando usa il file che hai ricevuto: `npm install -g ./parlez-0.1.0.tgz` (lanciato dalla cartella dove si trova il file). L'installazione scarica una volta le librerie di cui Parlez! ha bisogno; dopo, il programma non si collega più a internet.
 
-> "Apply the revisions mentioned in this PDF."
+**2. Prepara After Effects**
 
-> "Point out any issues in this AEP."
+```bash
+parlez setup
+```
 
-Even for complex tasks, the AI can combine necessary operations while checking the project status.
+Trova After Effects, installa lo **script di avvio** (il piccolo programma che resta dentro After Effects e riceve le richieste di Claude) e il **pannello Parlez!**, controlla la casella degli script e alla fine ti stampa il comando del punto 3. Scrive solo nelle cartelle di After Effects del tuo utente. Se hai più versioni di After Effects ti chiede in quali installare (oppure `parlez setup --version 26.5`). Messaggi in inglese: `parlez setup --lang en`.
+
+**3. Collega Parlez! a Claude**
+
+Copia e incolla il comando `claude mcp add …` che `parlez setup` ha stampato (per Claude Code), oppure il blocco per Claude Desktop, che `parlez setup` stampa insieme al punto preciso dove incollarlo. Il comando ha questa forma:
+
+```bash
+claude mcp add --scope user parlez -e AE_MCP_PULL_ONLY=1 -- "<percorso di node>" "<percorso di parlez>/dist/index.js"
+```
+
+Poi **riavvia After Effects**, apri il pannello da **Finestra → Parlez!** e accendilo.
+
+### Una sola cosa da fare a mano in After Effects
+
+In **Modifica → Preferenze → Script ed espressioni** accendi **«Consenti agli script di scrivere file e accedere alla rete»** e chiudi la finestra con OK. Nessun programma può accenderla al posto tuo. `parlez setup` ti dice se è già accesa. Sul Mac il menu dovrebbe essere After Effects → Impostazioni → Script ed espressioni (non ancora verificato).
+
+Sul Mac, la prima volta macOS può chiedere il permesso di **controllare After Effects** (Impostazioni di Sistema → Privacy e sicurezza → Automazione): rispondi Consenti.
+
+### Controllare che sia tutto a posto
+
+```bash
+parlez doctor
+```
+
+Controlla Node, lo script di avvio, il pannello, la casella degli script e se c'è un After Effects acceso con lo script di avvio attivo. **Non cambia niente.** Ogni riga «DA FARE» dice cosa manca.
+
+## Il pannello ON/OFF
+
+Dentro After Effects, **Finestra → Parlez!** apre un pannello con un grande interruttore:
+
+- **OFF (rosso)**: Claude è fermo. Ogni sua richiesta viene rifiutata. Alla prima apertura il pannello parte su OFF.
+- **ON verde**: Claude può lavorare ed è in attesa. **Giallo**: sta lavorando. **Grigio**: lo script di avvio non risponde (di solito c'è una finestra di dialogo aperta in After Effects).
+- **Sola lettura**: Claude può guardare il progetto ma non modificarlo.
+- Sotto, le **ultime richieste** in italiano semplice, con l'esito. Lo storico completo è su file (bottone «Storico»).
+- **Ripristino** fa un punto di ripristino del progetto con un clic.
+
+## Cosa fa e cosa non fa
+
+**Fa:**
+
+- legge il progetto, le composizioni e i livelli; crea e modifica livelli, keyframe, effetti, maschere, testi, forme, espressioni;
+- ti mostra i fotogrammi direttamente nella chat e controlla il lavoro (controlli automatici, confronto con una reference, controllo del movimento);
+- usa curve con nome, sfalsamenti e modelli di espressione pronti; costruisce pezzi grafici da «ricette» (per esempio un lower third) in un solo passo.
+
+**Per sicurezza:**
+
+- **Niente internet.** Parlez! non si collega mai a internet: né per font, né per aggiornamenti, né per altro. Parla solo con After Effects, sul tuo computer.
+- **Conferme.** Prima di cancellare, sovrascrivere o rinominare qualcosa, Claude deve chiederti il permesso. Alcuni comandi pericolosi sono vietati del tutto.
+- **Punti di ripristino.** Prima di un lavoro rischioso Claude può fare una copia datata del file `.aep`, per tornare indietro.
+- **Un solo Ctrl+Z.** Ogni richiesta di Claude si annulla con un solo Ctrl+Z (Cmd+Z sul Mac).
+- **Sola lettura e pausa** dal pannello, in ogni momento.
+- **Il codice libero è spento.** La possibilità di far eseguire a Claude script scritti da lui (che potrebbero toccare il resto del computer) è spenta di serie.
+
+**Attenzione a cosa vede Claude.** Quello che Claude legge dal progetto (nomi di composizioni e livelli, testi, percorsi dei file, fotogrammi) arriva al servizio Claude che usi. Per progetti sotto NDA o con materiali di clienti non ancora pubblici, controlla prima le regole del tuo piano Claude. Parlez! ha una **modalità riservata** (spenta di serie) che toglie i percorsi e nasconde i nomi che scegli: vedi [`docs/riservatezza.md`](docs/riservatezza.md).
+
+## Se qualcosa non va
+
+- **Claude va in timeout**: controlla che After Effects sia aperto, che il pannello sia su ON, che la casella degli script sia accesa e che non ci sia una finestra di dialogo aperta (a volte resta nascosta dietro la finestra principale). Poi `parlez doctor`.
+- **«Claude è in pausa»**: il pannello è su OFF. Accendilo.
+- **Dopo un aggiornamento di After Effects** (per esempio da 26.5 a 26.6) rilancia `parlez setup`: ogni versione ha la sua cartella.
+- **Dopo un aggiornamento di Parlez!** rilancia `parlez setup` per aggiornare il pannello.
+
+Per segnalare un problema: [github.com/AnotherPerspective/Parlez/issues](https://github.com/AnotherPerspective/Parlez/issues).
+
+## Per chi sviluppa
+
+Le opzioni avanzate (sola lettura `AE_MCP_READONLY=1`, categorie consentite `AE_MCP_ALLOW_CATEGORIES`, più After Effects aperti con `AE_MCP_INSTANCE`, percorso di After Effects `AE_MCP_EXE`, collegamento diretto `AE_MCP_PULL_ONLY=0`) e l'architettura sono in [`docs/TOOLS.md`](docs/TOOLS.md) e [`CONTRIBUTING.md`](CONTRIBUTING.md). Le novità di ogni versione sono nel [`CHANGELOG.md`](CHANGELOG.md).
+
+**Collegamento predefinito.** Parlez! parla con After Effects tramite lo script di avvio. Il collegamento «diretto» di kumo (`AfterFX.exe -r`) resta come ripiego per chi non installa lo script di avvio; quando lo script è installato il server non lo usa, salvo `AE_MCP_PULL_ONLY=0`.
+
+---
+
+<a id="english"></a>
+
+# Parlez! for Adobe® After Effects®
+
+**English** · [Italiano](#parlez-per-adobe-after-effects)
+
+Parlez! lets **Claude work inside After Effects**. Tell Claude what you want in plain words ("animate this title with a soft bounce", "check this comp for problems") and Claude does it in the open project while you watch.
+
+Free and open source (MIT). It grows out of [mcp-aftereffects](https://github.com/kumoproductions/mcp-aftereffects) by kumo.productions (see [Credits](#credits)).
+
+> [!IMPORTANT]
+> **Testing status.** Parlez! is **tested on After Effects 2026 (26.5) / Windows 10**. macOS, After Effects 2024 and After Effects 2025 are **written to work but not tested yet**. Background rendering (aerender) has not yet succeeded from the program. This is a preview (0.1): try it on a copy of a project first, not on real work.
 
 ## Requirements
 
-- Windows or macOS
-- Adobe After Effects 2024 / 2025 / 2026
-- Node.js 24 or higher
-- MCP-compatible client (Claude Code, Claude Desktop, etc.)
+- **After Effects 2024, 2025 or 2026**, on Windows or macOS
+- **Node.js 24 or newer** ([nodejs.org](https://nodejs.org), LTS) — check with `node --version`
+- **Claude Code or Claude Desktop**
 
-No plugins or panels need to be installed within After Effects for the usual setup: one After Effects at a time. Driving several instances at once (`AfterFX.exe -m`) is the one case that needs a small startup script — see [Multiple After Effects Instances](#multiple-after-effects-instances).
-
-### After Effects Settings
-
-In After Effects Preferences, please turn ON the following:
-
-**Preferences → Scripting & Expressions → "Allow Scripts to Write Files and Access Network"**
-
-If this setting is OFF, the AI will not be able to perform operations correctly.
-
-### For macOS
-
-Upon first use, macOS may request permission for the client to control After Effects.
-
-If it is not permitted, go to:
-
-**System Settings → Privacy & Security → Automation**
-
-and allow your MCP client or terminal to control After Effects.
-
-## Quick Start
-
-No installation is required on the After Effects side as long as you run one After Effects at a time.
-
-First, launch After Effects and open the project you wish to operate on.
-
-Next, register mcp-aftereffects with your MCP client.
-
-### Claude Code
+## Setup in three commands
 
 ```bash
-claude mcp add aftereffects -- npx -y @kumoproductions/mcp-aftereffects
+npm install -g parlez
+parlez setup --lang en
 ```
 
-### Claude Desktop
+Until Parlez! is on npm, install the file you received instead: `npm install -g ./parlez-0.1.0.tgz`. Installing downloads the libraries Parlez! needs once; after that the program never connects to the internet.
 
-Add the following to your MCP configuration file:
+`parlez setup` finds After Effects, installs the **startup script** (a small agent that stays inside After Effects and receives Claude's requests) and the **Parlez! panel**, checks the scripting checkbox, and prints the third command: the `claude mcp add …` line for Claude Code, or the block for Claude Desktop with where to paste it. It writes only into your user's After Effects folders. With several After Effects versions it asks which ones (or use `--version 26.5`).
 
-```json
-{
-  "mcpServers": {
-    "aftereffects": {
-      "command": "npx",
-      "args": ["-y", "@kumoproductions/mcp-aftereffects"]
-    }
-  }
-}
-```
+Then **restart After Effects**, open **Window → Parlez!** and switch it on.
 
-If you are using other MCP clients, please follow their respective registration methods for MCP servers.
+**One thing to do by hand in After Effects:** Edit → Preferences → Scripting & Expressions → turn on **"Allow Scripts to Write Files and Access Network"**, then close the dialog with OK. On macOS: After Effects → Settings → Scripting & Expressions (not verified yet), and allow your terminal or Claude Desktop to control After Effects when macOS asks (System Settings → Privacy & Security → Automation).
 
-### Read-Only Mode
+`parlez doctor --lang en` checks all of the above **without changing anything**; every "TO DO" line says what is missing.
 
-If you want to inspect or audit project content without making any changes, you can use read-only mode.
+## The ON/OFF panel
 
-Add the following to your MCP client configuration:
+**Window → Parlez!**: a big switch. **OFF (red)**: Claude is stopped and every request is refused — the panel starts OFF. **ON green**: waiting; **yellow**: working; **grey**: the startup script is not answering (usually a dialog is open). **Read only**: Claude can look but not change. Below: the latest requests with their outcome, a full history on file, and a one-click restore point.
 
-```json
-{
-  "mcpServers": {
-    "aftereffects": {
-      "command": "npx",
-      "args": ["-y", "@kumoproductions/mcp-aftereffects"],
-      "env": {
-        "AE_MCP_READONLY": "1"
-      }
-    }
-  }
-}
-```
+## What it does and does not do
 
-You can still investigate the project and render frames for preview.
+It reads and edits projects, comps, layers, keyframes, effects, masks, text, shapes and expressions; shows frames right in the chat and checks the work (automatic audits, comparison against a reference, motion check); offers named easing curves, staggering, expression presets and "recipes" that build a graphic in one step.
 
-## Advanced Settings
+For safety: **no internet access, ever**; **confirmations** before anything is deleted, overwritten or renamed (some dangerous commands are refused outright); **restore points** of the `.aep`; **one Ctrl/Cmd+Z** undoes a whole request; **read-only and pause** from the panel; arbitrary ExtendScript is **off** by default.
 
-Usually, no configuration is necessary.
-
-In some environments, such as when After Effects is installed in a non-standard location, additional settings may be required.
-
-### Specifying After Effects Location
-
-If After Effects is not in the standard installation path, you can specify the executable location using `AE_MCP_EXE`.
-
-By default, it automatically searches for After Effects in the order of 2026 → 2025 → 2024.
-
-### Limiting Operation Scope
-
-Using `AE_MCP_ALLOW_CATEGORIES`, you can restrict the types of operations permitted for the AI.
-
-For example, you can limit permissions to only keyframe-related operations depending on your use case.
-
-### Multiple After Effects Instances
-
-After Effects can run several copies at once (`AfterFX.exe -m`), each with its own project. Out of the box the server reaches only the first, normally started copy: instances started with `-m` never receive the scripts it launches. To drive them, install the resident agent once:
-
-```bash
-npx @kumoproductions/mcp-aftereffects install-agent
-```
-
-This drops a small startup script into After Effects' user-level `Scripts/Startup` folder (no admin rights needed; run it again after an After Effects update). From the next launch on, every instance — including `-m` ones — serves a mailbox of its own, and the server picks which instance to talk to:
-
-- `AE_MCP_INSTANCE` in the server's `env` names the default instance for the whole session, either by the id the instance was started with or by the project file it has open (`"shotA"`, `"shotA.aep"`, or a full path when two projects share a name).
-- Every tool takes an optional `instance` argument to address another instance for a single call.
-- `ae_context` and `ae_do instance.list` show what is live.
-
-To name an instance at launch, set `AE_MCP_INSTANCE` in the environment that starts it:
-
-```bat
-set AE_MCP_INSTANCE=shotA
-"C:\Program Files\Adobe\Adobe After Effects 2026\Support Files\AfterFX.exe" -m
-```
-
-An unnamed instance gets a random id (`ae-…`) and can still be addressed by its project file. With exactly one live agent no configuration is needed at all; with several live and none named, calls fail with `NO_INSTANCE` instead of guessing.
-
-The agent keeps polling its mailbox for as long as After Effects runs, server or no server, so the mailbox directory under your per-user temp folder stays the trust boundary for the whole session. The mailbox location is fixed into the startup script when you install it; if you change `AE_MCP_RUNTIME_DIR`, run `install-agent` again (`agent-status` tells you when it is out of date).
-
-### Parallel Work with Worker Instances
-
-The AI can start instances itself. `instance.start` launches a new After Effects, waits for it to register, and can open a **copy** of a project — the safe way to work on something the main instance has open:
-
-1. `instance.start { name: "w1", copyFrom: "<main .aep>" }` — a worker with its own copy
-2. Work in it: any tool with `instance: "w1"`
-3. `ae_save_project` with `instance: "w1"`
-4. `project.merge { path: "<the copy>" }` in the main instance — the copy comes in as a folder; nothing already in the project is touched
-5. `instance.stop { name: "w1" }`
-
-Several workers can run at once. Each is a full After Effects, so plan on a few gigabytes of memory per instance.
-
-## Execution of Arbitrary ExtendScript
-
-mcp-aftereffects includes an advanced feature to execute arbitrary ExtendScript for processes that cannot be handled by standard operations.
-
-This feature is **disabled by default**.
-
-> [!CAUTION]
-> **Enabling arbitrary ExtendScript allows operations outside of After Effects.**
->
-> **This may permit actions that affect your entire computer**, such as file or process manipulation.
->
-> This feature is disabled by default. Enable it only if necessary.
-
-To enable it, set the following in your MCP server environment variables:
-
-```json
-"env": {
-  "AE_MCP_ENABLE_EVAL": "1"
-}
-```
-
-Use this feature only for advanced processing that cannot be achieved through regular operations or when custom ExtendScript is required.
-
-## Official Releases
-
-> [!NOTE]
-> **Official releases are distributed only through npm and GitHub Releases.**
->
-> Please exercise caution if obtaining packages claiming to be `@kumoproductions/mcp-aftereffects` or files claiming to be this server from any other location.
+What Claude reads from the project (names, text, file paths, frames) goes to the Claude service you use. For NDA work or unreleased client material, check your Claude plan's data terms first. An optional **privacy mode** strips paths and hides the names you list: see [`docs/riservatezza.md`](docs/riservatezza.md) (Italian).
 
 ## Troubleshooting
 
-### Operations Timeout
+Timeouts: is After Effects open, the panel ON, the scripting checkbox on, and no dialog open (sometimes hidden behind the main window)? Then run `parlez doctor`. After an After Effects update (e.g. 26.5 → 26.6) or a Parlez! update, run `parlez setup` again. Issues: [github.com/AnotherPerspective/Parlez/issues](https://github.com/AnotherPerspective/Parlez/issues).
 
-Please check the following:
+Developers: advanced options and architecture are in [`docs/TOOLS.md`](docs/TOOLS.md) and [`CONTRIBUTING.md`](CONTRIBUTING.md). **Default connection:** Parlez! talks to After Effects through the startup script; kumo's direct `AfterFX.exe -r` path remains as a fallback when the startup script is not installed (or with `AE_MCP_PULL_ONLY=0`).
 
-- Is After Effects running?
-- Is a project open?
-- Is "Allow Scripts to Write Files and Access Network" turned ON?
-- On macOS, is the Automation permission enabled?
-
-### `NO_INSTANCE`
-
-The call had no After Effects to go to. Either every running After Effects was started with `-m` and the agent is not installed (see [Multiple After Effects Instances](#multiple-after-effects-instances)), the instance named by `AE_MCP_INSTANCE` / `instance` is not running or is stuck in a dialog, or several agents are live and none was named. The error lists what is live.
-
-### `DIALOG_OPEN` — After Effects Is Showing a Dialog
-
-While After Effects shows a modal dialog, no script runs at all — neither the resident agent nor a `-r` launch. The most common cause is opening a project whose footage or fonts are missing ("N files are missing since you last saved this project"), and the dialog is often hidden behind the main window. The error quotes the dialog's text (on macOS, see below).
-
-- `instance.dialogs` lists the dialogs every running After Effects is showing.
-- `instance.dismiss_dialog { id }` closes it with Escape, the dialog's cancel action: a warning is acknowledged, and a question such as "Save changes before closing?" is cancelled rather than answered — nothing is saved or discarded. A dialog you want answered differently has to be clicked by you.
-- The agent resumes on its own once the dialog is gone; no restart is needed.
-- To avoid the missing-files warning in the first place, start After Effects without a project and open it with `project.open`, which suppresses the dialog.
-
-Dialog detection works on Windows and macOS. On macOS it has two tiers:
-
-- With Accessibility permission for the app that runs the MCP server (System Settings > Privacy & Security > Accessibility — your terminal, or the MCP client app), every dialog is found and its text read, and `instance.dismiss_dialog` works the same way as on Windows: Escape, the cancel action. A "Save changes before closing?" prompt is cancelled (the project stays open and unsaved); a warning or script `alert()` is acknowledged. After Effects is not brought to the front.
-- Without that permission, dialogs are only guessed at from the window list: most are found, with empty text (`accessibility: false`), but some — such as the Adobe licensing prompt — are missed, and none can be dismissed from here.
-
-Verified on After Effects 26.5 / macOS 26.4 with the missing-files warning, a script `alert()`, the save prompt and the System Compatibility Report.
-
-### After Effects Stops at a "We detected a crash" Dialog
-
-If an After Effects process was killed (Task Manager, `taskkill`, a crash), the next launch shows the Safe Mode dialog and waits for a click — including instances started by `instance.start`, which then fail with `did not register`. Dismiss the dialog on screen. An instance that quits normally does not trigger it, so prefer `instance.stop` over killing.
-
-### After Effects Not Found
-
-If you have installed After Effects in a non-standard location, please set `AE_MCP_EXE`.
-
-If the issue persists, please report it via an Issue or to @cumuloworks.
-
-## Developer Information
-
-For information regarding internal MCP tools, communication methods with After Effects, ExtendScript, test environments, and how to add custom operations, please refer to the developer documentation.
-
-- `docs/TOOLS.md`
-- `CONTRIBUTING.md`
-
-## Contributing
-
-Bug reports, feature requests, and Pull Requests are welcome.
-
-For information on setting up the development environment and the internal architecture, please refer to `CONTRIBUTING.md`.
+---
 
 ## Crediti
 
-Parlez! per Adobe® After Effects® _(nome provvisorio)_ nasce dal lavoro di altri, pubblicato con licenza MIT. Li ringraziamo. I testi completi delle licenze sono in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+Parlez! per Adobe® After Effects® nasce dal lavoro di altri, pubblicato con licenza MIT. Li ringraziamo. I testi completi delle licenze sono in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 - **[mcp-aftereffects](https://github.com/kumoproductions/mcp-aftereffects)** di kumo.productions, Inc. ([@kumoproductions](https://github.com/kumoproductions)) — Copyright (c) 2026 kumo.productions, Inc. Parlez! è un fork di questo progetto: il motore che parla con After Effects viene da qui.
 - **[After-Effects-mcp-pro](https://github.com/malkawi06/After-Effects-mcp-pro)** di Mohammad Malkawi ([@malkawi06](https://github.com/malkawi06)) — Copyright (c) 2026 Mohammad Malkawi. Ne riprendiamo idee ed eventuale codice per gli «occhi» (vedere e controllare il lavoro), i checkpoint, il render in sottofondo e la libreria di aiuti AEH.
@@ -283,15 +176,15 @@ Parlez! per Adobe® After Effects® _(nome provvisorio)_ nasce dal lavoro di alt
 
 ## Credits
 
-Parlez! for Adobe® After Effects® _(working name)_ builds on the work of others, released under the MIT License. Thank you. The full license texts are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+Parlez! for Adobe® After Effects® builds on the work of others, released under the MIT License. Thank you. The full license texts are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 - **[mcp-aftereffects](https://github.com/kumoproductions/mcp-aftereffects)** by kumo.productions, Inc. ([@kumoproductions](https://github.com/kumoproductions)) — Copyright (c) 2026 kumo.productions, Inc. Parlez! is a fork of this project: the engine that talks to After Effects comes from here.
 - **[After-Effects-mcp-pro](https://github.com/malkawi06/After-Effects-mcp-pro)** by Mohammad Malkawi ([@malkawi06](https://github.com/malkawi06)) — Copyright (c) 2026 Mohammad Malkawi. We draw ideas, and possibly code, from it for the "eyes" (seeing and checking the work), checkpoints, background rendering and the AEH helper library.
 - **[after-effects-mcp](https://github.com/ishu86/after-effects-mcp)** by Ishant Kohar ([@ishu86](https://github.com/ishu86)) — Copyright (c) 2024 Ishant Kohar. We draw on its ideas for ready-made templates and its expression presets.
 
-## License
+## Licenza / License
 
-MIT © 2026 kumo.productions, Inc.
+MIT — Copyright (c) 2026 kumo.productions, Inc.; Copyright (c) 2026 Another Perspective Pictures SRL. Vedi / see [`LICENSE`](LICENSE).
 
 ## Marchi
 

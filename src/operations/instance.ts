@@ -10,7 +10,7 @@
 // instance they concern, by name.
 //
 // Every instance is reached through the pull path, so the resident agent
-// must be installed (`mcp-aftereffects install-agent`); the operations say so
+// must be installed (`parlez install-agent`); the operations say so
 // when it is not rather than starting an AE nothing can talk to.
 
 import { spawn } from "node:child_process";
@@ -44,7 +44,7 @@ import {
 } from "../transport/instances.js";
 import { buildInstanceLaunchPlan } from "../transport/launcher.js";
 
-const INSTALL_CMD = "npx @kumoproductions/mcp-aftereffects install-agent";
+const INSTALL_CMD = "parlez install-agent";
 const DEFAULT_START_TIMEOUT_MS = 120_000;
 const DEFAULT_STOP_TIMEOUT_MS = 30_000;
 

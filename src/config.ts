@@ -361,6 +361,30 @@ export function pullOnlyMode(env: NodeJS.ProcessEnv = process.env): boolean {
   return env[PULL_ONLY_ENV]?.trim() === "1";
 }
 
+/** What the user asked for: "1" on, "0" off, anything else left to the default. */
+export type PullOnlySetting = "on" | "off" | "auto";
+
+export function pullOnlySetting(env: NodeJS.ProcessEnv = process.env): PullOnlySetting {
+  const value = env[PULL_ONLY_ENV]?.trim();
+  if (value === "1") return "on";
+  if (value === "0") return "off";
+  return "auto";
+}
+
+/**
+ * Parlez!'s default (a change from kumo): someone who installed the agent has
+ * chosen the pull path, so the server stops trying `AfterFX.exe -r` when the
+ * agent is momentarily not live — on the machine Parlez! was tested on, a push
+ * only burns the call's timeout, and with After Effects closed it boots a
+ * throwaway instance. Without the agent nothing changes. `AE_MCP_PULL_ONLY=0`
+ * brings the push fallback back. index.ts applies this once at startup.
+ */
+export function resolvePullOnlyDefault(setting: PullOnlySetting, agentInstalled: boolean): boolean {
+  if (setting === "on") return true;
+  if (setting === "off") return false;
+  return agentInstalled;
+}
+
 /**
  * Set in the environment of processes we start that load Scripts/Startup but
  * must not run the resident agent (aerender). jsx/agent.jsx reads it with

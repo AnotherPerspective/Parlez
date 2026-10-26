@@ -721,8 +721,8 @@ export class FileIpcTransport implements AeTransport {
         durationMs: Date.now() - started,
         hint:
           "Either drive one After Effects started WITHOUT -m, or set up multi-instance use: " +
-          "`npx @kumoproductions/mcp-aftereffects install-agent`, restart After Effects, and set AE_MCP_INSTANCE " +
-          "to the instance to address (see README, 'Multiple After Effects instances').",
+          "`parlez install-agent`, restart After Effects, and set AE_MCP_INSTANCE " +
+          "to the instance to address (see the README).",
       },
     );
   }
@@ -958,7 +958,10 @@ function dialogFailure(dialogs: AeDialog[], outcome: string, started: number): E
 /** How often a call waiting for an agent re-reads the heartbeats. */
 const AGENT_WAIT_POLL_MS = 250;
 
-/** The NO_INSTANCE answer under AE_MCP_PULL_ONLY=1. Plain Italian: the user reads it. */
+/**
+ * The NO_INSTANCE answer under AE_MCP_PULL_ONLY=1, set by the user or by
+ * index.ts because the agent is installed. Plain Italian: the user reads it.
+ */
 function pullOnlyRefusal(
   name: string | null,
   last: TargetResolution | null,
@@ -972,11 +975,12 @@ function pullOnlyRefusal(
     mode: "error",
     kind: "unmatched",
     message:
-      `Non ho inviato niente: ${cause}, e ${PULL_ONLY_ENV}=1 vieta il percorso push (AfterFX.exe -r).` +
+      `Non ho inviato niente: ${cause}, e il percorso push (AfterFX.exe -r) è spento: ${PULL_ONLY_ENV}=1, ` +
+      `oppure in automatico perché lo script di avvio è installato (${PULL_ONLY_ENV}=0 lo riaccende).` +
       detail,
     hint:
       "Controlla che After Effects sia aperto e che l'agente sia installato " +
-      "(`npx @kumoproductions/mcp-aftereffects install-agent`, poi riavvia After Effects): l'agente si " +
+      "(`parlez install-agent`, poi riavvia After Effects): l'agente si " +
       "registra circa dieci secondi dopo l'avvio. Se After Effects mostra una finestra di dialogo, chiudila e riprova.",
   };
 }

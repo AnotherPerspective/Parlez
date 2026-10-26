@@ -211,6 +211,24 @@ export async function installAgent(opts: InstallOptions = {}): Promise<InstallRe
   return report;
 }
 
+/**
+ * Is the stub in the Startup folder of any After Effects version? Stale or
+ * current alike: either way the user chose the agent. Drives the pull-only
+ * default (config.ts, resolvePullOnlyDefault).
+ */
+export async function anyAgentInstalled(opts: InstallOptions = {}): Promise<boolean> {
+  const root = aeProfileRoot(opts.platform, opts.env, opts.home);
+  for (const version of await listAeVersionDirs(root)) {
+    try {
+      await fs.access(path.join(startupDirFor(root, version), AGENT_STUB_FILENAME));
+      return true;
+    } catch {
+      /* not in this version */
+    }
+  }
+  return false;
+}
+
 export async function uninstallAgent(opts: InstallOptions = {}): Promise<{ removed: string[] }> {
   const removed: string[] = [];
   for (const { dir } of await targetStartupDirs(opts)) {

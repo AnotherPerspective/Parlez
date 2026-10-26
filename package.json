@@ -1,41 +1,51 @@
 {
-  "name": "@kumoproductions/mcp-aftereffects",
-  "version": "0.3.2",
-  "description": "TypeScript MCP server for Adobe After Effects (Windows & macOS) — project/comp/layer introspection, atomic undo-grouped operations, JSON project export/import, and single-frame rendering via file IPC.",
+  "name": "parlez",
+  "version": "0.1.0",
+  "description": "Parlez! for Adobe® After Effects®: lets Claude work inside After Effects 2024–2026 through MCP, with confirmations, checkpoints, a pause switch and no internet access.",
   "keywords": [
     "adobe",
     "after-effects",
     "aftereffects",
     "claude",
     "extendscript",
-    "llm",
     "mcp",
     "model-context-protocol",
-    "motion-graphics"
+    "motion-design",
+    "motion-graphics",
+    "parlez"
   ],
-  "homepage": "https://github.com/kumoproductions/mcp-aftereffects#readme",
+  "homepage": "https://github.com/AnotherPerspective/Parlez#readme",
   "bugs": {
-    "url": "https://github.com/kumoproductions/mcp-aftereffects/issues"
+    "url": "https://github.com/AnotherPerspective/Parlez/issues"
   },
   "license": "MIT",
   "author": {
-    "name": "kumo.productions, Inc.",
-    "url": "https://github.com/kumoproductions"
+    "name": "Another Perspective Pictures SRL",
+    "url": "https://github.com/anthonyfesce"
   },
+  "contributors": [
+    {
+      "name": "kumo.productions, Inc.",
+      "url": "https://github.com/kumoproductions"
+    }
+  ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kumoproductions/mcp-aftereffects.git"
+    "url": "git+https://github.com/AnotherPerspective/Parlez.git"
   },
   "bin": {
-    "mcp-aftereffects": "dist/index.js"
+    "mcp-aftereffects": "dist/index.js",
+    "parlez": "dist/index.js"
   },
   "files": [
     "dist",
     "jsx",
-    "fixtures",
     "recipes",
+    "fixtures",
     "LICENSE",
-    "README.md"
+    "THIRD_PARTY_NOTICES.md",
+    "README.md",
+    "CHANGELOG.md"
   ],
   "type": "module",
   "main": "dist/index.js",
@@ -62,6 +72,7 @@
     "docs:tools:check": "npm run build && node scripts/generate-tools-doc.mjs --check",
     "check": "npm run typecheck && npm run typecheck:test && npm run lint && npm run format:check && npm run lint:jsx && npm run check:server-json && npm run docs:tools:check",
     "prepare": "lefthook install",
+    "prepack": "npm run build",
     "prepublishOnly": "npm run build",
     "preversion": "node scripts/release-changelog.mjs --check",
     "version": "node scripts/release-changelog.mjs && node scripts/sync-server-version.mjs && git add CHANGELOG.md server.json"
@@ -82,5 +93,5 @@
   "engines": {
     "node": ">=24.0.0"
   },
-  "mcpName": "io.github.kumoproductions/mcp-aftereffects"
+  "mcpName": "io.github.AnotherPerspective/Parlez"
 }

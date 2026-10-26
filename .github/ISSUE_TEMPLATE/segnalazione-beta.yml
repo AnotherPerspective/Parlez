@@ -1,0 +1,50 @@
+name: Segnalazione dalla prova (beta)
+description: Per chi prova Parlez! — sei domande, in italiano. Togli prima nomi di clienti e percorsi riservati.
+labels: [beta, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Grazie per la prova! Bastano sei risposte. **Prima di incollare qualcosa togli nomi di clienti, progetti riservati e percorsi personali.**
+  - type: textarea
+    id: macchina
+    attributes:
+      label: 1. Computer e versioni
+      description: Windows o Mac (con la versione), After Effects (Aiuto → Informazioni su After Effects, numero completo, per esempio 26.5.1) e in che lingua, Node.js (`node --version`), Claude Code o Claude Desktop.
+      placeholder: "Windows 11 24H2 · After Effects 26.5.1 in italiano · Node v24.21.0 · Claude Desktop"
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: 2. L'installazione è andata? Incolla qui il risultato di `parlez doctor`
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: richiesta
+    attributes:
+      label: 3. Cosa hai chiesto a Claude, con le parole esatte, e su che tipo di progetto
+      placeholder: "«Anima il titolo con un rimbalzo» — progetto di prova con 3 composizioni e un testo"
+    validations:
+      required: true
+  - type: textarea
+    id: risultato
+    attributes:
+      label: 4. Cosa è successo e cosa ti aspettavi
+      description: Risultato sbagliato, troppo lento, un errore (copialo), una finestra di dialogo comparsa in After Effects… Uno screenshot aiuta molto.
+    validations:
+      required: true
+  - type: textarea
+    id: sicurezza
+    attributes:
+      label: 5. Il pannello e la sicurezza
+      description: Che stato mostrava il pannello Parlez! (ON verde, giallo, grigio, OFF)? Un Ctrl+Z ha annullato tutta la richiesta? Claude ha chiesto conferma prima di cancellare o sovrascrivere? Si è perso o rovinato qualcosa?
+    validations:
+      required: true
+  - type: textarea
+    id: utilita
+    attributes:
+      label: 6. Quanto ti è stato utile (da 1 a 5) e cosa ti è mancato di più
+    validations:
+      required: true

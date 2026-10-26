@@ -1,8 +1,10 @@
-// Command-line subcommands of the `mcp-aftereffects` binary. Without
-// arguments the binary is the MCP server (stdio); with one it is a small
-// maintenance tool for the pull path — installing the resident agent into
-// After Effects' Startup folders, the Parlez! panel into its ScriptUI Panels
-// folders, and looking at which instances are live.
+// Command-line subcommands of the `parlez` binary (also installed under its
+// earlier name, `mcp-aftereffects`). Without arguments the binary is the MCP
+// server (stdio); with one it is a small maintenance tool — `setup` and
+// `doctor` for the user (src/setup.ts), and the finer-grained commands they
+// build on: installing the resident agent into After Effects' Startup
+// folders, the Parlez! panel into its ScriptUI Panels folders, and looking at
+// which instances are live.
 
 import { INSTANCES_DIR, RUNTIME_DIR } from "./config.js";
 import {
@@ -13,23 +15,33 @@ import {
   uninstallAgent,
 } from "./agent-install.js";
 import { installPanel, panelInstallStatus, uninstallPanel } from "./panel-install.js";
+import { detectLang, runDoctor, runSetup } from "./setup.js";
 import { describeInstance, listInstances } from "./transport/instances.js";
 
-export const USAGE = `mcp-aftereffects — MCP server for Adobe After Effects
+export const USAGE = `parlez — Parlez! for Adobe® After Effects® (MCP server)
 
-  mcp-aftereffects                    start the MCP server on stdio (what MCP clients run)
-  mcp-aftereffects install-agent      install the resident agent into After Effects' user-level
-                                      Scripts/Startup folder(s); needed to drive instances started
-                                      with \`AfterFX.exe -m\`. Restart After Effects afterwards.
-  mcp-aftereffects uninstall-agent    remove it again
-  mcp-aftereffects agent-status       show where the agent is installed and whether it is current
-  mcp-aftereffects install-panel      install the Parlez! panel (Claude on/off, read-only, last actions)
-                                      into the user-level Scripts/ScriptUI Panels folder(s); it shows
-                                      under Window after restarting After Effects
-  mcp-aftereffects uninstall-panel    remove it again
-  mcp-aftereffects panel-status       show where the panel is installed and whether it is current
-  mcp-aftereffects instances          list the After Effects instances whose agent is live
-  mcp-aftereffects help               this text
+  parlez                    start the MCP server on stdio (what Claude runs)
+  parlez setup              set up everything for the After Effects found on this computer: the
+                            startup script, the Parlez! panel, a check of the scripting checkbox,
+                            and the lines to paste into Claude Code / Claude Desktop
+  parlez doctor             check all of that without changing anything
+  parlez install-agent      install only the resident agent (startup script) into After Effects'
+                            user-level Scripts/Startup folder(s). Restart After Effects afterwards.
+  parlez uninstall-agent    remove it again
+  parlez agent-status       show where the agent is installed and whether it is current
+  parlez install-panel      install only the Parlez! panel (Claude on/off, read-only, last actions)
+                            into the user-level Scripts/ScriptUI Panels folder(s); it shows
+                            under Window after restarting After Effects
+  parlez uninstall-panel    remove it again
+  parlez panel-status       show where the panel is installed and whether it is current
+  parlez instances          list the After Effects instances whose agent is live
+  parlez help               this text
+
+Options for setup and doctor:
+  --version <major.minor>   only that After Effects preferences folder (e.g. 26.5)
+  --all                     setup: every supported After Effects found, without asking
+  --lang it|en              language of the messages; default: it (Italian)
+  --dry-run                 setup: report what would change without writing
 
 Options for install-/uninstall-/…-status of the agent and the panel:
   --version <major.minor>   only that After Effects version folder (e.g. 26.3); default: all present
@@ -37,6 +49,7 @@ Options for install-/uninstall-/…-status of the agent and the panel:
                             folder instead of the profile-derived ones
   --dry-run                 report what would change without writing
 
+The same commands answer to the earlier name, mcp-aftereffects.
 Address an instance from the server side with AE_MCP_INSTANCE=<id or project file name>; name an
 instance at launch by setting AE_MCP_INSTANCE in the environment that starts AfterFX.exe.
 `;
@@ -45,6 +58,9 @@ interface ParsedArgs {
   command: string;
   version?: string;
   dir?: string;
+  /** Only set when given, so callers comparing parsed shapes see no new keys. */
+  lang?: "it" | "en";
+  all?: boolean;
   dryRun: boolean;
   unknown: string[];
 }
@@ -57,6 +73,9 @@ export function parseCliArgs(argv: string[]): ParsedArgs {
     if (arg === "--dry-run") parsed.dryRun = true;
     else if (arg === "--version" && rest[i + 1]) parsed.version = rest[++i];
     else if (arg === "--dir" && rest[i + 1]) parsed.dir = rest[++i];
+    else if (arg === "--lang" && (rest[i + 1] === "it" || rest[i + 1] === "en")) {
+      parsed.lang = rest[++i] as "it" | "en";
+    } else if (arg === "--all") parsed.all = true;
     else parsed.unknown.push(arg);
   }
   return parsed;
@@ -82,15 +101,21 @@ export async function runCli(
         out(USAGE);
         return 0;
 
+      case "setup":
+        return await runSetup({ version: args.version, all: args.all, dryRun: args.dryRun }, out, {
+          lang: detectLang(args.lang),
+        });
+
+      case "doctor":
+        return await runDoctor({ version: args.version }, out, { lang: detectLang(args.lang) });
+
       case "install-agent": {
         const report = await installAgent(opts);
         for (const p of report.written) out(`${args.dryRun ? "would write" : "wrote"}    ${p}`);
         for (const p of report.unchanged) out(`up to date  ${p}`);
         if (report.written.length > 0 && !args.dryRun) {
           out("");
-          out(
-            "Restart After Effects for the agent to load. Then `mcp-aftereffects instances` lists it.",
-          );
+          out("Restart After Effects for the agent to load. Then `parlez instances` lists it.");
         }
         return 0;
       }

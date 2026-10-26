@@ -1,160 +1,41 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+Tutte le modifiche importanti di Parlez! per Adobe® After Effects® sono scritte qui.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Il formato segue [Keep a Changelog](https://keepachangelog.com/it-IT/1.1.0/) e i numeri di versione seguono il [Semantic Versioning](https://semver.org/lang/it/). La storia di mcp-aftereffects di kumo.productions, da cui Parlez! deriva, è in [`docs/CHANGELOG-kumo.md`](docs/CHANGELOG-kumo.md).
 
-## [0.3.2] - 2026-10-16
+## [Unreleased]
 
-### Security
+## [0.1.0] - 2026-10-26
 
-- The bundled MCP SDK and the libraries it depends on are updated to releases that fix known security vulnerabilities. No configuration changes are needed.
+Prima versione di Parlez!. Parte da mcp-aftereffects 0.3.2 di kumo.productions (licenza MIT) e aggiunge quello che segue. Provata solo su After Effects 2026 (26.5) / Windows 10; Mac, After Effects 2024 e 2025 sono scritti per funzionare ma non ancora provati.
 
-## [0.3.1] - 2026-09-29
+### Aggiunto
 
-### Added
+- **Installazione in un comando**: `parlez setup` trova After Effects, installa lo script di avvio e il pannello, controlla la casella «Consenti agli script di scrivere file e accedere alla rete» e stampa la configurazione per Claude Code e Claude Desktop. `parlez doctor` controlla tutto senza cambiare niente. Messaggi in italiano, o in inglese con `--lang en`.
+- **Pannello «Parlez!» dentro After Effects** (Finestra → Parlez!): un grande interruttore ON/OFF per fermare Claude, la modalità «sola lettura» (Claude guarda ma non modifica) e lo storico delle ultime richieste, anche su file. Si installa con `parlez setup` o `parlez install-panel`. Con nessuna scelta salvata Claude parte **fermo**.
+- **Conferme**: le operazioni che cancellano, sovrascrivono o rinominano si fermano, spiegano in italiano cosa farebbero e partono solo con `confirm: true`. I comandi di menu pericolosi sono vietati anche con la conferma.
+- **Punti di ripristino** (`checkpoint.create`, `checkpoint.list`, `checkpoint.restore`, `checkpoint.delete`): una copia datata del file `.aep` prima di un lavoro rischioso, per poter tornare indietro.
+- **Modalità riservata** (spenta di serie): prima che una risposta parta verso Claude toglie le cartelle dai percorsi, sostituisce i nomi di una lista con etichette come `[CLIENTE-1]` e può nascondere testi e immagini.
+- **Fotogrammi dentro la chat**: `ae_render_frame` restituisce l'immagine nella risposta, così Claude la vede subito; in più la «striscia della linea del tempo» (durata, keyframe, quanto si muove l'immagine).
+- **Controlli automatici** (`comp.audit`): segnala in italiano errori, avvisi e note di una composizione, con il modo di correggerli.
+- **Misure** (`reference.measure`, `frame.compare`, `comp.audit_motion`): misura un'immagine di riferimento, confronta un fotogramma con la reference zona per zona (ΔE) e dice quali livelli si muovono davvero.
+- **Aiuti di animazione**: 41 curve con nome (`keyframe.list_eases`, `keyframe.apply_ease`), sfalsamento dei livelli (`layer.stagger`) e 22 modelli di espressione (`expression.list_templates`, `expression.apply_template`).
+- **Render in sottofondo con aerender** (`aerender.info`, `aerender.start`, `aerender.status`, `aerender.cancel`): After Effects resta libero mentre il render va avanti. Scritto e provato offline, non ancora riuscito da Parlez! su un After Effects vero.
+- **Ricette** (`recipe.list`, `recipe.plan`, `recipe.run`): un pezzo grafico descritto in un file di dati diventa una sola chiamata, annullabile con un solo Ctrl+Z. Due ricette incluse: un lower third e un titolo in dissolvenza.
+- **Collegamento solo tramite lo script di avvio** (`AE_MCP_PULL_ONLY=1`, nome provvisorio): per i computer dove il collegamento diretto `AfterFX.exe -r` non consegna i comandi, come il PC su cui Parlez! è stato provato.
 
-- **Modal dialogs are detected and named.** While After Effects shows a modal dialog no script runs, and the dialog is often hidden behind the main window, so calls used to fail with a bare TIMEOUT or NO_INSTANCE. On Windows the server now reads the dialog from outside the process and fails with the new `DIALOG_OPEN` code, quoting its text (`details.dialogs` carries the process, window title and handle). `instance.dialogs` lists what every running After Effects is showing, and `instance.dismiss_dialog { id }` closes one with Escape — its cancel action, so a warning is acknowledged and a "Save changes before closing?" prompt is cancelled (project left open and unsaved), never answered. `instance.start` reports a dialog that kept the new instance from registering the same way.
-- **Dialog detection on macOS.** With Accessibility permission for the app running the server, every modal After Effects window is found (`AXModal`) with its text, and `instance.dismiss_dialog` closes it with Escape as on Windows — the dialog is focused inside After Effects first, without bringing it to the front — so a save prompt is cancelled and a warning acknowledged. Without the permission, windows at levels 8 and 101 are reported with empty text (`accessibility: false`) and cannot be dismissed. System Events is not used. Verified on AE 26.5 / macOS 26.4: while a dialog is up DoScript blocks until its timeout without stacking alerts, a timed-out script does not run later, and the agent resumes on its own once the dialog is closed. `instance.start` on macOS works with `open -n` (verified: a second instance registers) and now returns `pid: null`, since the pid it spawns is `open`'s.
+### Cambiato
 
-### Fixed
+- Il pacchetto si chiama `parlez` e il comando `parlez`; il vecchio comando `mcp-aftereffects` resta come secondo nome.
+- **Quando lo script di avvio è installato, il server usa solo quello** e non prova più `AfterFX.exe -r`, a meno che `AE_MCP_PULL_ONLY=0` lo chieda. Chi non installa lo script di avvio ha lo stesso comportamento di kumo.
+- Il server si presenta ai programmi di Claude con il nome `parlez`.
 
-- **Calls no longer stack "Cannot run a script while a modal dialog is waiting for response" alerts.** An agent stuck behind a dialog stops ticking, and the server then fell back to the `-r` push path: each of its three launch attempts added another alert that had to be clicked away. The push path now looks for dialogs before it launches when an agent has gone stale, and before every relaunch, and stops with `DIALOG_OPEN` instead. Verified on AE 26.5: the agent resumes on its own once the dialog is closed.
+### Corretto
 
-## [0.3.0] - 2026-09-28
+- L'agente non parte più dentro il motore di render (aerender) e il server ignora le istanze che non hanno mai lavorato davvero.
+- Un agente che smette di rispondere per qualche secondo (After Effects occupato) viene aspettato invece di passare al collegamento diretto.
+- Le guide create su After Effects 26.5 hanno di nuovo l'orientamento giusto.
+- La lettura dei metadati XMP del progetto è più robusta e dice che tipo di valore riceve.
 
-### Added
-
-- **Multiple After Effects instances (`AfterFX.exe -m`).** Instances started with `-m` never receive the `-r` scripts the server launches (verified on AE 26.3). A resident agent (`jsx/agent.jsx`, installed into the user-level `Scripts/Startup` folder by `mcp-aftereffects install-agent`) now serves each instance's own mailbox `<runtime>/instances/<id>/` from a scheduled task, so every instance is addressable. `AE_MCP_INSTANCE` (an id, or the open project's file name) picks the server's default, every AE-touching tool takes an `instance` argument for one call, and `ae_context` / `instance.list` show what is live. One live agent needs no configuration; with none, the push path is used unchanged. The agent's `#include`s are shared with the dispatcher through the new `jsx/serve.jsx`.
-- **Worker instances for parallel work**: `instance.start` (launch `-m`, wait for the agent to register, open a project or a copy of one), `instance.stop` (refuses unsaved changes unless `save` / `discardChanges`), `instance.list`, and `project.merge` (import a `.aep` as a folder, reporting the comps it brought). These are the first Node-side operations (`Operation.run`); they cannot ride inside `batch.run`.
-- CLI subcommands on the binary: `install-agent`, `uninstall-agent`, `agent-status`, `instances`.
-- `NO_INSTANCE` error code: no After Effects could take the call, with the live instances listed.
-- **15 composite operations from field feedback** — the work that used to need `eval.run` scripts, verified end-to-end against After Effects 26.3:
-  - **Keyframes**: `keyframe.apply` writes a whole key list with per-key easing in one call (`interp: linear | ease | easeIn | easeOut | hold | keep`, or explicit in/out types and influence/speed), optionally replacing existing keys and straightening spatial tangents. Its `hold` holds the OUT side only, so a fade that ends in a hold key still fades.
-  - **Layout & timing**: `layer.set_anchor` (anchor presets on the rendered bounds, explicit point, or offset — Position compensated, keys shifted), `layer.set_timing` (shift / startTime / inPoint / outPoint with a `'comp'` sentinel / stretch), `layer.set_visibility_schedule` (hold-key opacity or in/out ranges for many layers at once), `comp.set_layer_order` (stacking by name list), `comp.resize` (resize with content pinned to an anchor — every unparented Position, keys included, is offset), `project.rename` (items and/or layers by exact map or regex, with dry run), `layer.create_adjustment`.
-  - **Shape contents**: `shape.group_bounds` (per-group bounds in layer space, transforms and strokes included), `shape.recolor` (paint everything or substitute by color map, any depth), `shape.signature` (structural hash for duplicate detection), `layer.split_groups` (one layer per vector group, optionally re-anchored on its own artwork), `layer.convert_to_shapes` (runs "Create Shapes from Vector Layer" on imported Illustrator/PDF layers, strips the ` Outlines` suffix, can remove the source layer and footage).
-  - **Masks**: `mask.add` and `mask.set_path` accept `shape: 'ellipse' | 'rect'` + `size` (+ `center`, `roundness`), and `mask.set_path` takes `time` to key the path — a circular wipe is two calls.
-  - **Render & verify**: `render.variants` (render the same comp N times with different property values through a temporary queue item, values restored, other items left unrendered), `comp.sample` (values of chosen properties at several times across the layers of one or more comps, with per-layer active state — motion probes, visible-layer listings, match-cut comparison), and on `ae_render_frame` the `contactSheet` option (all frames tiled into one labelled PNG) and `analyze` (uniform edge bands = letterboxing / transparent margins, content bounds, coverage, mean color, per frame).
-  - **`layer.copy_to_comp`** gains `timeOffset`, `startTime`, `bakeAtTime` (freeze animated properties at a source time and drop the keys) and `name`, and now identifies the copy by `Layer.id` instead of assuming it landed on top.
-- **Array targets everywhere.** `layer` arguments that accept `'all'` (`transform.set`, `property.set`, `layer.set_props`, `layer.delete`, and every new op) also accept an array of index | name | `{ id }` | `'selected'`; comp patterns (`AE.findComps`) accept arrays too.
-- **New eval helpers in `jsx/toolkit.jsx`** — `AE.writeValue` / `readValue` / `offsetValue`, `AE.applyKeySpecs`, `AE.moveAnchor`, `AE.layerRect` / `pointInRect`, `AE.shapeGroupBounds` / `shapeLayerBounds`, `AE.walkShapeContents` / `recolorContents` / `canonicalGroup`, `AE.geometryShape`, `AE.propertyAtPath`, `AE.bakeKeysAtTime`, `AE.layerIdSnapshot` / `layersSince`, `AE.withSelection`, `AE.applyTemplate`. `ae_context` lists them and gains tips for the hold trap, separated dimensions, and Illustrator imports.
-- **`ae_layer_info` / `layer.info` gain `detail: 'summary'`** — drops properties still at their default value (no keyframes, no expression, never touched), typically shrinking a whole-comp audit by 5–10×. Group skeletons are kept, so the existence of effects and masks still shows.
-- **Keyframes now carry easing.** Serialized keyframes gain `inInterpName`/`outInterpName` (`"linear"|"bezier"|"hold"` — the numeric enum codes stay for the import contract) and, on bezier keys, `inEase`/`outEase` (per-dimension `{speed, influence}`). `ae_project_import_json` applies the ease on import, so export→import round trips no longer flatten easing.
-- **`ae_render_frame` accepts `times`** — several frames in one call (the motion-check pattern). Files land at `<outPath stem>_<index>.png`, reported index-aligned in `frames`, and the transient OCIO capture layer is set up once for all of them.
-- **Script errors now locate themselves.** Failed `ae_do` calls report `details.errorLine` (raw), `details.userCodeLine` (for `eval.run`: the 1-based line in the code you passed — the raw number is offset by the execution wrapper and was pointing 3 lines off), and `details.codeExcerpt` (the failing line ±2).
-- **New eval helpers**: `AE.setEase(prop, keyIndex, inInf, outInf, inSpeed?, outSpeed?)` (handles the spatial=1/per-dimension `KeyframeEase` bookkeeping), `AE.rect` / `AE.ellipse` (vector group + path + fill/stroke in one call — shape construction scripts halve), `AE.ensureParentDir(path)`, `AE.itemTypeName(item)`. `ae_context` lists them and gains a `tips` array (reparenting with keys → `layer.set_parent jump:true`, easing, summary audits).
-- **Unknown render/output template names warn with the available list.** Template names are localized ("Lossless" does not exist on a Japanese AE); `render.set_output` now retries case-insensitively against the target's own template list and, failing that, embeds that list in the warning — no separate `render.list_templates` round trip needed to self-correct.
-
-### Changed
-
-- **`keyframe.set_easing`'s `hold` preset is documented as symmetric** (both sides HOLD, which also freezes the segment before the key); the timeline's Toggle-Hold behaviour is `keyframe.set_interpolation outType: 'hold'` or `keyframe.apply interp: 'hold'`.
-
-### Fixed
-
-- **A call could "succeed" against a throwaway After Effects.** With nothing registered to receive `-r` — no After Effects running, or only `-m` instances — `AfterFX.exe` booted an instance of its own, ran the request on an empty project about eight seconds later, and quit. The transport now recognises a launcher child that outlives a forwarder, terminates it, and fails with `NO_INSTANCE` saying what to do.
-- **Writes to a separated Position failed with a hidden error.** After Separate Dimensions — and on layers made by "Create Shapes from Vector Layer", which can arrive separated — `setValue` on the leader property throws. `property.set`, `transform.set`, `keyframe.add`, `keyframe.set_batch` and the new ops now route to the X/Y/Z followers automatically (`AE.writeValue`); values may also be the export format's `__kind`-tagged Shape / TextDocument objects.
-- **`layer.copy_to_comp` operated on the wrong layer** when the target comp had layers above the landing spot: the copy was assumed to be layer 1. It is now found by identity.
-- **Every project item was reported as `"Folder"`** by `ae_context` (and `ae_project_info`'s `activeItem`). ExtendScript parses chained ternaries **left-associatively** — `a ? b : c ? d : e` runs as `(a ? b : c) ? d : e` — so the type chain always fell through to its last branch (verified on AE 26.3 / ExtendScript 4.5.6). Serializers now go through `AE.itemTypeName`, `ae_context` item types use the same `CompItem`/`FootageItem`/`FolderItem` vocabulary as `ae_project_info`, and a lint rule now rejects chained ternaries in all generated ExtendScript.
-- **The render queue no longer dies with "Directory does not exist".** `render.add_to_queue`, `render.set_output`, and `render.start` create missing output directories, matching what `ae_render_frame` always did.
-
-## [0.2.0] - 2026-08-12
-
-### Added
-
-- **61 new operations closing the gap to the AE 2024–2026 scripting surface** (137 → 198, now 23 categories), verified end-to-end against a live After Effects 26.3:
-  - **Text**: box and vertical text creation (`layer.create_text` with `boxSize`/`orientation`, AE 24.2), per-range styling (`text.set_style_range` over characters/paragraphs/composed lines, 24.3), layout measurement (`text.measure`: composed lines, paragraph spans, `baselineLocs`, box overflow), the 24.6 box controls on `text.set_box` (auto-fit policy, vertical alignment, first-baseline alignment, inset spacing), and the full 24.0 attribute surface on `text.set_style` (kerning, ligatures, RTL direction, tate-chu-yoko, paragraph indents/spacing, digit sets, composer engine, and more).
-  - **Variable fonts**: `text.set_variable_font` (design-axis values by tag), `text.add_font_axis` (keyframeable axis on a text animator, 26.0), `font.info` (full FontObject incl. design axes), `font.check_glyphs` (glyph coverage, 25.1), `font.list_used` (`Project.usedFonts`, 24.5).
-  - **Render queue**: raw settings access (`render.get_settings` / `render.set_settings` / `render.set_om_settings`, AE 13+), single-item `render.remove_item` and `render.duplicate_item`, and the render flag, `skipFrames`, `logType`, `postRenderAction`, `includeSourceXMP`, `queueItemNotify` on `render.set_output`.
-  - **3D**: `comp.set_renderer` / `comp.list_renderers` with scheme-proof friendly names (`classic3d`/`advanced3d`/`cinema4d`), environment lights (24.3), `layer.create_parametric_mesh` (26.3), and `ThreeDModelLayer`/`ParametricMeshLayer` recognition in `project.find_layers` and layer summaries.
-  - **Footage**: `footage.reload`, `footage.list_missing`, `footage.replace_with_solid` / `replace_with_placeholder`, solid/placeholder proxies, pulldown (`guessPulldown`/`removePulldown`), `item.usages` (reverse lookup), `project.import_placeholder`, and sequence frame ranges on `project.import_file`.
-  - **Keyframes**: `keyframe.set_interpolation` (asymmetric in/out linear|bezier|hold plus the temporal continuity/auto-bezier flags) and `keyframe.set_label` (22.6).
-  - **Effects and properties**: `effect.move` and `property.move` (stack/group reordering), `effect.set_dropdown_items` / `get_dropdown_items` (Dropdown Menu Control, the MOGRT-dropdown API, 17.0.1/26.0).
-  - **Misc**: `project.new`, `project.parse_swatch` (.ase palettes), `project.get_xmp` / `set_xmp`, `egp.add_layer` (media replacement, 18.0), `layer.scene_edit_detection` (22.3), `layer.set_parent` with `jump`, Layer-panel ruler guides, `shape.add_wiggle_transform`, marker cue-point fields, and viewer fast-preview/channel controls.
-  - **Preferences and app config** (new `pref` category): `pref.get` / `set` / `delete` (typed access to AE's preferences files incl. the PREFType selector), `pref.get_setting` / `set_setting` (script-scoped settings), `project.set_memory_limits`, `project.set_multi_frame_rendering` (22.0), `project.set_default_import_folder`, `project.get_tool` / `set_tool` (active Tools-panel tool), and the remaining project settings (`linearizeWorkingSpace`, `compensateForSceneReferredProfiles`, `displayStartFrame`, `feetFramesFilmType`, `footageTimecodeDisplayStartType`).
-  - **Font management**: `font.list_duplicates` (24.6), `font.get_lists` / `set_favorites` (Favorites/MRU, 24.6), `font.set_substitution` (auto-replacement policy + Adobe Fonts sync freeze, 24.6), `font.get/set_default_for_script` (per-writing-script defaults, 25.1).
-  - **More text/layer/render**: `text.paste_range` (copy text+styling between ranges, 25.1), `text.reset_style`, `keyframe.set_selected` / `property.select` (timeline selection staging), `render.save_template` (render/output-module templates), queue-wide `queueNotify` on `render.set_output`, `layer.calculate_transform` (corner-pin placement in 3D), `egp.open_in_panel`.
-- **Explicit-consent gate for app-configuration operations.** The eleven operations that change After Effects itself rather than the project (`pref.set/delete/set_setting`, `project.set_memory_limits` / `set_multi_frame_rendering` / `set_default_import_folder` / `set_tool`, `font.set_substitution` / `set_favorites` / `set_default_for_script`, `render.save_template`) now require `confirm: true` — to be passed only when the user explicitly requested the change. `ae_do` and `batch.run` both enforce it, and `ae_catalog` marks the operations `appConfig: true`.
-- **Enum names in `layer.set_props`**: `quality`, `samplingQuality`, `frameBlendingType`, `autoOrient`, `blendingMode`, and `lightType` accept string names — enum-valued attributes were previously unreachable through the generic passthrough.
-- **`mask.set_props`** gains `inverted`, `locked`, `color`, `rotoBezier`, `motionBlur`, `featherFalloff`; **`mask.set_path`** accepts the variable-width feather arrays.
-- **Dialog suppression in the dispatcher**: modal alerts raised while a request runs (missing fonts/footage on `project.open`, effect warnings) no longer wedge every later call.
-
-### Fixed
-
-- **`layer.set_blend_mode` silently failed for `silhouetteAlpha`** — the After Effects API spells that one member `SILHOUETE_ALPHA` (while luma is `SILHOUETTE_LUMA`); both spellings are now probed.
-- **`layer.set_track_matte` demanded the matte sit directly above the target** — the AE 23.0 API it already used takes any layer; the matte can now also be addressed by name.
-- **Project-boundary calls corrupted the undo stack.** `project.open` / `project.new` (and dialog suppression around undo/redo) ran inside the dispatcher's undo group; crossing a project boundary orphans the open group, After Effects 26 raises an async "UndoGroup Mismatch" dialog, and undo stays broken for the session. Both ops now run outside the group, the same exemption as undo/redo.
-- `project.find_layers` reported `ThreeDModelLayer` / `ParametricMeshLayer` layers as plain `AVLayer`/`Layer`.
-- Generic objects (swatch data, font usage records, design axes) serialized as `null` in results.
-
-## [0.1.3] - 2026-08-11
-
-### Fixed
-
-- **`project.undo` reverted nothing.** Like every other call it was wrapped in an undo group, and After Effects resolves Undo against the group that is still open — so the previous call survived and the undo stack was left out of step with the project. Undo and redo (`project.undo`, `command.execute` with id 16 or 2035) now run outside the group. As a consequence they can no longer be children of a `batch.run`, which is itself one undo group: issue them as their own `ae_do` call.
-
-## [0.1.2] - 2026-08-10
-
-### Fixed
-
-- **The GitHub Packages mirror never published anything.** Its "already published?" guard queried npmjs instead of GitHub Packages, so every release decided the version was already mirrored and skipped it. Installing from npmjs — the supported route — was never affected; GitHub Packages starts carrying the package at this version.
-
-## [0.1.1] - 2026-08-10
-
-### Fixed
-
-- **Every call timed out on After Effects builds without a native `JSON` (seen on macOS).** Responses could not be serialized, so no call ever completed.
-- **A failing dispatcher could raise a modal error dialog in After Effects,** which blocked every subsequent call until someone clicked OK.
-- **`layer.move` never worked** — it failed for every layer. Reordering now works in both directions, and an out-of-range `toIndex` returns a clear error.
-- Caught errors are now reported as readable messages instead of failing the call.
-- A response that cannot be serialized returns an error immediately instead of costing the full 60 s timeout.
-
-## [0.1.0] - 2026-08-09
-
-Initial public release of `@kumoproductions/mcp-aftereffects`.
-
-### Added
-
-- **136 atomic operations across 21 categories** — keyframes, properties and expressions, layers, shapes, text, masks, footage, project items, markers, guides, comps, render queue, fonts, Essential Graphics / MOGRT, and the viewer.
-- **Stable layer references.** Layer arguments accept `{ id: n }` alongside index and name, so references survive reordering and renaming.
-- **Color-managed capture.** `ae_render_frame` matches the After Effects viewer in color-managed projects and writes sRGB-tagged PNGs.
-- **Batched reads.** `ae_comp_info` accepts several comps, `ae_layer_info` accepts several layers or `"all"`, and both can run inside `batch.run` to verify a mutation in the same call.
-- **macOS support.**
-- **Argument validation** against the schema `ae_catalog` publishes, before After Effects is contacted.
-- **Read-only mode** (`AE_MCP_READONLY=1`) and a category allowlist (`AE_MCP_ALLOW_CATEGORIES`).
-- **Unified error envelope**: every failure returns `{ ok: false, error: { code, message, retryable } }`.
-- `AE_MCP_RUNTIME_DIR` to relocate the IPC mailbox, and a `timeoutMs` parameter on `ae_do`.
-
-### Changed
-
-- **Arbitrary ExtendScript is opt-in** — `eval.run` requires `AE_MCP_ENABLE_EVAL=1`.
-- **Concurrent calls are serialized across server processes,** so they no longer trigger After Effects' "second script" warning.
-- Each call uses its own mailbox files under the OS temp dir, so multiple clients coexist and a read-only install works.
-- Environment variables use the `AE_MCP_*` prefix (the legacy `AE_EXE` is still honored).
-
-### Fixed
-
-- Failed operations are reported as errors instead of success.
-- A timed-out request can no longer execute later.
-- A missing or blocked `AfterFX.exe` fails immediately instead of after 60 s.
-- Omitting an optional argument no longer breaks code generation.
-- Operation fixes: `layer.split`, `keyframe.set_easing`, `expression.restore_all`, `layer.create_light`, `project.undo`, `project.replace_font`, render queue indexing, and comp glob matching.
-
-### Security
-
-- Tool arguments can no longer be interpolated as executable code into the generated ExtendScript.
-- `JSON.parse` on the ExtendScript side validates input before evaluating it.
-- The IPC mailbox is created `0700`, the server warns when it is group- or world-writable, and no output path may target it.
-
-### Known limitations
-
-- Importing a project whose footage is missing can misattribute layer parenting.
-
-[0.3.2]: https://github.com/kumoproductions/mcp-aftereffects/releases/tag/v0.3.2
-[0.3.1]: https://github.com/kumoproductions/mcp-aftereffects/releases/tag/v0.3.1
-[0.3.0]: https://github.com/kumoproductions/mcp-aftereffects/releases/tag/v0.3.0
-[0.2.0]: https://github.com/kumoproductions/mcp-aftereffects/releases/tag/v0.2.0
-[0.1.3]: https://github.com/kumoproductions/mcp-aftereffects/releases/tag/v0.1.3
-[0.1.2]: https://github.com/kumoproductions/mcp-aftereffects/releases/tag/v0.1.2
-[0.1.1]: https://github.com/kumoproductions/mcp-aftereffects/releases/tag/v0.1.1
-[0.1.0]: https://github.com/kumoproductions/mcp-aftereffects/releases/tag/v0.1.0
+[0.1.0]: https://github.com/AnotherPerspective/Parlez/releases/tag/v0.1.0

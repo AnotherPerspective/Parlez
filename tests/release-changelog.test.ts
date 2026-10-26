@@ -24,7 +24,7 @@ const RELEASED = `## [0.1.0] - 2026-08-09
 
 - The first one.
 
-[0.1.0]: https://github.com/kumoproductions/mcp-aftereffects/releases/tag/v0.1.0
+[0.1.0]: https://github.com/AnotherPerspective/Parlez/releases/tag/v0.1.0
 `;
 
 const UNRELEASED = `## [Unreleased]
@@ -74,22 +74,20 @@ describe("release-changelog", () => {
       .split("\n")
       .filter((line) => line.startsWith("["));
     expect(defs).toEqual([
-      "[0.2.0]: https://github.com/kumoproductions/mcp-aftereffects/releases/tag/v0.2.0",
-      "[0.1.0]: https://github.com/kumoproductions/mcp-aftereffects/releases/tag/v0.1.0",
+      "[0.2.0]: https://github.com/AnotherPerspective/Parlez/releases/tag/v0.2.0",
+      "[0.1.0]: https://github.com/AnotherPerspective/Parlez/releases/tag/v0.1.0",
     ]);
   });
 
   it("starts a link block when the file has none", () => {
     const { read } = run(`${HEADER}\n${UNRELEASED}`, stamp);
     expect(
-      read().endsWith(
-        "\n[0.2.0]: https://github.com/kumoproductions/mcp-aftereffects/releases/tag/v0.2.0\n",
-      ),
+      read().endsWith("\n[0.2.0]: https://github.com/AnotherPerspective/Parlez/releases/tag/v0.2.0\n"),
     ).toBe(true);
   });
 
   it("replaces an [Unreleased] link definition rather than orphaning it", () => {
-    const content = `${HEADER}\n${UNRELEASED}${RELEASED}[Unreleased]: https://github.com/kumoproductions/mcp-aftereffects/compare/v0.1.0...HEAD\n`;
+    const content = `${HEADER}\n${UNRELEASED}${RELEASED}[Unreleased]: https://github.com/AnotherPerspective/Parlez/compare/v0.1.0...HEAD\n`;
     const { read } = run(content, stamp);
     expect(read()).not.toContain("[Unreleased]:");
     expect(read()).toContain("[0.2.0]: ");

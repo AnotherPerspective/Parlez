@@ -1,8 +1,10 @@
 name: Release
 
+# Manual only (Parlez!): nothing is published by pushing a tag. Anthony starts
+# a release from the Actions tab ("Run workflow", choosing the tag v<version>
+# as the ref) only after deciding to publish — see docs/distribuzione.md.
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -21,6 +23,13 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Refuse anything but a tag
+        run: |
+          set -eu
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            echo "::error::run this workflow on a tag (v<version>), not on ${GITHUB_REF_NAME}"
+            exit 1
+          fi
       - run: npm ci
       # Gate the whole release on the same quality bar as CI, so tagging a
       # broken or unreviewed commit can't ship it to npm irrevocably.
@@ -96,8 +105,8 @@ jobs:
         run: |
           set -eu
           VERSION="${GITHUB_REF_NAME#v}"
-          if npm view "@kumoproductions/mcp-aftereffects@${VERSION}" version >/dev/null 2>&1; then
-            echo "@kumoproductions/mcp-aftereffects@${VERSION} already on npm — skipping publish"
+          if npm view "parlez@${VERSION}" version >/dev/null 2>&1; then
+            echo "parlez@${VERSION} already on npm — skipping publish"
             exit 0
           fi
           npm publish --access public
@@ -133,7 +142,7 @@ jobs:
           set -eu
           VERSION="${GITHUB_REF_NAME#v}"
           for i in $(seq 1 30); do
-            if OUTPUT="$(npm view "@kumoproductions/mcp-aftereffects@${VERSION}" version 2>&1)"; then
+            if OUTPUT="$(npm view "parlez@${VERSION}" version 2>&1)"; then
               echo "npm has version ${VERSION}"
               exit 0
             fi
@@ -159,7 +168,7 @@ jobs:
         run: |
           set -eu
           VERSION="${GITHUB_REF_NAME#v}"
-          URL="https://registry.modelcontextprotocol.io/v0/servers/io.github.kumoproductions%2Fmcp-aftereffects/versions/${VERSION}"
+          URL="https://registry.modelcontextprotocol.io/v0/servers/io.github.anotherperspective%2Fparlez/versions/${VERSION}"
           STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "$URL")"
           if [ "$STATUS" = "200" ]; then
             echo "already published — skipping"
@@ -176,45 +185,3 @@ jobs:
       - name: Publish
         if: steps.registry_check.outputs.skip != 'true'
         run: mcp-publisher publish
-
-  ghpkg-mirror:
-    name: Mirror to GitHub Packages
-    needs: npm-publish
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: npm
-          registry-url: https://npm.pkg.github.com
-          scope: "@kumoproductions"
-
-      - run: npm ci
-      - run: npm run build
-
-      - name: Rewrite publishConfig for GitHub Packages
-        run: |
-          node -e "const f='package.json';const fs=require('node:fs');const p=JSON.parse(fs.readFileSync(f,'utf8'));p.publishConfig={access:'public',registry:'https://npm.pkg.github.com'};fs.writeFileSync(f, JSON.stringify(p,null,2)+'\n');"
-
-      - name: Publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -eu
-          VERSION="${GITHUB_REF_NAME#v}"
-          # The scope has to be redirected by config key, not by --registry: the
-          # repo's .npmrc pins @kumoproductions to npmjs, and a scoped registry
-          # setting outranks the flag. With --registry this guard queried npmjs,
-          # always found the version npm-publish had just shipped, and so skipped
-          # the mirror on every release.
-          if npm view "@kumoproductions/mcp-aftereffects@${VERSION}" \
-            --@kumoproductions:registry=https://npm.pkg.github.com version >/dev/null 2>&1; then
-            echo "@kumoproductions/mcp-aftereffects@${VERSION} already on GitHub Packages — skipping"
-            exit 0
-          fi
-          npm publish --@kumoproductions:registry=https://npm.pkg.github.com

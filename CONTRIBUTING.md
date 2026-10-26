@@ -1,4 +1,4 @@
-# Contributing to mcp-aftereffects
+# Contributing to Parlez! (fork of mcp-aftereffects)
 
 Thanks for your interest. This project connects Adobe After Effects to MCP clients (Claude Desktop / Claude Code and any other stdio-capable MCP client) through a TypeScript server that drives AE via file IPC plus a per-platform dispatcher launch (`AfterFX.exe -r` on Windows, `osascript`/DoScript on macOS). Most contributions will touch either the TS tool/operation definitions, the ExtendScript in `jsx/`, or both.
 
@@ -9,8 +9,8 @@ Thanks for your interest. This project connects Adobe After Effects to MCP clien
 - **Git** with `core.autocrlf` unset or set to `input` (repo enforces LF via `.gitattributes`)
 
 ```bash
-git clone https://github.com/kumoproductions/mcp-aftereffects.git
-cd mcp-aftereffects
+git clone https://github.com/AnotherPerspective/Parlez.git
+cd parlez
 npm install        # also runs `lefthook install`
 npm run build
 ```

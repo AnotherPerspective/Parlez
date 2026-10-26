@@ -27,6 +27,25 @@ if (srv.name !== pkg.mcpName) {
   errors.push(`name ${srv.name} != package.json mcpName ${pkg.mcpName}`);
 }
 
+// registry: an io.github.<owner>/… name is only accepted from <owner>'s GitHub
+// login, so a namespace that drifts from the repository fails at publish time.
+const namespace = /^io\.github\.([^/]+)\//.exec(srv.name ?? "");
+const repoOwner = /github\.com\/([^/]+)\//.exec(srv.repository?.url ?? "");
+if (namespace && repoOwner && namespace[1].toLowerCase() !== repoOwner[1].toLowerCase()) {
+  errors.push(`name namespace ${namespace[1]} != repository owner ${repoOwner[1]}`);
+}
+
+// Adobe's trademark guidelines: the product name never contains "Adobe",
+// "After Effects" or "AE" (the description may say "for Adobe® After Effects®").
+for (const [field, value] of [
+  ["package.json name", pkg.name],
+  ["server.json name", srv.name],
+]) {
+  if (/adobe|after-?\s?effects|aftereffects|(^|[^a-z])ae([^a-z]|$)/i.test(value ?? "")) {
+    errors.push(`${field} "${value}" uses an Adobe trademark — the name must not`);
+  }
+}
+
 // The version triple is what release.yml compares against the git tag; catching
 // a drift here means never discovering it mid-release.
 if (srv.version !== pkg.version) {
