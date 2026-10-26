@@ -28,6 +28,7 @@ import {
   aerenderLaunchPlan,
   aerenderCandidates,
   existingOutputFiles,
+  isFile,
   lastLines,
   logPathFor,
   normalizeOutputPath,
@@ -59,8 +60,19 @@ function shellArgsBack(args: string[]): string[] {
 // Fixtures
 
 let root: string;
-let afterFx: string;
-let aerenderExe: string;
+// A Windows install played on any system (the CI runs on Linux): these
+// paths exist only in the fake file system below, and the code under test
+// builds the aerender candidate with Windows path rules because the hooks say
+// "win32". Real files are used only where a test needs one (macOS layout,
+// AE_MCP_AERENDER).
+const SUPPORT = "C:\\Program Files\\Adobe\\Adobe After Effects 2026\\Support Files";
+const afterFx = `${SUPPORT}\\AfterFX.exe`;
+const aerenderExe = `${SUPPORT}\\aerender.exe`;
+const AERENDER_SLASHED =
+  "C:/Program Files/Adobe/Adobe After Effects 2026/Support Files/aerender.exe";
+const FAKE_FILES = new Set([AERENDER_SLASHED.toLowerCase()]);
+/** A real file standing in for aerender when a test needs one on disk. */
+let realAerender: string;
 let outDir: string;
 
 /** What the fake After Effects answers to aerender.prep. */
@@ -132,6 +144,7 @@ function installFake(platform: NodeJS.Platform = "win32", exe: () => string = ()
   restoreHooks = setAerenderHooksForTests({
     platform,
     afterFxPath: exe,
+    fileExists: (p: string) => FAKE_FILES.has(p.replace(/\\/g, "/").toLowerCase()) || isFile(p),
     spawn: (command: string, args: string[], options: SpawnOptions) => {
       spawned.push({ command, args, env: options.env, options });
       // Shell mode starts cmd.exe; the fake still runs as itself, with the
@@ -148,12 +161,8 @@ function installFake(platform: NodeJS.Platform = "win32", exe: () => string = ()
 
 beforeAll(() => {
   root = mkdtempSync(path.join(os.tmpdir(), "parlez-aerender-"));
-  const support = path.join(root, "Adobe After Effects 2026", "Support Files");
-  mkdirSync(support, { recursive: true });
-  afterFx = path.join(support, "AfterFX.exe");
-  aerenderExe = path.join(support, "aerender.exe");
-  writeFileSync(afterFx, "");
-  writeFileSync(aerenderExe, "");
+  realAerender = path.join(root, "aerender-vero.exe");
+  writeFileSync(realAerender, "");
   mkdirSync(path.join(root, "progetti"), { recursive: true });
   writeFileSync(path.join(root, "progetti", "Spot.aep"), "aep");
 });
@@ -340,7 +349,8 @@ describe("aerender.info", () => {
   it("finds aerender.exe next to AfterFX.exe", async () => {
     const r = await ok("aerender.info", {});
     expect(r).toMatchObject({ found: true, source: "afterEffects", platform: "win32" });
-    expect(r.path).toBe(aerenderExe.replace(/\\/g, "/"));
+    expect(r.path).toBe(AERENDER_SLASHED);
+    expect(r.afterEffects).toBe(afterFx.replace(/\\/g, "/"));
   });
 
   it("finds aerender beside the .app on macOS", async () => {
@@ -356,10 +366,10 @@ describe("aerender.info", () => {
   });
 
   it("reports every path tried when aerender is missing, and when After Effects is", async () => {
-    installFake("win32", () => path.join(root, "nowhere", "AfterFX.exe"));
+    installFake("win32", () => "C:\\nowhere\\AfterFX.exe");
     const r = await ok("aerender.info", {});
     expect(r.found).toBe(false);
-    expect(r.tried).toEqual([path.join(root, "nowhere", "aerender.exe").replace(/\\/g, "/")]);
+    expect(r.tried).toEqual(["C:/nowhere/aerender.exe"]);
     installFake("win32", () => {
       throw new Error("Could not locate AfterFX.exe");
     });
@@ -369,7 +379,7 @@ describe("aerender.info", () => {
   });
 
   it("takes AE_MCP_AERENDER first", async () => {
-    process.env[AERENDER_ENV] = aerenderExe;
+    process.env[AERENDER_ENV] = realAerender;
     installFake("win32", () => {
       throw new Error("not consulted");
     });
@@ -480,7 +490,7 @@ describe("aerender.start refuses", () => {
   });
 
   it("when aerender cannot be found", async () => {
-    installFake("win32", () => path.join(root, "nowhere", "AfterFX.exe"));
+    installFake("win32", () => "C:\\nowhere\\AfterFX.exe");
     const e = await refused("aerender.start", { comp: "Principale", output: out() });
     expect(e.code).toBe("AE_NOT_FOUND");
     expect(e.message).toContain("nowhere");
@@ -501,7 +511,8 @@ describe("aerender.start → status → done", () => {
     expect(String(r.id)).toMatch(/^aer-\d+$/);
     // The command names aerender, the project and the output — nothing from the mailbox.
     const command = r.command as string[];
-    expect(command[0]).toBe(aerenderExe.replace(/\\/g, "/"));
+    expect(command[0]).toBe(AERENDER_SLASHED);
+    expect(spawned[0]!.command).toBe(aerenderExe);
     expect(command.join(" ")).not.toContain(RUNTIME_DIR.replace(/\\/g, "/"));
     expect(spawned[0]!.args).toEqual([
       "-project",
@@ -889,7 +900,9 @@ describe("how aerender is launched (AE 26.5 / Windows, 2026-10-26)", () => {
     expect(spawned).toHaveLength(0);
   });
 
-  it.runIf(process.platform === "win32")(
+  // The only test here that needs Windows itself: it runs the real cmd.exe.
+  // Everything else plays Windows through the injected platform and paths.
+  it.skipIf(process.platform !== "win32")(
     "shell mode, through the real cmd.exe: quoting, the log redirect and the exit code all hold",
     async () => {
       // node.exe stands in for aerender.exe; the fake is its first argument.

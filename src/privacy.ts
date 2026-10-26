@@ -86,7 +86,11 @@ const DEFAULT_CATEGORY = "CLIENTE";
 const PATH_START =
   String.raw`(?:(?<![A-Za-z0-9])[A-Za-z]:[\\/]` +
   String.raw`|(?<![\w\\])\\\\[\w.$-]+\\` +
-  String.raw`|(?<![\w.~:/\\])\/(?:Users|Volumes)\/` +
+  // Named roots only: a bare "/x/y" is also expression.disable_all's property
+  // path ("/2/1/4"). /var and /private are where macOS keeps os.tmpdir() —
+  // the IPC mailbox lives there — and /tmp, /home are the Linux equivalents
+  // (the CI runs on Linux; the mailbox path leaked through before).
+  String.raw`|(?<![\w.~:/\\])\/(?:Users|Volumes|Library|Applications|System|Network|private|var|tmp|home|opt|mnt|media|srv|root|usr|etc)\/` +
   String.raw`|(?<![\w.~:/\\])\/[A-Za-z]\/` +
   String.raw`|(?<![\w.~/\\])~[\\/])`;
 

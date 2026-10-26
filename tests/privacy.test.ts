@@ -205,6 +205,14 @@ describe("stripPaths", () => {
     ["/c/Users/anthony/Rossi/spot.aep", "spot.aep"],
     ["file:///C:/Clienti/Rossi/spot.aep", "file:///spot.aep"],
     ["C:/Users/Anthony's Work/Rossi/spot.aep", "spot.aep"],
+    // macOS temp (the IPC mailbox sits here) and system folders.
+    ["/var/folders/x7/abc123/T/mcp-aftereffects/runtime/Rossi.json", "Rossi.json"],
+    ["/private/var/folders/x7/abc123/T/out.png", "out.png"],
+    ["/Applications/Adobe After Effects 2026/aerender", "aerender"],
+    ["/Library/Fonts/Rossi Brand.otf", "Rossi Brand.otf"],
+    // Linux (the CI): temp and home.
+    ["/tmp/mcp-aftereffects/runtime/Rossi.json", "Rossi.json"],
+    ["/home/anthony/Lavori/Rossi/spot.aep", "spot.aep"],
   ])("reduces %s to the file name", (input, expected) => {
     expect(stripPaths(input)).toBe(expected);
   });
@@ -235,6 +243,9 @@ describe("stripPaths", () => {
     "w/h ratio 16/9",
     "AE.findComps(nameOrIdOrPattern) — '*' glob supported",
     "a:b/c",
+    "https://example.com/tmp/x.png",
+    "var/let are not ES3-safe",
+    "/var",
     "",
   ])("leaves %j alone", (input) => {
     expect(stripPaths(input)).toBe(input);

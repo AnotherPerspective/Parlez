@@ -56,6 +56,13 @@ export interface AerenderHooks {
   /** resolveAfterFxPath(): AfterFX.exe on Windows, the .app bundle on macOS. Throws when not found. */
   afterFxPath(): string;
   platform: NodeJS.Platform;
+  /**
+   * True when `p` is a regular file. Injected so the tests can play a
+   * Windows install (C:/Program Files/…/aerender.exe) on any system: the
+   * candidates are built with the injected platform's path rules, and only
+   * a fake file system can answer for them on another one.
+   */
+  fileExists(p: string): boolean;
   /** Stop the render and everything it started (see killProcessTree). */
   killTree(child: ChildProcess): Promise<void>;
   now(): number;
@@ -96,6 +103,7 @@ const DEFAULT_HOOKS: AerenderHooks = {
   spawn: (command, args, options) => nodeSpawn(command, args, options),
   afterFxPath: () => resolveAfterFxPath(),
   platform: process.platform,
+  fileExists: isFile,
   killTree: killProcessTree,
   now: () => Date.now(),
 };
@@ -185,11 +193,11 @@ export function findAerender(): AerenderLocation {
   if (env) {
     const p = normalizeOutputPath(env);
     return {
-      path: isFile(p) ? p : null,
+      path: hooks.fileExists(p) ? p : null,
       tried: [slash(p)],
       source: "env",
       afterEffects: null,
-      ...(isFile(p) ? {} : { reason: `${AERENDER_ENV} non indica un file esistente` }),
+      ...(hooks.fileExists(p) ? {} : { reason: `${AERENDER_ENV} non indica un file esistente` }),
     };
   }
   let afterFx: string;
@@ -205,7 +213,7 @@ export function findAerender(): AerenderLocation {
     };
   }
   const candidates = aerenderCandidates(afterFx, hooks.platform);
-  const found = candidates.find((c) => isFile(c)) ?? null;
+  const found = candidates.find((c) => hooks.fileExists(c)) ?? null;
   return {
     path: found,
     tried: candidates.map(slash),
