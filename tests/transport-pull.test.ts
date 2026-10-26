@@ -529,6 +529,26 @@ describe("pull path: «Sola lettura» (Parlez!)", () => {
     expect(agent.served[0]).toMatchObject({ mutates: true });
   });
 
+  it("puts the plain-Italian title in the request, for the panel's history", async () => {
+    agent = new FakeAgent(() => "ran");
+    await agent.start();
+    const transport = new FileIpcTransport({
+      instance: agent.id,
+      spawn: recordingSpawn(() => {}).spawn,
+    });
+    await transport.execute({ code: "return 1;", label: "layer.create_text", timeoutMs: 5_000 });
+    await transport.execute({
+      code: "return 1;",
+      label: "batch.run",
+      steps: ["layer.create_null", "layer.move"],
+      timeoutMs: 5_000,
+    });
+    expect(agent.served.map((r) => r.title)).toEqual([
+      "crea livello di testo",
+      "lotto di 2 operazioni: crea oggetto nullo, sposta livello",
+    ]);
+  });
+
   it("maps an agent's `readOnly` answer to READ_ONLY", async () => {
     agent = new FakeAgent(() => "ran");
     agent.refuse = "readOnly";

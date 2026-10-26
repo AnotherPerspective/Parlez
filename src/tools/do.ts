@@ -213,6 +213,7 @@ export const doTool = defineTool({
       // The same flag AE_MCP_READONLY goes by; the panel's "Sola lettura"
       // switch refuses every call not marked false.
       mutates: op.readOnly !== true,
+      steps: batchSteps(op.name, validated.value),
       timeoutMs: doArgs.timeoutMs ?? 60_000,
     });
 
@@ -337,4 +338,17 @@ function jsxErrorLocation(
     out.codeExcerpt = excerpt.join("\n");
   }
   return out;
+}
+
+/**
+ * The operations a batch.run will run, by name, for the panel's history.
+ * Only names the registry knows: anything else becomes "?", so nothing the
+ * caller typed reaches the history but registered operation names.
+ */
+function batchSteps(opName: string, args: Record<string, unknown>): string[] | undefined {
+  if (opName !== "batch.run" || !Array.isArray(args.ops)) return undefined;
+  return args.ops.map((child) => {
+    const name = (child as { operation?: unknown } | null)?.operation;
+    return typeof name === "string" && getOp(name) ? name : "?";
+  });
 }

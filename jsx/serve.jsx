@@ -87,17 +87,20 @@ AE_MCP.appendLog = function (logPath, msg) {
 // needs anyway. The server learns of them through the agent's heartbeat
 // (`paused`, `readOnly`).
 //
-// claudeEnabled absent means allowed, here: an install without the panel
-// must keep working exactly as before. Where the panel IS installed the
-// agent writes "0" at startup when the entry is missing (jsx/agent.jsx), and
-// so does the panel the first time it opens, so whoever has the switch starts
-// with Claude stopped. Anything but "0" also means allowed, so a damaged
-// entry cannot lock the user out without a switch to show for it. readOnly is
-// on only when it says exactly "1".
+// ONE rule, here, for everyone: Claude may work only when claudeEnabled says
+// exactly "1". Absent (nobody ever touched the switch), "0", or anything
+// else means stopped. The panel calls AE_MCP.isEnabled too (it is exported
+// on $.global below), so what the panel shows and what the agent does cannot
+// disagree — they did on AE 26.5 on 2026-10-25, when this file read "absent"
+// as allowed while the panel showed "stopped". readOnly is on only when it
+// says exactly "1".
 //
-// Section and keys are mirrored in src/config.ts, jsx/agent.jsx and
-// jsx/panel.jsx. Messages use \u escapes so they read the same whatever
-// encoding After Effects assumes for this file.
+// Consequence: without the panel there is no way to switch Claude on —
+// install-panel is part of the install.
+//
+// Section and keys are mirrored in src/config.ts and jsx/panel.jsx. Messages
+// use \u escapes so they read the same whatever encoding After Effects
+// assumes for this file.
 AE_MCP.PAUSE_SECTION = "Parlez";
 AE_MCP.PAUSE_KEY = "claudeEnabled";
 AE_MCP.READ_ONLY_KEY = "readOnly";
@@ -113,13 +116,22 @@ AE_MCP.readSwitch = function (key) {
     }
 };
 
+AE_MCP.isEnabled = function () {
+    return AE_MCP.readSwitch(AE_MCP.PAUSE_KEY) === "1";
+};
+
 AE_MCP.isPaused = function () {
-    return AE_MCP.readSwitch(AE_MCP.PAUSE_KEY) === "0";
+    return !AE_MCP.isEnabled();
 };
 
 AE_MCP.isReadOnly = function () {
     return AE_MCP.readSwitch(AE_MCP.READ_ONLY_KEY) === "1";
 };
+
+// The panel (a separate script, copied, that cannot #include this file)
+// finds the rule here. try: $.global is ExtendScript's; a missing one only
+// means the panel falls back to its own copy of the same rule.
+try { $.global.AE_MCP = AE_MCP; } catch (eExport) { /* not ExtendScript */ }
 
 /**
  * Oldest pending request-*.json directly inside `dir`, or null. Oldest-first
@@ -153,7 +165,7 @@ AE_MCP.oldestRequestIn = function (dir) {
  * @param requestFile  File   the request-<id>.json to serve
  * @param mailboxDir   string directory holding it; the response goes next to it
  * @param logPath      string append-only log for this serving path
- * @returns { outcome, label, mutates, undoGroup } for the agent's list of
+ * @returns { outcome, label, title, mutates, undoGroup } for the agent's list of
  *   recent requests: outcome is "ok", "error" (the request or its code
  *   failed), "paused" or "readonly" (refused by a panel switch, nothing ran);
  *   label is the request's label, null when it could not be read.
@@ -199,12 +211,15 @@ AE_MCP.serveRequest = function (requestFile, mailboxDir, logPath) {
     /** What the agent records about this request - never its code or payload. */
     function summary(outcome) {
         var label = null;
+        var title = null;
         try {
             if (request && typeof request.label === "string") label = request.label;
+            if (request && typeof request.title === "string") title = request.title;
         } catch (eLbl) { /* keep null */ }
         return {
             outcome: outcome,
             label: label,
+            title: title,
             mutates: !(request && request.mutates === false),
             undoGroup: !(request && request.undoGroup === false)
         };

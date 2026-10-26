@@ -34,15 +34,20 @@
 // `refused`, not `served` (the same for `readOnly` and a request that may
 // change the project).
 //
-// Where the panel is installed, the pause switch starts on "stopped": at
-// startup, with no choice saved yet, the agent saves "0" itself. Before,
-// only the panel did that, the first time it opened — so until someone
-// opened it, Claude could work (seen on AE 26.5, 2026-10-25).
+// With no choice saved the switch reads as "stopped" (the one rule lives in
+// AE_MCP.isEnabled, jsx/serve.jsx, and the panel uses it too).
 //
-// The heartbeat also carries the last RECENT_MAX requests (time, label,
-// outcome) and when the last one arrived, for the panel's "Ultime azioni".
-// Labels are operation or tool names chosen by the server; the request's
-// code and payload are never recorded.
+// For the panel, the heartbeat also carries: the last RECENT_MAX requests
+// (time, label, the server's plain-Italian title, outcome, duration), when
+// the last one arrived, and how many are waiting (`pending`, "sta
+// ricevendo"). Every request also gets one line in a history file, one file
+// per After Effects session, in the user's application data folder (see
+// historyFile). Labels and titles are operation or tool names chosen by the
+// server; the request's code and payload are never recorded.
+//
+// Around each request the agent asks the panel to redraw
+// ($.global.AE_MCP_PANEL.onAgent), because no scheduled refresh can run
+// while a request does: that is the only moment "sta elaborando" can show.
 //
 // SECURITY: same trust boundary as the shared mailbox — whoever can write
 // into <runtime>/instances/<id>/ executes code inside this AE. The directory
@@ -68,12 +73,11 @@
 
 (function agentEntry() {
     // 2: stays out of the render engine (aerender) and knows the pause switch (`paused` / `refused` in the heartbeat).
-    // 3: "Sola lettura" (`readOnly`), recent requests (`recent`, `lastRequestAt`), "stopped" by default where the panel is installed.
+    // 3: "Sola lettura" (`readOnly`), recent requests (`recent`, `lastRequestAt`, `pending`), history file.
     var AGENT_VERSION = 3;
     var RECENT_MAX = 8;
     var LABEL_MAX = 60;
-    // Mirrored in src/config.ts (PAUSE_SETTINGS_*, PANEL_FILENAME, LEGACY_PANEL_FILENAMES).
-    var PANEL_FILENAMES = ["Parlez!.jsx", "Parlez (provvisorio).jsx"];
+    var TITLE_MAX = 120;
     var TICK_MS = 250;
     var HEARTBEAT_MS = 1000;
 
@@ -188,56 +192,57 @@
         return false;
     }
 
-    /**
-     * This After Effects version's user-level Scripts folder, derived the way
-     * src/agent-install.ts derives it (that is where install-panel copies the
-     * panel), or null. The version folder is app.version's major.minor
-     * ("26.5x87" -> "26.5").
-     */
-    function userScriptsDir() {
-        var m = /^(\d+\.\d+)/.exec(String(app.version));
-        if (!m) return null;
-        if (String($.os).indexOf("Windows") >= 0) {
-            var appData = null;
-            try { appData = $.getenv("APPDATA"); } catch (eEnv) { /* no env access */ }
-            if (!appData) {
-                try { appData = Folder.userData.fsName; } catch (eUd) { /* unknown */ }
-            }
-            if (!appData) return null;
-            return normalizePath(appData) + "/Adobe/After Effects/" + m[1] + "/Scripts";
-        }
-        return "~/Library/Preferences/Adobe/After Effects/" + m[1] + "/Scripts";
+    function pad2(n) {
+        return (n < 10 ? "0" : "") + String(n);
     }
 
-    function panelInstalled() {
-        var scripts = userScriptsDir();
-        if (scripts === null) return false;
-        for (var i = 0; i < PANEL_FILENAMES.length; i++) {
-            try {
-                if (new File(scripts + "/ScriptUI Panels/" + PANEL_FILENAMES[i]).exists) return true;
-            } catch (eExists) { /* keep looking */ }
-        }
-        return false;
+    function stamp(d) {
+        return String(d.getFullYear()) + pad2(d.getMonth() + 1) + pad2(d.getDate()) + "-" +
+            pad2(d.getHours()) + pad2(d.getMinutes()) + pad2(d.getSeconds());
     }
 
-    /** Where the panel is installed and no choice is saved yet, save "stopped". */
-    function defaultToStopped() {
-        try {
-            if (app.settings.haveSetting(AE_MCP.PAUSE_SECTION, AE_MCP.PAUSE_KEY)) return false;
-            if (!panelInstalled()) return false;
-            app.settings.saveSetting(AE_MCP.PAUSE_SECTION, AE_MCP.PAUSE_KEY, "0");
-            return true;
-        } catch (eDefault) {
-            return false;
-        }
+    function clock(d) {
+        return pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds());
     }
+
+    /** "0,4 s", "12 s": the way the panel and the history show a duration. */
+    function seconds(ms) {
+        if (typeof ms !== "number" || ms < 0) return "";
+        if (ms < 10000) return (Math.round(ms / 100) / 10).toString().replace(".", ",") + " s";
+        return String(Math.round(ms / 1000)) + " s";
+    }
+
+    var OUTCOME_WORDS = {
+        ok: "eseguita",
+        error: "errore",
+        paused: "rifiutata (pausa)",
+        readonly: "rifiutata (sola lettura)"
+    };
 
     /** A label fit for the panel: one line, bounded, never empty. */
-    function cleanLabel(label) {
+    function cleanLabel(label, max) {
         if (typeof label !== "string" || label.length === 0) return "(senza nome)";
+        var limit = max || LABEL_MAX;
         var s = label.replace(/[\x00-\x1f\x7f]+/g, " ");
-        if (s.length > LABEL_MAX) s = s.substring(0, LABEL_MAX - 3) + "...";
+        if (s.length > limit) s = s.substring(0, limit - 3) + "...";
         return s;
+    }
+
+    /**
+     * Where this session's history goes: <user data>/Parlez/storico/ —
+     * %APPDATA%\Parlez\storico on Windows, ~/Library/Application Support/
+     * Parlez/storico on macOS. Not the mailbox (swept an hour after After
+     * Effects closes, and a temp folder the system may clear), not next to
+     * the project (that would put our files into client folders, and a
+     * session spans projects). Null when there is nowhere to write.
+     */
+    function historyDir() {
+        try {
+            var dir = normalizePath(Folder.userData.fsName) + "/Parlez/storico";
+            return ensureDir(dir) ? dir : null;
+        } catch (eDir) {
+            return null;
+        }
     }
 
     function agentMain() {
@@ -260,9 +265,10 @@
             refused: 0,
             paused: false,
             readOnly: false,
-            pauseDefaulted: false,
             lastRequestAt: null,
+            pending: 0,
             recent: [],
+            historyPath: null,
             busy: false,
             busySince: null,
             dir: null,
@@ -306,6 +312,7 @@
                 paused: state.paused,
                 readOnly: state.readOnly,
                 lastRequestAt: state.lastRequestAt,
+                pending: state.pending,
                 recent: state.recent,
                 busy: state.busy,
                 busySince: state.busySince,
@@ -321,14 +328,18 @@
          * an undo group and may have changed the project — so one Undo right
          * after reverts it (what the panel's "Annulla" button relies on).
          */
-        function remember(summary, outcome) {
+        function remember(summary, outcome, ms) {
             try {
+                var label = cleanLabel(summary ? summary.label : null);
                 var entry = {
                     t: state.lastRequestAt,
-                    label: cleanLabel(summary ? summary.label : null),
+                    label: label,
+                    title: (summary && typeof summary.title === "string") ? cleanLabel(summary.title, TITLE_MAX) : label,
                     outcome: outcome,
+                    ms: ms,
                     undoable: !!(summary && outcome === "ok" && summary.mutates && summary.undoGroup)
                 };
+                writeHistory(entry);
                 var next = [];
                 var from = state.recent.length - (RECENT_MAX - 1);
                 for (var i = (from > 0 ? from : 0); i < state.recent.length; i++) next.push(state.recent[i]);
@@ -337,7 +348,53 @@
             } catch (eRemember) { /* the list is a convenience; serving goes on */ }
         }
 
+        /** One line per request in this session's history file. Never throws. */
+        function writeHistory(entry) {
+            try {
+                if (state.historyPath === null) {
+                    var dir = historyDir();
+                    if (dir === null) return;
+                    state.historyPath = dir + "/storico-" + stamp(new Date(state.startedAt)) + "-" + state.id + ".txt";
+                    var head = new File(state.historyPath);
+                    head.encoding = "UTF-8";
+                    if (head.open("a")) {
+                        head.writeln("Parlez! - storico delle richieste di Claude, istanza " + state.id +
+                            ", After Effects " + app.version + ", aperto il " + new Date(state.startedAt).toString());
+                        head.writeln("ora      | cosa | operazione | esito | durata");
+                        head.close();
+                    }
+                }
+                var f = new File(state.historyPath);
+                f.encoding = "UTF-8";
+                if (!f.open("a")) return;
+                var words = OUTCOME_WORDS.hasOwnProperty(entry.outcome) ? OUTCOME_WORDS[entry.outcome] : entry.outcome;
+                f.writeln(clock(new Date(entry.t)) + " | " + entry.title + " | " + entry.label + " | " + words +
+                    " | " + seconds(entry.ms));
+                f.close();
+            } catch (eHistory) { /* the history is a convenience; serving goes on */ }
+        }
+
+        /** Let an open panel redraw now: no scheduled refresh runs during a request. */
+        function notifyPanel() {
+            try {
+                var panel = $.global.AE_MCP_PANEL;
+                if (panel && typeof panel.onAgent === "function") panel.onAgent();
+            } catch (ePanel) { /* the panel is a convenience; serving goes on */ }
+        }
+
+        function countPending() {
+            try {
+                var files = new Folder(state.dir).getFiles("request-*.json");
+                return files ? files.length : 0;
+            } catch (eCount) {
+                return 0;
+            }
+        }
+
         function tick() {
+            // A panel redraw during a request may let After Effects run a
+            // scheduled tick; one request at a time.
+            if (state.busy) return;
             try {
                 state.ticks++;
                 var paused = AE_MCP.isPaused();
@@ -353,24 +410,33 @@
                 }
                 heartbeat(switchChanged);
 
+                var pending = countPending();
+                if (pending !== state.pending) {
+                    state.pending = pending;
+                    heartbeat(true);
+                }
                 var request = AE_MCP.oldestRequestIn(state.dir);
                 if (request === null) return;
 
                 state.busy = true;
                 state.busySince = new Date().getTime();
                 state.lastRequestAt = state.busySince;
+                state.pending = (pending > 0) ? pending - 1 : 0;
                 heartbeat(true);
+                notifyPanel();
                 var summary = null;
                 try {
                     summary = AE_MCP.serveRequest(request, state.dir, state.dir + "/agent.log");
                 } finally {
+                    var ms = new Date().getTime() - state.busySince;
                     state.busy = false;
                     state.busySince = null;
                     var outcome = (summary && typeof summary.outcome === "string") ? summary.outcome : "error";
                     if (outcome === "paused" || outcome === "readonly") state.refused++;
                     else state.served++;
-                    remember(summary, outcome);
+                    remember(summary, outcome, ms);
                     heartbeat(true);
+                    notifyPanel();
                 }
             } catch (eTick) {
                 state.lastError = describeError(eTick);
@@ -391,7 +457,6 @@
                 state.taskId = null;
             }
         };
-        state.pauseDefaulted = defaultToStopped();
         // Run once now so the instance is registered before the first
         // scheduled tick, then keep going for the life of the process.
         tick();

@@ -242,8 +242,8 @@ export const PAUSED_MESSAGE =
   "Claude è in pausa in After Effects: accendi l'interruttore nel pannello Parlez!";
 export const PAUSED_HINT =
   "L'utente ha fermato Claude dal pannello in After Effects (menu Finestra › Parlez!). " +
-  "Non riprovare e non cercare altre strade: chiedi all'utente di premere «Lascia lavorare Claude» " +
-  "nel pannello e riprova solo quando lo dice.";
+  "Non riprovare e non cercare altre strade: chiedi all'utente di mettere su ON " +
+  "il grande interruttore del pannello e riprova solo quando lo dice.";
 
 /** What a mutating call answers while the panel says "Sola lettura". */
 export const READ_ONLY_MESSAGE =

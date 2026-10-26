@@ -3,42 +3,39 @@
 // A ScriptUI panel: plain ExtendScript, no CEP, no extension. `install-panel`
 // copies this file into the user-level Scripts/ScriptUI Panels folder as
 // "Parlez!.jsx", and After Effects lists it under the Window menu by that
-// name; it docks like any other panel and takes After Effects' dark look.
-// Run as an ordinary script (File > Scripts > Run Script File...) it opens as
-// a floating window instead.
+// name; it docks like any other panel. Run as an ordinary script (File >
+// Scripts > Run Script File...) it opens as a floating window instead.
 //
-// What it shows, top to bottom:
-//   - a traffic light: green "Claude puo lavorare", red "Claude fermo",
-//     yellow "Claude sta lavorando" (a request in the last few seconds),
-//     grey when the resident agent is not there or not answering;
-//   - one button that switches Claude on or off (one click), and a "Sola
-//     lettura" box: Claude may look but not change the project;
-//   - the last 8 requests the agent took, with time and operation name;
-//   - counters: run, refused, seconds since the last request, instance id,
-//     agent version;
-//   - quick buttons: undo Claude's last change, make a restore point now,
-//     open the restore points folder, open the instance's mailbox.
+// What it shows:
+//   - one big ON / OFF block, which is also the traffic light: green ON =
+//     Claude may work and is waiting, yellow ON = a request is arriving or
+//     running, red OFF = stopped, grey = the resident agent is not there or
+//     not answering. One click switches Claude on or off;
+//   - "Sola lettura": Claude may look at the project but not change it;
+//   - the last requests, in plain Italian, with outcome and duration;
+//   - quick buttons: undo Claude's last change, restore point now, restore
+//     points folder, history file, mailbox; and the layout switch;
+//   - small at the bottom: counters, instance id, agent version.
+// Two layouts, switched with "Vista" and remembered: "verticale" for a side
+// column, "compatta" (horizontal) to dock under the timeline. Short labels;
+// the details are in the tooltips (helpTip).
 //
-// How it talks to the rest. The two switches are app.settings entries in the
-// "Parlez" section (claudeEnabled "1"/"0", readOnly "1"/"0"); jsx/serve.jsx
-// reads them before every request, on the pull path (the resident agent) and
-// the push path alike, and the agent publishes them in its heartbeat, which
-// is how the server answers PAUSED / READ_ONLY without even sending. A change
-// takes effect on the agent's next tick (250 ms); nothing needs restarting,
-// and app.settings is kept between sessions. Everything else comes from the
-// agent: $.global.AE_MCP_AGENT (same scripting engine) or, failing that, the
-// heartbeat file it writes.
+// How it talks to the rest. The switches are app.settings entries in the
+// "Parlez" section (claudeEnabled, readOnly; layout is the panel's own).
+// Whether Claude may work is decided by ONE function, AE_MCP.isEnabled in
+// jsx/serve.jsx, which the agent loads and exports on $.global: the panel
+// calls it, and only when it is missing (no agent in this After Effects)
+// uses its own copy of the same rule — only "1" means on. Everything else
+// comes from the agent: $.global.AE_MCP_AGENT or, failing that, the
+// heartbeat file it writes. The agent also calls AE_MCP_PANEL.onAgent()
+// right before and after each request, because no scheduled refresh can run
+// while a request does.
 //
-// "Claude fermo" by default: with no choice saved, the agent saves "0" at
-// startup where this panel is installed, and the panel does the same the
-// first time it opens.
-//
-// Limits, by After Effects' design:
-//   - while Claude's request runs, After Effects runs no other script, this
-//     panel included; so "sta lavorando" shows between requests (the last
-//     few seconds), never in the middle of one;
-//   - scripts cannot read the undo history, so "Annulla" cannot check that
-//     the step on top is Claude's: it says which action it means and asks.
+// Drawing. The ON/OFF block is a button drawn by onDraw (a filled rectangle
+// and the word). Where custom drawing is not honoured, or throws, the button
+// draws itself natively (drawOSControl) and still reads ON / OFF, inside a
+// frame coloured with graphics.backgroundColor — so the colour shows either
+// way.
 //
 // Self-contained on purpose: the file is copied, not loaded from the
 // package, so it cannot #include anything. Section, keys and the restore
@@ -53,14 +50,12 @@
     var SECTION = "Parlez";
     var KEY_ENABLED = "claudeEnabled";
     var KEY_READ_ONLY = "readOnly";
+    var KEY_LAYOUT = "layout";
     var TITLE = "Parlez!";
     var REFRESH_MS = 1500;
     // The agent refreshes its heartbeat every second; the server presumes it
     // gone after five (HEARTBEAT_STALE_MS in src/config.ts).
     var STALE_MS = 5000;
-    // "Sta lavorando": a request arrived this recently.
-    var ACTIVE_MS = 5000;
-    var RECENT_ROWS = 8;
     // First agent versions that know each switch (jsx/agent.jsx AGENT_VERSION).
     var PAUSE_AGENT_VERSION = 2;
     var READ_ONLY_AGENT_VERSION = 3;
@@ -70,11 +65,17 @@
     var CHECKPOINT_MAX_COPY = 999;
     // Edit > Undo.
     var UNDO_COMMAND = 16;
+    var TITLE_CHARS = 30;
 
-    var GREEN = [0.24, 0.74, 0.38];
-    var RED = [0.88, 0.26, 0.22];
-    var YELLOW = [0.96, 0.74, 0.16];
-    var GREY = [0.45, 0.45, 0.45];
+    var GREEN = [0.20, 0.72, 0.36];
+    var RED = [0.86, 0.24, 0.20];
+    var YELLOW = [0.95, 0.72, 0.12];
+    var GREY = [0.42, 0.42, 0.42];
+    var BG = [0.18, 0.18, 0.18];
+    var SECTION_BG = [0.21, 0.21, 0.21];
+    var LINE = [0.30, 0.30, 0.30];
+    var TEXT = [0.86, 0.86, 0.86];
+    var DIM = [0.55, 0.55, 0.55];
 
     // --- Switches -------------------------------------------------------
     function readSwitch(key) {
@@ -86,20 +87,29 @@
         }
     }
 
+    /** Save, then read back: true only when After Effects kept the value. */
     function writeSwitch(key, value) {
         try {
             app.settings.saveSetting(SECTION, key, value);
-        } catch (eWrite) { /* the next refresh shows what is really saved */ }
+        } catch (eWrite) { /* told by the read-back */ }
+        return readSwitch(key) === value;
     }
 
-    /** Anything but "0" counts as allowed, exactly as serve.jsx reads it. */
+    /** The one rule (AE_MCP.isEnabled, jsx/serve.jsx); its copy when there is no agent. */
     function readEnabled() {
-        var v = readSwitch(KEY_ENABLED);
-        return (v === null) ? null : (v !== "0");
+        try {
+            var shared = $.global.AE_MCP;
+            if (shared && typeof shared.isEnabled === "function") return shared.isEnabled() === true;
+        } catch (eShared) { /* fall back to the copy */ }
+        return readSwitch(KEY_ENABLED) === "1";
     }
 
     function readReadOnly() {
         return readSwitch(KEY_READ_ONLY) === "1";
+    }
+
+    function readLayout() {
+        return (readSwitch(KEY_LAYOUT) === "compatta") ? "compatta" : "verticale";
     }
 
     // --- What the agent says --------------------------------------------
@@ -139,7 +149,6 @@
             if (hb !== null && hb[name] !== undefined && hb[name] !== null) return hb[name];
             return fallback;
         }
-        var ts = numberOr(hb !== null ? hb.ts : state.lastHeartbeatAt, 0);
         var recent = pick("recent", []);
         return {
             id: String(state.id),
@@ -148,9 +157,12 @@
             served: numberOr(pick("served", 0), 0),
             refused: numberOr(pick("refused", 0), 0),
             busy: pick("busy", false) === true,
+            pending: numberOr(pick("pending", 0), 0),
             lastRequestAt: numberOr(pick("lastRequestAt", null), 0),
             recent: (recent && typeof recent.length === "number") ? recent : [],
-            heartbeatAt: ts
+            historyPath: (typeof state.historyPath === "string") ? state.historyPath : null,
+            // While a request runs the heartbeat is not refreshed, and that is fine.
+            heartbeatAt: state.busy ? new Date().getTime() : numberOr(hb !== null ? hb.ts : state.lastHeartbeatAt, 0)
         };
     }
 
@@ -164,50 +176,59 @@
         return pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds());
     }
 
-    /** Traffic light: { color, title, detail }. The switch decides first. */
-    function lightFor(enabled, readOnly, agent, now) {
-        if (enabled !== true) {
-            return {
-                color: RED,
-                title: "CLAUDE FERMO",
-                detail: "Claude non pu\u00f2 toccare After Effects: ogni sua richiesta viene rifiutata."
-            };
-        }
-        if (agent === null) {
-            return {
-                color: GREY,
-                title: "NON COLLEGATO",
-                detail: "Script di avvio non attivo in questo After Effects: Claude non riesce a collegarsi. " +
-                    "Installalo (install-agent) e riavvia After Effects."
-            };
-        }
-        if (agent.version < PAUSE_AGENT_VERSION) {
-            return {
-                color: GREY,
-                title: "AGENTE VECCHIO",
-                detail: "Lo script di avvio \u00e8 una versione che non conosce l'interruttore: riavvia After Effects."
-            };
-        }
-        if (agent.heartbeatAt === 0 || now - agent.heartbeatAt > STALE_MS) {
-            return {
-                color: GREY,
-                title: "NON RISPONDE",
-                detail: "Lo script di avvio \u00e8 caricato ma il battito non si aggiorna" +
-                    (agent.heartbeatAt === 0 ? "." : " da " + Math.round((now - agent.heartbeatAt) / 1000) + " s.")
-            };
-        }
-        var tail = readOnly ? " Sola lettura: pu\u00f2 guardare il progetto, non modificarlo." : "";
-        if (agent.busy || (agent.lastRequestAt > 0 && now - agent.lastRequestAt < ACTIVE_MS)) {
-            return { color: YELLOW, title: "CLAUDE STA LAVORANDO", detail: "Richieste in arrivo in questo momento." + tail };
-        }
-        return { color: GREEN, title: "CLAUDE PU\u00d2 LAVORARE", detail: "Claude pu\u00f2 usare After Effects." + tail };
+    function seconds(ms) {
+        if (typeof ms !== "number" || ms < 0) return "";
+        if (ms < 10000) return (Math.round(ms / 100) / 10).toString().replace(".", ",") + " s";
+        return String(Math.round(ms / 1000)) + " s";
     }
 
-    var OUTCOME_TEXT = {
-        ok: "",
-        error: "  (errore)",
-        paused: "  (rifiutata: pausa)",
-        readonly: "  (rifiutata: sola lettura)"
+    function shorten(text, max) {
+        var s = String(text);
+        return (s.length > max) ? s.substring(0, max - 1) + "\u2026" : s;
+    }
+
+    /**
+     * The block: { label, color, status, tip }. The switch decides first;
+     * then whether the agent can be reached; then what it is doing.
+     */
+    function blockFor(enabled, readOnly, agent, now) {
+        var ro = readOnly ? " \u00b7 sola lettura" : "";
+        if (enabled !== true) {
+            return { label: "OFF", color: RED, status: "Claude fermo",
+                tip: "Claude non pu\u00f2 toccare After Effects: ogni sua richiesta viene rifiutata. Clic per accenderlo." };
+        }
+        if (agent === null) {
+            return { label: "ON", color: GREY, status: "non collegato",
+                tip: "Lo script di avvio non \u00e8 attivo in questo After Effects: Claude non riesce a collegarsi. " +
+                    "Installalo (install-agent) e riavvia After Effects. Clic per spegnere Claude." };
+        }
+        if (agent.version < PAUSE_AGENT_VERSION) {
+            return { label: "ON", color: GREY, status: "riavvia After Effects",
+                tip: "Lo script di avvio caricato \u00e8 una versione vecchia che non conosce l'interruttore." };
+        }
+        if (agent.heartbeatAt === 0 || now - agent.heartbeatAt > STALE_MS) {
+            return { label: "ON", color: GREY, status: "non risponde",
+                tip: "Lo script di avvio \u00e8 caricato ma il battito non si aggiorna: una finestra di dialogo aperta? " +
+                    "Clic per spegnere Claude." };
+        }
+        if (agent.busy) {
+            return { label: "ON", color: YELLOW, status: "sta elaborando" + ro,
+                tip: "Claude sta eseguendo una richiesta adesso. Clic per spegnerlo: la richiesta in corso finisce, le prossime vengono rifiutate." };
+        }
+        if (agent.pending > 0) {
+            return { label: "ON", color: YELLOW, status: "sta ricevendo" + ro,
+                tip: "Ci sono richieste di Claude in arrivo. Clic per spegnerlo." };
+        }
+        return { label: "ON", color: GREEN, status: "in attesa" + ro,
+            tip: "Claude pu\u00f2 lavorare in After Effects" + (readOnly ? ", ma solo guardando: non modifica il progetto" : "") +
+                ". Clic per spegnerlo." };
+    }
+
+    var OUTCOME_MARK = {
+        ok: "\u2713",
+        error: "\u2717",
+        paused: "rifiutata (pausa)",
+        readonly: "rifiutata (sola lettura)"
     };
 
     function undoneMarks() {
@@ -228,16 +249,21 @@
         return marks.hasOwnProperty(entryKey(entry)) && marks[entryKey(entry)] === true;
     }
 
-    /** Newest first, one line each. */
-    function recentLines(recent) {
+    /** Newest first, one line each: time, what, outcome, duration. */
+    function historyLines(recent, rows) {
         var lines = [];
-        for (var i = recent.length - 1; i >= 0 && lines.length < RECENT_ROWS; i--) {
+        for (var i = recent.length - 1; i >= 0 && lines.length < rows; i--) {
             var e = recent[i];
             if (!e || typeof e.t !== "number") continue;
-            var outcome = (typeof e.outcome === "string" && OUTCOME_TEXT.hasOwnProperty(e.outcome))
-                ? OUTCOME_TEXT[e.outcome] : "";
-            if (isUndone(e)) outcome = "  (annullata)";
-            lines.push(clock(e.t) + "   " + String(e.label) + outcome);
+            var what = (typeof e.title === "string") ? e.title : String(e.label);
+            var mark = (typeof e.outcome === "string" && OUTCOME_MARK.hasOwnProperty(e.outcome))
+                ? OUTCOME_MARK[e.outcome] : String(e.outcome);
+            var tail = (e.outcome === "ok" || e.outcome === "error") ? "  " + seconds(e.ms) : "";
+            if (isUndone(e)) {
+                mark = "annullata";
+                tail = "";
+            }
+            lines.push(clock(e.t).substring(0, 5) + "  " + shorten(what, TITLE_CHARS) + "  " + mark + tail);
         }
         return lines;
     }
@@ -257,7 +283,7 @@
             pad2(d.getHours()) + pad2(d.getMinutes()) + pad2(d.getSeconds());
     }
 
-    function projectFileName(file) {
+    function decodedName(file) {
         var name = String(file.name);
         try { name = decodeURI(name); } catch (eDec) { /* keep raw */ }
         return name;
@@ -275,7 +301,7 @@
         if (!file) {
             return { ok: false, message: "Salva prima il progetto: un progetto mai salvato non ha un file da copiare." };
         }
-        var name = projectFileName(file);
+        var name = decodedName(file);
         var dot = name.lastIndexOf(".");
         if (dot <= 0 || name.substring(dot).toLowerCase() !== ".aep") {
             return { ok: false, message: "Il punto di ripristino dal pannello funziona solo con progetti .aep." };
@@ -307,10 +333,18 @@
             try { dest.remove(); } catch (eRm) { /* leave it */ }
             return { ok: false, message: "Copia incompleta: il punto di ripristino \u00e8 stato scartato." };
         }
-        return { ok: true, message: "Punto di ripristino creato: " + projectFileName(dest) };
+        return { ok: true, message: "Ripristino creato: " + decodedName(dest) };
     }
 
-    // --- The panel ------------------------------------------------------
+    function historyFolder() {
+        try {
+            return new Folder(Folder.userData.fsName + "/Parlez/storico");
+        } catch (eFolder) {
+            return null;
+        }
+    }
+
+    // --- Look -----------------------------------------------------------
     function setFont(ctrl, style, size) {
         try { ctrl.graphics.font = ScriptUI.newFont("dialog", style, size); } catch (eFont) { /* default font */ }
     }
@@ -327,178 +361,300 @@
                 ctrl.graphics.BrushType.SOLID_COLOR,
                 [rgb[0], rgb[1], rgb[2], 1]
             );
-        } catch (eFill) { /* no fill: the title still says it */ }
+        } catch (eFill) { /* no fill */ }
     }
 
-    function multiline(parent, width, height) {
-        var t = parent.add("statictext", undefined, "", { multiline: true });
-        t.alignment = ["fill", "top"];
-        t.preferredSize.width = width;
-        if (height) t.preferredSize.height = height;
+    function text(parent, value, size, color) {
+        var t = parent.add("statictext", undefined, value);
+        t.alignment = ["fill", "center"];
+        if (size) setFont(t, "REGULAR", size);
+        setTextColor(t, color || TEXT);
         return t;
     }
 
-    var isPanel = (typeof Panel !== "undefined") && (thisObj instanceof Panel);
-    var win = isPanel ? thisObj : new Window("palette", TITLE, undefined, { resizeable: true });
-    win.orientation = "column";
-    win.alignChildren = ["fill", "top"];
-    win.spacing = 6;
-    win.margins = 10;
-
-    // Traffic light.
-    var head = win.add("group");
-    head.orientation = "row";
-    head.alignChildren = ["left", "center"];
-    head.spacing = 10;
-    var lamp = head.add("group");
-    lamp.preferredSize = [30, 30];
-    var titleText = head.add("statictext", undefined, "CLAUDE PU\u00d2 LAVORARE");
-    titleText.alignment = ["fill", "center"];
-    setFont(titleText, "BOLD", 17);
-    var detailText = multiline(win, 270, 32);
-
-    // Switches.
-    var toggleBtn = win.add("button", undefined, "Ferma Claude");
-    toggleBtn.alignment = ["fill", "top"];
-    toggleBtn.preferredSize.height = 34;
-    setFont(toggleBtn, "BOLD", 14);
-    var readOnlyBox = win.add("checkbox", undefined, "Sola lettura: Claude guarda, non modifica");
-
-    // Last actions.
-    var recentBox = win.add("panel", undefined, "Ultime azioni");
-    recentBox.orientation = "column";
-    recentBox.alignChildren = ["fill", "top"];
-    recentBox.margins = [10, 14, 10, 8];
-    recentBox.spacing = 1;
-    var recentRows = [];
-    for (var r = 0; r < RECENT_ROWS; r++) {
-        var row = recentBox.add("statictext", undefined, "");
-        row.alignment = ["fill", "top"];
-        row.preferredSize.width = 250;
-        recentRows.push(row);
+    function line(parent) {
+        var l = parent.add("group");
+        l.alignment = ["fill", "top"];
+        l.preferredSize.height = 1;
+        l.margins = 0;
+        setFill(l, LINE);
+        return l;
     }
 
-    // Counters.
-    var countText = win.add("statictext", undefined, "");
-    countText.alignment = ["fill", "top"];
-    var instanceText = win.add("statictext", undefined, "");
-    instanceText.alignment = ["fill", "top"];
+    function button(parent, label, tip) {
+        var b = parent.add("button", undefined, label);
+        b.helpTip = tip;
+        return b;
+    }
 
-    // Quick buttons.
-    var row1 = win.add("group");
-    row1.orientation = "row";
-    row1.alignChildren = ["fill", "center"];
-    var undoBtn = row1.add("button", undefined, "Annulla ultima di Claude");
-    var checkpointBtn = row1.add("button", undefined, "Punto di ripristino");
-    var row2 = win.add("group");
-    row2.orientation = "row";
-    row2.alignChildren = ["fill", "center"];
-    var checkpointFolderBtn = row2.add("button", undefined, "Cartella ripristini");
-    var mailboxBtn = row2.add("button", undefined, "Apri la cassetta");
-    var noticeText = multiline(win, 270, 30);
+    /** onDraw for the ON/OFF block: fill, then the word, centred. */
+    function drawBlock() {
+        var g = this.graphics;
+        try {
+            var w = this.size[0];
+            var h = this.size[1];
+            var c = this.fillColor || GREY;
+            g.newPath();
+            g.rectPath(0, 0, w, h);
+            g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR, [c[0], c[1], c[2], 1]));
+            var word = this.word || "";
+            var font = this.wordFont || g.font;
+            var dim = g.measureString(word, font);
+            g.drawString(word, g.newPen(g.PenType.SOLID_COLOR, [1, 1, 1, 1], 1), (w - dim[0]) / 2, (h - dim[1]) / 2, font);
+        } catch (eDraw) {
+            try { g.drawOSControl(); } catch (eOs) { /* nothing left to draw with */ }
+        }
+    }
 
-    var current = { enabled: null, agent: null, target: null, lampKey: "" };
+    // --- Building the two layouts ---------------------------------------
+    var isPanel = (typeof Panel !== "undefined") && (thisObj instanceof Panel);
+    var win = isPanel ? thisObj : new Window("palette", TITLE, undefined, { resizeable: true });
+    var ui = null;
+    var notice = "";
+
+    function buildBlock(parent, width, height) {
+        var frame = parent.add("group");
+        frame.margins = 3;
+        frame.alignment = ["fill", "top"];
+        var block = frame.add("button", undefined, "OFF");
+        block.preferredSize = [width, height];
+        block.alignment = ["fill", "fill"];
+        try { block.wordFont = ScriptUI.newFont("dialog", "BOLD", Math.round(height * 0.5)); } catch (eBf) { /* default */ }
+        setFont(block, "BOLD", 18);
+        block.onDraw = drawBlock;
+        return { frame: frame, block: block };
+    }
+
+    function buildButtons(parent, compact) {
+        var b = {};
+        var rowA = parent.add("group");
+        rowA.orientation = "row";
+        rowA.alignChildren = ["fill", "center"];
+        rowA.spacing = 4;
+        b.undo = button(rowA, "Annulla", "Annulla l'ultima modifica di Claude (Modifica \u203a Annulla, una volta). Chiede conferma.");
+        b.checkpoint = button(rowA, "Ripristino", "Salva il progetto e ne fa una copia in " + CHECKPOINT_SUBDIR + ", accanto al progetto.");
+        var rowB = compact ? rowA : parent.add("group");
+        if (!compact) {
+            rowB.orientation = "row";
+            rowB.alignChildren = ["fill", "center"];
+            rowB.spacing = 4;
+        }
+        var rowC = compact ? parent.add("group") : rowB;
+        if (compact) {
+            rowC.orientation = "row";
+            rowC.alignChildren = ["fill", "center"];
+            rowC.spacing = 4;
+        }
+        b.checkpointFolder = button(rowC, "Ripristini", "Apre la cartella dei punti di ripristino di questo progetto.");
+        b.history = button(rowC, "Storico", "Apre lo storico completo delle richieste di questa sessione (file di testo).");
+        b.mailbox = button(rowC, "Cassetta", "Apre la cartella dove Claude e After Effects si scambiano le richieste.");
+        b.layout = button(rowC, "Vista", "Passa alla vista " + (compact ? "verticale (colonna laterale)." : "compatta (sotto la timeline)."));
+        return b;
+    }
+
+    function build(layout) {
+        var compact = (layout === "compatta");
+        setFill(win, BG);
+        win.orientation = compact ? "row" : "column";
+        win.alignChildren = ["fill", "top"];
+        win.spacing = compact ? 12 : 8;
+        win.margins = compact ? [10, 8, 10, 8] : 12;
+        var u = { layout: layout, rows: [], lampKey: "", flip: false };
+
+        // Left (compact) or top (vertical): title, block, status, read-only.
+        var head = win.add("group");
+        head.orientation = "column";
+        head.alignChildren = ["fill", "top"];
+        head.spacing = 6;
+        if (compact) head.preferredSize.width = 150;
+        var titleRow = head.add("group");
+        titleRow.orientation = "row";
+        titleRow.alignChildren = ["left", "center"];
+        u.title = titleRow.add("statictext", undefined, TITLE);
+        setFont(u.title, "BOLD", compact ? 16 : 22);
+        setTextColor(u.title, TEXT);
+        var blk = buildBlock(head, compact ? 140 : 220, compact ? 54 : 72);
+        u.frame = blk.frame;
+        u.block = blk.block;
+        u.status = text(head, "", 12);
+        u.readOnly = head.add("checkbox", undefined, "Sola lettura");
+        u.readOnly.helpTip = "Claude pu\u00f2 guardare il progetto ma non modificarlo: le richieste che cambierebbero qualcosa vengono rifiutate.";
+        setTextColor(u.readOnly, TEXT);
+
+        if (!compact) line(win);
+
+        // History.
+        var hist = win.add("group");
+        hist.orientation = "column";
+        hist.alignChildren = ["fill", "top"];
+        hist.spacing = 2;
+        hist.margins = [8, 6, 8, 6];
+        setFill(hist, SECTION_BG);
+        if (compact) hist.preferredSize.width = 300;
+        var histTitle = text(hist, "Ultime richieste", 11, DIM);
+        histTitle.helpTip = "Le richieste pi\u00f9 recenti di Claude in questa sessione: ora, cosa, esito, durata. Lo storico completo \u00e8 nel bottone Storico.";
+        var rows = compact ? 5 : 8;
+        for (var r = 0; r < rows; r++) u.rows.push(text(hist, "", 11));
+
+        if (!compact) line(win);
+
+        // Buttons, then the small print.
+        var tail = win.add("group");
+        tail.orientation = "column";
+        tail.alignChildren = ["fill", "top"];
+        tail.spacing = 4;
+        u.buttons = buildButtons(tail, compact);
+        u.notice = text(tail, "", 10, DIM);
+        u.counts = text(tail, "", 9, DIM);
+        u.instance = text(tail, "", 9, DIM);
+
+        wire(u);
+        return u;
+    }
+
+    function clearWindow() {
+        while (win.children.length > 0) win.remove(win.children[0]);
+    }
+
+    // --- Behaviour ------------------------------------------------------
+    var current = { agent: null, target: null };
+
+    function say(message) {
+        notice = message;
+        if (ui !== null) ui.notice.text = message;
+    }
 
     function refresh() {
         var now = new Date().getTime();
         var enabled = readEnabled();
         var readOnly = readReadOnly();
         var agent = readAgent();
-        current.enabled = enabled;
         current.agent = agent;
 
-        var light = lightFor(enabled, readOnly, agent, now);
-        var lampKey = light.color.join(",");
-        if (lampKey !== current.lampKey) {
-            setFill(lamp, light.color);
-            setTextColor(titleText, light.color);
-            current.lampKey = lampKey;
+        var state = blockFor(enabled, readOnly, agent, now);
+        var key = state.label + state.color.join(",");
+        ui.block.word = state.label;
+        ui.block.fillColor = state.color;
+        ui.block.helpTip = state.tip;
+        if (key !== ui.lampKey) {
+            // A different text is what makes ScriptUI redraw the button; the
+            // trailing space alternates so a colour change alone redraws too.
+            ui.flip = !ui.flip;
+            ui.block.text = state.label + (ui.flip ? " " : "");
+            setFill(ui.frame, state.color);
+            ui.lampKey = key;
         }
-        titleText.text = light.title;
-        detailText.text = light.detail;
+        ui.status.text = state.status;
+        ui.status.helpTip = state.tip;
 
-        toggleBtn.text = (enabled === true) ? "Ferma Claude" : "Lascia lavorare Claude";
-        readOnlyBox.value = readOnly;
-        readOnlyBox.enabled = (agent === null) || (agent.version >= READ_ONLY_AGENT_VERSION);
+        ui.readOnly.value = readOnly;
+        ui.readOnly.enabled = (agent === null) || (agent.version >= READ_ONLY_AGENT_VERSION);
 
         var recent = (agent !== null) ? agent.recent : [];
-        var lines = recentLines(recent);
-        for (var i = 0; i < recentRows.length; i++) {
-            recentRows[i].text = (i < lines.length) ? lines[i] : "";
-        }
-        if (lines.length === 0) recentRows[0].text = "Nessuna azione in questa sessione.";
+        var lines = historyLines(recent, ui.rows.length);
+        for (var i = 0; i < ui.rows.length; i++) ui.rows[i].text = (i < lines.length) ? lines[i] : "";
+        if (lines.length === 0) ui.rows[0].text = "Nessuna richiesta in questa sessione.";
 
         if (agent === null) {
-            countText.text = "";
-            instanceText.text = "";
+            ui.counts.text = "";
+            ui.instance.text = "";
         } else {
             var since = (agent.lastRequestAt > 0)
                 ? "ultima " + Math.round((now - agent.lastRequestAt) / 1000) + " s fa"
-                : "nessuna richiesta ancora";
-            countText.text = "Eseguite " + agent.served + " \u00b7 rifiutate " + agent.refused + " \u00b7 " + since;
-            instanceText.text = "Istanza " + agent.id + " \u00b7 agente v" + agent.version +
-                (agent.version < READ_ONLY_AGENT_VERSION ? " (riavvia After Effects per la sola lettura)" : "");
+                : "nessuna richiesta";
+            ui.counts.text = "eseguite " + agent.served + " \u00b7 rifiutate " + agent.refused + " \u00b7 " + since;
+            ui.instance.text = agent.id + " \u00b7 agente v" + agent.version;
         }
+        ui.notice.text = notice;
 
         current.target = undoTarget(recent);
-        undoBtn.enabled = (current.target !== null);
-        mailboxBtn.enabled = (agent !== null && agent.dir !== null);
-        checkpointFolderBtn.enabled = !!app.project.file;
-        checkpointBtn.enabled = !!app.project.file;
+        var b = ui.buttons;
+        b.undo.enabled = (current.target !== null);
+        b.mailbox.enabled = (agent !== null && agent.dir !== null);
+        b.checkpointFolder.enabled = !!app.project.file;
+        b.checkpoint.enabled = !!app.project.file;
     }
 
-    toggleBtn.onClick = function () {
-        writeSwitch(KEY_ENABLED, (readEnabled() === true) ? "0" : "1");
-        refresh();
-    };
-    readOnlyBox.onClick = function () {
-        writeSwitch(KEY_READ_ONLY, readOnlyBox.value ? "1" : "0");
-        refresh();
-    };
-    undoBtn.onClick = function () {
-        var target = current.target;
-        if (target === null) return;
-        var ok = confirm(
-            "Annullo l'ultima modifica di Claude?\n\n" +
-            "\u00ab" + target.label + "\u00bb delle " + clock(target.t) + "\n\n" +
-            "After Effects non permette di leggere la cronologia degli annullamenti: " +
-            "se dopo hai fatto tu altre modifiche, verr\u00e0 annullata la tua ultima modifica, non quella di Claude."
-        );
-        if (!ok) return;
-        try {
-            app.executeCommand(UNDO_COMMAND);
-            undoneMarks()[entryKey(target)] = true;
-            noticeText.text = "Annullato: " + target.label + ".";
-        } catch (eUndo) {
-            noticeText.text = "Annullamento non riuscito.";
-        }
-        refresh();
-    };
-    checkpointBtn.onClick = function () {
-        var result = makeCheckpoint();
-        noticeText.text = result.message;
-        refresh();
-    };
-    checkpointFolderBtn.onClick = function () {
-        var folder = checkpointFolder();
-        if (folder === null) {
-            noticeText.text = "Il progetto non \u00e8 ancora stato salvato.";
-        } else if (!folder.exists) {
-            noticeText.text = "Nessun punto di ripristino per questo progetto, per ora.";
-        } else {
-            folder.execute();
-        }
-    };
-    mailboxBtn.onClick = function () {
-        var agent = current.agent;
-        if (agent === null || agent.dir === null) return;
-        var folder = new Folder(agent.dir);
-        if (folder.exists) folder.execute();
-    };
+    function wire(u) {
+        var b = u.buttons;
+        u.block.onClick = function () {
+            var want = readEnabled() ? "0" : "1";
+            if (!writeSwitch(KEY_ENABLED, want)) {
+                say("Non riesco a salvare la scelta nelle preferenze di After Effects.");
+            } else {
+                say("");
+            }
+            refresh();
+        };
+        u.readOnly.onClick = function () {
+            if (!writeSwitch(KEY_READ_ONLY, u.readOnly.value ? "1" : "0")) {
+                say("Non riesco a salvare la scelta nelle preferenze di After Effects.");
+            }
+            refresh();
+        };
+        b.undo.onClick = function () {
+            var target = current.target;
+            if (target === null) return;
+            var what = (typeof target.title === "string") ? target.title : target.label;
+            var ok = confirm(
+                "Annullo l'ultima modifica di Claude?\n\n" +
+                "\u00ab" + what + "\u00bb delle " + clock(target.t) + "\n\n" +
+                "After Effects non permette di leggere la cronologia degli annullamenti: " +
+                "se dopo hai fatto tu altre modifiche, verr\u00e0 annullata la tua ultima modifica, non quella di Claude."
+            );
+            if (!ok) return;
+            try {
+                app.executeCommand(UNDO_COMMAND);
+                undoneMarks()[entryKey(target)] = true;
+                say("Annullato: " + what + ".");
+            } catch (eUndo) {
+                say("Annullamento non riuscito.");
+            }
+            refresh();
+        };
+        b.checkpoint.onClick = function () {
+            say(makeCheckpoint().message);
+            refresh();
+        };
+        b.checkpointFolder.onClick = function () {
+            var folder = checkpointFolder();
+            if (folder === null) say("Il progetto non \u00e8 ancora stato salvato.");
+            else if (!folder.exists) say("Nessun punto di ripristino per questo progetto, per ora.");
+            else folder.execute();
+        };
+        b.history.onClick = function () {
+            var agent = current.agent;
+            if (agent !== null && agent.historyPath !== null && new File(agent.historyPath).exists) {
+                new File(agent.historyPath).execute();
+                return;
+            }
+            var folder = historyFolder();
+            if (folder !== null && folder.exists) folder.execute();
+            else say("Nessuna richiesta registrata finora.");
+        };
+        b.mailbox.onClick = function () {
+            var agent = current.agent;
+            if (agent === null || agent.dir === null) return;
+            var folder = new Folder(agent.dir);
+            if (folder.exists) folder.execute();
+        };
+        b.layout.onClick = function () {
+            var next = (ui.layout === "compatta") ? "verticale" : "compatta";
+            writeSwitch(KEY_LAYOUT, next);
+            clearWindow();
+            ui = build(next);
+            refresh();
+            try { win.layout.layout(true); } catch (eLay) { /* next resize lays it out */ }
+        };
+    }
 
-    // Safe by default: no choice saved yet means the switch was just
-    // installed, and it starts on "Claude fermo".
-    if (readEnabled() === null) writeSwitch(KEY_ENABLED, "0");
+    // Safe by default: with no choice saved yet, save "Claude fermo" — the
+    // rule already reads "absent" as stopped; saving makes the choice
+    // explicit and shows at once whether After Effects keeps it.
+    if (readSwitch(KEY_ENABLED) === null && !writeSwitch(KEY_ENABLED, "0")) {
+        notice = "Non riesco a salvare la scelta nelle preferenze di After Effects.";
+    }
+    ui = build(readLayout());
     refresh();
 
     // --- Keeping it current -----------------------------------------------
@@ -509,9 +665,12 @@
     function stopTimer() {
         try {
             var registered = $.global.AE_MCP_PANEL;
-            if (registered && registered.taskId !== null && registered.taskId !== undefined) {
-                app.cancelTask(registered.taskId);
-                registered.taskId = null;
+            if (registered) {
+                registered.onAgent = null;
+                if (registered.taskId !== null && registered.taskId !== undefined) {
+                    app.cancelTask(registered.taskId);
+                    registered.taskId = null;
+                }
             }
         } catch (eStop) { /* nothing scheduled */ }
     }
@@ -525,11 +684,22 @@
             } catch (eRefresh) {
                 stopTimer();
             }
+        },
+        // Called by the agent right before and after each request: the only
+        // moment "sta elaborando" can show. update() asks ScriptUI to paint
+        // now, while the request still holds the scripting engine.
+        onAgent: function () {
+            try {
+                refresh();
+                if (typeof win.update === "function") win.update();
+            } catch (eAgentRefresh) {
+                stopTimer();
+            }
         }
     };
     try {
         $.global.AE_MCP_PANEL.taskId = app.scheduleTask("$.global.AE_MCP_PANEL.refresh()", REFRESH_MS, true);
-    } catch (eSchedule) { /* refreshed by the buttons only */ }
+    } catch (eSchedule) { /* refreshed by the buttons and the agent only */ }
 
     win.onResizing = win.onResize = function () {
         try { this.layout.resize(); } catch (eResize) { /* ignore */ }

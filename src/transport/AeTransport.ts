@@ -47,6 +47,11 @@ export interface EvalRequest {
    * call site is refused there until someone decides it only reads.
    */
   mutates?: boolean;
+  /**
+   * For `batch.run`: the names of the operations it runs, so the Parlez!
+   * panel's history can say what the batch did. Names only, never arguments.
+   */
+  steps?: string[];
   /** Per-call timeout in milliseconds. */
   timeoutMs?: number;
   /**

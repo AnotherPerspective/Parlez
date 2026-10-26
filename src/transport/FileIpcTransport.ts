@@ -31,6 +31,7 @@ import {
   runtimeDirWarnings,
 } from "../config.js";
 import type { AeErrorCode } from "../errors.js";
+import { describeRequest } from "../request-titles.js";
 import type { AeTransport, EvalRequest, EvalResult } from "./AeTransport.js";
 import { type AeDialog, dialogBlockMessage, dialogHint, scanAeDialogs } from "./dialogs.js";
 import {
@@ -107,6 +108,8 @@ interface MailboxRequest {
   suppressDialogs: boolean;
   /** For the panel's "Sola lettura" switch (serve.jsx); see EvalRequest.mutates. */
   mutates: boolean;
+  /** Plain-Italian name for the panel's history (request-titles.ts). */
+  title: string;
 }
 
 interface DispatcherResponse {
@@ -371,6 +374,7 @@ export class FileIpcTransport implements AeTransport {
       // Explicit for the same reason: a missing field reads as "changes
       // something" on the JSX side, which is the safe reading.
       mutates: req.mutates !== false,
+      title: describeRequest(req.label ?? "action", req.steps),
     };
 
     if (target.mode === "pull") {
