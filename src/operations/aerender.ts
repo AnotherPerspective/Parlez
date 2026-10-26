@@ -30,8 +30,13 @@ import { jsxFail, jsxVal, registerOp } from "../registry.js";
 import type { AeTransport } from "../transport/AeTransport.js";
 import {
   AERENDER_ENV,
+  AERENDER_LAUNCH_ENV,
+  type AerenderLaunchMode,
+  aerenderLaunchMode,
+  aerenderLaunchPlan,
   aerenderCandidates,
   existingOutputFiles,
+  outputUnderOtherExtension,
   isFile,
   lastLines,
   logPathFor,
@@ -116,6 +121,7 @@ interface Job {
   output: string;
   log: string;
   command: string[];
+  launch: AerenderLaunchMode;
   child: ChildProcess;
   pid: number | null;
   startedAt: number;
@@ -224,28 +230,42 @@ interface Prep {
   sameName: number;
   outputTemplates: string[] | null;
   renderTemplates: string[] | null;
-  tempQueueItem: boolean;
 }
 
 const stringList = (v: unknown): string[] | null =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : null;
 
 /**
- * One read before the start. The templates are read from render-queue item
- * 1 (as render.list_templates does); with an empty queue and no output
- * template given, the comp is put in the queue and taken out again in the
- * same call, only to read them — reported back as `temporary`. `dirty` is
- * read before that, so it describes the user's own changes.
+ * Template lists seen during this server session. Output-module and
+ * render-settings templates belong to the After Effects application (its
+ * preferences), not to a project, so a list read once stays good for later
+ * calls whose render queue is empty.
  */
-async function aePrep(
-  transport: AeTransport,
-  comp: unknown,
-  needTemplates: boolean,
-): Promise<Prep | Failure> {
+let templateCache: { output: string[]; render: string[] | null } | null = null;
+
+export function resetAerenderTemplateCacheForTests(): void {
+  templateCache = null;
+}
+
+/**
+ * One READ before the start, and nothing else: no save, no change to the
+ * render queue. The templates are read from render-queue item 1 when the
+ * queue has one (as render.list_templates does).
+ *
+ * An empty queue is left empty. The first version put the comp in the queue
+ * and took it out again to read the templates; on AE 26.5 that marks the
+ * project as modified, so the NEXT aerender.start refused it for unsaved
+ * changes (E2E, 2026-10-26). Undoing the change (executeCommand 16) runs
+ * against the undo group the call itself is inside, and AE still keeps the
+ * modified mark; remembering "we dirtied it" cannot tell our change from a
+ * user's edit made in between. Not touching the queue is the only way that
+ * is safe by construction.
+ */
+async function aePrep(transport: AeTransport, comp: unknown): Promise<Prep | Failure> {
   const res = await transport.execute({
     label: "aerender.prep",
     code: `
-        var _arg = ${jsxVal({ comp, needTemplates })};
+        var _arg = ${jsxVal({ comp })};
         var _file = app.project.file ? app.project.file.fsName.replace(/\\\\/g, "/") : null;
         var _dirty = !!app.project.dirty;
         var _comp = AE.findCompByNameOrId(_arg.comp);
@@ -258,27 +278,17 @@ async function aePrep(
         var _rq = app.project.renderQueue;
         var _om = null;
         var _rs = null;
-        var _temp = false;
         try {
             if (_rq.numItems > 0) {
                 _rs = _rq.item(1).templates;
                 _om = _rq.item(1).outputModule(1).templates;
-            } else if (_arg.needTemplates && _file !== null && !_dirty) {
-                var _t = _rq.items.add(_comp);
-                _temp = true;
-                try {
-                    _rs = _t.templates;
-                    _om = _t.outputModule(1).templates;
-                } finally {
-                    _t.remove();
-                }
             }
         } catch (eTpl) {}
         return {
             ok: true, file: _file, dirty: _dirty, sameName: _same,
             comp: { name: _comp.name, id: _comp.id, frameRate: _comp.frameRate, duration: _comp.duration,
                     workAreaStart: _comp.workAreaStart, workAreaDuration: _comp.workAreaDuration },
-            outputTemplates: _om, renderTemplates: _rs, tempQueueItem: _temp
+            outputTemplates: _om, renderTemplates: _rs
         };
     `,
     timeoutMs: 30_000,
@@ -300,14 +310,21 @@ async function aePrep(
       { errorCode: "OPERATION_FAILED" },
     );
   }
+  let outputTemplates = stringList(r.outputTemplates);
+  let renderTemplates = stringList(r.renderTemplates);
+  if (outputTemplates !== null && outputTemplates.length > 0) {
+    templateCache = { output: outputTemplates, render: renderTemplates };
+  } else if (templateCache !== null) {
+    outputTemplates = templateCache.output;
+    renderTemplates = templateCache.render;
+  }
   return {
     file: typeof r.file === "string" ? r.file : null,
     dirty: r.dirty === true,
     comp: r.comp as Prep["comp"],
     sameName: typeof r.sameName === "number" ? r.sameName : 1,
-    outputTemplates: stringList(r.outputTemplates),
-    renderTemplates: stringList(r.renderTemplates),
-    tempQueueItem: r.tempQueueItem === true,
+    outputTemplates,
+    renderTemplates,
   };
 }
 
@@ -354,7 +371,17 @@ async function report(job: Job): Promise<Record<string, unknown>> {
     frame !== null && total !== null && total > 0
       ? Math.min(100, Math.round((frame / total) * 1000) / 10)
       : null;
-  const out = existingOutputFiles(job.output);
+  let out = existingOutputFiles(job.output);
+  let actual: string | null = null;
+  if (out.files.length === 0 && !job.running) {
+    const other = outputUnderOtherExtension(job.output, job.startedAt);
+    if (other !== null) {
+      out = other;
+      actual = other.files[0]!;
+    }
+  }
+  const lastError =
+    progress.errors.length > 0 ? progress.errors[progress.errors.length - 1]! : null;
   const now = hooks.now();
   const elapsed = Math.round(((job.endedAt ?? now) - job.startedAt) / 100) / 10;
 
@@ -382,13 +409,22 @@ async function report(job: Job): Promise<Record<string, unknown>> {
       "Le ultime righe del log dicono perché.";
   } else if (out.bytes === 0) {
     status = "fallito";
+    // aerender 26.5 exits 0 even after "aerender ERROR …" (E2E, 2026-10-26):
+    // the error line is the real reason, so it leads the message.
     message =
-      out.files.length === 0
-        ? "aerender ha finito senza errori, ma il file di uscita non c'è."
-        : "aerender ha finito senza errori, ma il file di uscita è vuoto.";
+      lastError !== null
+        ? `aerender è uscito senza file di uscita dopo un errore: «${lastError}».`
+        : out.files.length === 0
+          ? "aerender ha finito senza errori, ma il file di uscita non c'è."
+          : "aerender ha finito senza errori, ma il file di uscita è vuoto.";
   } else {
     status = "finito";
-    message = `Render finito: ${slash(job.output)} (${out.bytes} byte).`;
+    message = `Render finito: ${slash(actual ?? job.output)} (${out.bytes} byte).`;
+    if (actual !== null) {
+      warnings.push(
+        `Il file è uscito con un'altra estensione (${path.basename(actual)}): il modello di uscita usato produce un formato diverso da quello dell'estensione chiesta.`,
+      );
+    }
     // aerender can exit 0 after stopping early (malkawi saw it): believe the
     // frames it reported over the exit code.
     if (frame !== null && total !== null && frame < total) {
@@ -408,6 +444,7 @@ async function report(job: Job): Promise<Record<string, unknown>> {
     comp: job.comp,
     output: slash(job.output),
     log: slash(job.log),
+    launch: job.launch,
     frame,
     totalFrames: total,
     totalFrom: progress.totalFromLog !== null ? "log" : job.expectedFrom,
@@ -416,6 +453,7 @@ async function report(job: Job): Promise<Record<string, unknown>> {
     exitCode: job.exitCode,
     outputExists: out.files.length > 0,
     outputBytes: out.bytes,
+    ...(actual !== null ? { outputActual: slash(actual) } : {}),
     ...(out.sequence ? { outputFrames: out.files.length } : {}),
     logTail: lastLines(text, TAIL_LINES),
     ...(warnings.length > 0 ? { warnings } : {}),
@@ -472,7 +510,8 @@ registerOp({
     "Render a comp in the BACKGROUND with aerender, without blocking After Effects; returns at once with an id for aerender.status / aerender.cancel. " +
     "aerender reads the project from disk, so the project must be saved: with unsaved changes the call is refused (ask the user, then ae_save_project or checkpoint.create). " +
     "`output` is required (absolute path; folders are created; image sequences use [#####]). Default output template: the first starting with 'H.264'; if none, the call lists them. " +
-    "If the output already exists it needs confirm: true. aerender's stdout goes to <name>.aerender.log next to the output.",
+    "If the output already exists it needs confirm: true. aerender's stdout goes to <name>.aerender.log next to the output. " +
+    `On Windows the render is a child of this server (launch mode 'attached', $${AERENDER_LAUNCH_ENV} changes it): it stops if the server stops.`,
   params: [
     { name: "comp", type: "any", description: "Comp name or id", required: true },
     {
@@ -576,7 +615,7 @@ registerOp({
     // --- The project, as After Effects sees it.
     const om = typeof args.OMtemplate === "string" ? args.OMtemplate.trim() : "";
     const rs = typeof args.RStemplate === "string" ? args.RStemplate.trim() : "";
-    const prep = await aePrep(transport, args.comp, om === "");
+    const prep = await aePrep(transport, args.comp);
     if (isFailure(prep)) return prep;
     if (prep.file === null) {
       return fail(
@@ -597,7 +636,9 @@ registerOp({
       );
     }
 
-    let outputTemplate: string;
+    // null = no -OMtemplate: aerender then uses the output module template
+    // the user has set as default (only when the list cannot be read).
+    let outputTemplate: string | null;
     const omList = prep.outputTemplates;
     if (om !== "") {
       const hit = omList === null ? om : pickTemplate(omList, om);
@@ -608,13 +649,15 @@ registerOp({
         );
       }
       outputTemplate = hit;
+    } else if (omList === null) {
+      // Empty render queue and no list seen yet this session: reading one
+      // would mean changing the queue (see aePrep), so aerender picks.
+      outputTemplate = null;
     } else {
-      const h264 = omList?.find((t) => t.startsWith("H.264")) ?? null;
+      const h264 = omList.find((t) => t.startsWith("H.264")) ?? null;
       if (h264 === null) {
         return fail(
-          omList === null
-            ? "Non riesco a leggere i modelli di uscita da After Effects: indica OMtemplate."
-            : `Nessun modello di uscita inizia con «H.264». Indica OMtemplate, scegliendo tra: ${omList.join(" | ")}.`,
+          `Nessun modello di uscita inizia con «H.264». Indica OMtemplate, scegliendo tra: ${omList.join(" | ")}.`,
           {
             errorCode: "INVALID_ARGS",
             hint: "render.list_templates elenca i modelli (con almeno una voce nella coda di render).",
@@ -646,16 +689,8 @@ registerOp({
     const log = logPathFor(output);
 
     const aerender = loc.path;
-    const argv = [
-      "-project",
-      path.resolve(prep.file),
-      "-comp",
-      prep.comp.name,
-      "-output",
-      output,
-      "-OMtemplate",
-      outputTemplate,
-    ];
+    const argv = ["-project", path.resolve(prep.file), "-comp", prep.comp.name, "-output", output];
+    if (outputTemplate !== null) argv.push("-OMtemplate", outputTemplate);
     if (renderTemplate !== null) argv.push("-RStemplate", renderTemplate);
     if (isWholeNonNegative(args.s)) argv.push("-s", String(args.s));
     if (isWholeNonNegative(args.e)) argv.push("-e", String(args.e));
@@ -663,13 +698,16 @@ registerOp({
     if (typeof args.mfr === "boolean") argv.push("-mfr", args.mfr ? "ON" : "OFF", "100");
     if (args.continueOnMissingFootage === true) argv.push("-continueOnMissingFootage");
     const command = [aerender, ...argv].map(slash);
+    const launch = aerenderLaunchMode(hooks.platform);
+    const plan = aerenderLaunchPlan(launch.mode, aerender, argv);
+    if ("error" in plan) return fail(plan.error, { errorCode: "INVALID_ARGS" });
 
     let fd: number;
     try {
       fd = openSync(log, "a");
       writeSync(
         fd,
-        `\n=== Parlez! aerender — ${new Date(hooks.now()).toISOString()} ===\n` +
+        `\n=== Parlez! aerender — ${new Date(hooks.now()).toISOString()} — avvio ${launch.mode} ===\n` +
           `${command.map((c) => (/\s/.test(c) ? `"${c}"` : c)).join(" ")}\n`,
       );
     } catch (err) {
@@ -679,13 +717,15 @@ registerOp({
     }
 
     // stdout and stderr go straight into the log file, not through pipes to
-    // this process: the render survives the server stopping, and the log is
-    // complete whoever reads it.
+    // this process: the log is complete whoever reads it, and a busy server
+    // never stalls aerender on a full pipe. How the process is started (and
+    // whether it outlives the server) is the launch mode, see aerender-paths.
     let child: ChildProcess;
     try {
-      child = hooks.spawn(aerender, argv, {
-        detached: true,
+      child = hooks.spawn(plan.command, plan.argv, {
+        detached: plan.detached,
         windowsHide: true,
+        ...(plan.verbatim ? { windowsVerbatimArguments: true } : {}),
         stdio: ["ignore", fd, fd],
         // The render engine loads Scripts/Startup too; without this the
         // resident agent registers it as a second instance and every unnamed
@@ -733,6 +773,7 @@ registerOp({
       output,
       log,
       command,
+      launch: launch.mode,
       child,
       pid: child.pid ?? null,
       startedAt: hooks.now(),
@@ -760,7 +801,8 @@ registerOp({
         )
         .catch(() => {});
     });
-    // The server may exit while aerender works; it must not wait for it.
+    // The server must never wait for aerender to exit. (Whether aerender
+    // outlives the server depends on the launch mode, not on this.)
     child.unref();
     jobs.set(id, job);
 
@@ -775,6 +817,17 @@ registerOp({
         "Non ho potuto controllare che il modello di uscita esista (la coda di render è vuota): se il nome è sbagliato, aerender si fermerà e il log lo dirà.",
       );
     }
+    if (launch.ignored !== null) {
+      warnings.push(
+        `${AERENDER_LAUNCH_ENV}=${launch.ignored} non è un valore valido (attached, shell, detached): uso ${launch.mode}.`,
+      );
+    }
+    if (outputTemplate === null) {
+      warnings.push(
+        "La coda di render è vuota, quindi non ho potuto leggere i modelli di uscita senza modificare il progetto: aerender usa il modello di uscita predefinito di After Effects. " +
+          "Se il suo formato non è quello dell'estensione indicata, il file può uscire con un'altra estensione (aerender.status lo cerca). Per scegliere il modello, passa OMtemplate.",
+      );
+    }
     return {
       ok: true,
       id,
@@ -787,13 +840,7 @@ registerOp({
       renderTemplate,
       expectedFrames,
       command,
-      ...(prep.tempQueueItem
-        ? {
-            temporary: [
-              "Per leggere i modelli di uscita ho messo la composizione nella coda di render e l'ho tolta subito: la coda è com'era, ma After Effects può segnare il progetto come modificato.",
-            ],
-          }
-        : {}),
+      launch: launch.mode,
       ...(warnings.length > 0 ? { warnings } : {}),
       message: `Render avviato in sottofondo (${id}). Segui l'avanzamento con aerender.status.`,
     };

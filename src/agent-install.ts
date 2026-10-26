@@ -26,7 +26,13 @@ import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { AGENT_JSX, AGENT_STUB_FILENAME, RUNTIME_DIR, RUNTIME_ROOT } from "./config.js";
+import {
+  AGENT_DISABLE_ENV,
+  AGENT_JSX,
+  AGENT_STUB_FILENAME,
+  RUNTIME_DIR,
+  RUNTIME_ROOT,
+} from "./config.js";
 import { jsxPath } from "./transport/launcher.js";
 
 /** Where After Effects keeps per-user, per-version files. */
@@ -86,6 +92,13 @@ export function stubSource(
     "// the next After Effects launch without reinstalling this stub. The mailbox",
     "// path below is fixed here on purpose; re-run install-agent to change it.",
     "(function () {",
+    // The render engine aerender starts loads Scripts/Startup too. agent.jsx
+    // stays out of it on its own, but only after its #includes (helpers,
+    // toolkit, import, export, serve) have been evaluated there; checking
+    // here keeps the engine from loading anything at all. Same two signals
+    // as agent.jsx's shouldStayOut().
+    "    try { if (app.isRenderEngine === true) return; } catch (eRe) {}",
+    `    try { if ($.getenv(${JSON.stringify(AGENT_DISABLE_ENV)}) === "1") return; } catch (eDis) {}`,
     `    var agentFile = new File(${jsxPath(agentJsx)});`,
     "    if (!agentFile.exists) return;",
     `    var runtimeRoot = ${jsxPath(runtimeRoot)};`,

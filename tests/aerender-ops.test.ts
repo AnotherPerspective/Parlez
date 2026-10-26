@@ -5,7 +5,15 @@
 // Effects. Nothing here starts After Effects or a real aerender.
 
 import { spawn as nodeSpawn, type SpawnOptions } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +23,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { RUNTIME_DIR } from "../src/config.js";
 import {
   AERENDER_ENV,
+  AERENDER_LAUNCH_ENV,
+  aerenderLaunchMode,
+  aerenderLaunchPlan,
   aerenderCandidates,
   existingOutputFiles,
   lastLines,
@@ -25,7 +36,11 @@ import {
   sequencePattern,
   timecodeToFrames,
 } from "../src/operations/aerender-paths.js";
-import { resetAerenderJobsForTests, setAerenderHooksForTests } from "../src/operations/aerender.js";
+import {
+  resetAerenderJobsForTests,
+  resetAerenderTemplateCacheForTests,
+  setAerenderHooksForTests,
+} from "../src/operations/aerender.js";
 import "../src/operations/index.js";
 import { guardToolCall, resetPrivacyForTests } from "../src/privacy.js";
 import { getOp } from "../src/registry.js";
@@ -33,6 +48,12 @@ import { doTool } from "../src/tools/do.js";
 import type { AeTransport, EvalRequest, EvalResult } from "../src/transport/AeTransport.js";
 
 const FAKE = fileURLToPath(new URL("./fixtures/fake-aerender.mjs", import.meta.url));
+
+/** The aerender arguments inside a shell-mode command line ("aerender" "a" "b"…). */
+function shellArgsBack(args: string[]): string[] {
+  const line = args[3]!.slice(1, -1);
+  return [...line.matchAll(/"([^"]*)"/g)].map((m) => m[1]!).slice(1);
+}
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -50,7 +71,6 @@ interface PrepAnswer {
   sameName: number;
   outputTemplates: string[] | null;
   renderTemplates: string[] | null;
-  tempQueueItem: boolean;
 }
 
 function prepAnswer(over: Partial<PrepAnswer> = {}): PrepAnswer {
@@ -68,7 +88,6 @@ function prepAnswer(over: Partial<PrepAnswer> = {}): PrepAnswer {
     sameName: 1,
     outputTemplates: ["Lossless", "H.264 - Match Render Settings - 15 Mbps", "H.264 - Other"],
     renderTemplates: ["Best Settings", "Draft Settings"],
-    tempQueueItem: false,
     ...over,
   };
 }
@@ -102,6 +121,7 @@ interface Spawned {
   command: string;
   args: string[];
   env: NodeJS.ProcessEnv | undefined;
+  options: SpawnOptions;
 }
 let spawned: Spawned[] = [];
 let fakeEnv: Record<string, string> = {};
@@ -113,9 +133,13 @@ function installFake(platform: NodeJS.Platform = "win32", exe: () => string = ()
     platform,
     afterFxPath: exe,
     spawn: (command: string, args: string[], options: SpawnOptions) => {
-      spawned.push({ command, args, env: options.env });
+      spawned.push({ command, args, env: options.env, options });
+      // Shell mode starts cmd.exe; the fake still runs as itself, with the
+      // aerender arguments taken back out of the plan (tested separately).
+      if (command === "cmd.exe") args = shellArgsBack(args);
       return nodeSpawn(process.execPath, [FAKE, ...args], {
         ...options,
+        windowsVerbatimArguments: false,
         env: { ...process.env, ...fakeEnv },
       });
     },
@@ -146,12 +170,14 @@ beforeEach(() => {
   spawned = [];
   fakeEnv = {};
   resetAerenderJobsForTests();
+  resetAerenderTemplateCacheForTests();
   installFake();
   delete process.env[AERENDER_ENV];
 });
 
 afterEach(() => {
   delete process.env.AE_MCP_READONLY;
+  delete process.env[AERENDER_LAUNCH_ENV];
   delete process.env.AE_MCP_PRIVACY;
   resetPrivacyForTests();
 });
@@ -568,22 +594,82 @@ describe("aerender.start → status → done", () => {
     await waitDone(String(r2.id));
   });
 
-  it("says when templates were read through a temporary queue item, and warns about duplicate comp names", async () => {
+  it("warns about duplicate comp names", async () => {
     const r = await ok(
       "aerender.start",
       { comp: "Principale", output: out() },
-      fakeAe(prepAnswer({ tempQueueItem: true, sameName: 2 })),
+      fakeAe(prepAnswer({ sameName: 2 })),
     );
-    expect((r.temporary as string[])[0]).toContain("coda di render");
     expect((r.warnings as string[])[0]).toContain("2 composizioni");
     await waitDone(String(r.id));
+  });
+
+  it("starts twice in a row on a clean project with an empty render queue (E2E 2026-10-26)", async () => {
+    // A fake After Effects with state, modelled on AE 26.5: any change to
+    // the render queue marks the project as modified, and a modified
+    // project refuses the next start. The first version added and removed a
+    // queue item to read the templates, and the second start failed.
+    const state = { dirty: false, queue: 0 };
+    const calls: EvalRequest[] = [];
+    const stateful: AeTransport = {
+      async execute(req: EvalRequest): Promise<EvalResult> {
+        calls.push(req);
+        if (/renderQueue\.items\.add\s*\(|\.remove\s*\(/.test(req.code)) state.dirty = true;
+        return {
+          ok: true,
+          result: {
+            ok: true,
+            ...prepAnswer({ dirty: state.dirty, outputTemplates: null, renderTemplates: null }),
+          },
+          error: null,
+          errorCode: null,
+          stack: null,
+          logs: [],
+          durationMs: 0,
+        };
+      },
+    };
+    const a = await ok("aerender.start", { comp: "Principale", output: out("a.mp4") }, stateful);
+    const b = await ok("aerender.start", { comp: "Principale", output: out("b.mp4") }, stateful);
+    expect(state).toEqual({ dirty: false, queue: 0 });
+    for (const c of calls) expect(c.code).not.toMatch(/items\.add\s*\(|\.remove\s*\(|\.save\s*\(/);
+    // No list could be read without touching the queue: aerender picks its
+    // default output module, and the response says so.
+    expect(a.outputTemplate).toBeNull();
+    expect(spawned[0]!.args).not.toContain("-OMtemplate");
+    expect((a.warnings as string[]).join(" ")).toContain("modello di uscita predefinito");
+    await waitDone(String(a.id));
+    await waitDone(String(b.id));
+  });
+
+  it("remembers the templates read from a queue item for later calls with an empty queue", async () => {
+    const first = await ok("aerender.start", { comp: "Principale", output: out("a.mp4") });
+    expect(first.outputTemplate).toBe("H.264 - Match Render Settings - 15 Mbps");
+    const later = await ok(
+      "aerender.start",
+      { comp: "Principale", output: out("b.mp4") },
+      fakeAe(prepAnswer({ outputTemplates: null, renderTemplates: null })),
+    );
+    expect(later.outputTemplate).toBe("H.264 - Match Render Settings - 15 Mbps");
+    expect(later.warnings).toBeUndefined();
+    await waitDone(String(first.id));
+    await waitDone(String(later.id));
+  });
+
+  it("finds the output under another extension when the template's format differs", async () => {
+    fakeEnv = { FAKE_AERENDER_EXT: ".mov" };
+    const r = await ok("aerender.start", { comp: "Principale", output: out("spot.mp4") });
+    const st = await waitDone(String(r.id));
+    expect(st).toMatchObject({ status: "finito", outputExists: true });
+    expect(st.outputActual).toBe(out("spot.mov").replace(/\\/g, "/"));
+    expect((st.warnings as string[])[0]).toContain("spot.mov");
   });
 
   it("asks After Effects only to read, with the comp encoded as a literal", async () => {
     const t = fakeAe();
     const evil = '"); app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES); ("';
     const r = await ok("aerender.start", { comp: evil, output: out() }, t);
-    const literal = JSON.stringify({ comp: evil, needTemplates: true });
+    const literal = JSON.stringify({ comp: evil });
     expect(t.calls[0]!.code).toContain(literal);
     // Outside that literal, the code neither saves nor closes anything.
     expect(t.calls[0]!.code.replace(literal, "")).not.toMatch(/\.save\s*\(|\.close\s*\(/);
@@ -607,6 +693,14 @@ describe("aerender failures and cancel", () => {
     const st = await waitDone(String(r.id));
     expect(st).toMatchObject({ status: "fallito", exitCode: 0 });
     expect(String(st.message)).toContain("non c'è");
+  });
+
+  it("puts aerender's own error first when it exits 0 without a file (AE 26.5, 2026-10-26)", async () => {
+    fakeEnv = { FAKE_AERENDER_ENGINE_LOST: "1" };
+    const r = await ok("aerender.start", { comp: "Principale", output: out() });
+    const st = await waitDone(String(r.id));
+    expect(st).toMatchObject({ status: "fallito", exitCode: 0, outputExists: false });
+    expect(String(st.message)).toContain("An existing connection was forcibly closed");
   });
 
   it("stops a running render, keeps the partial file, and leaves an ended one alone", async () => {
@@ -693,4 +787,140 @@ describe("aerender under the policy", () => {
     expect(text).toContain("spot.mp4");
     expect(text).toContain("Output To: spot.mp4");
   });
+});
+
+describe("how aerender is launched (AE 26.5 / Windows, 2026-10-26)", () => {
+  // Detached, aerender lost its render engine; the same command from a shell
+  // worked. Detached on Windows means no console at all (DETACHED_PROCESS);
+  // attached with windowsHide means a console without a window. Hypothesis,
+  // not verified: aerender needs a console to keep its engine.
+  it("defaults to attached on Windows and detached elsewhere, and reads the variable", () => {
+    expect(aerenderLaunchMode("win32", {})).toEqual({ mode: "attached", ignored: null });
+    expect(aerenderLaunchMode("darwin", {})).toEqual({ mode: "detached", ignored: null });
+    expect(aerenderLaunchMode("win32", { [AERENDER_LAUNCH_ENV]: " Shell " })).toEqual({
+      mode: "shell",
+      ignored: null,
+    });
+    expect(aerenderLaunchMode("win32", { [AERENDER_LAUNCH_ENV]: "detached" }).mode).toBe(
+      "detached",
+    );
+    expect(aerenderLaunchMode("win32", { [AERENDER_LAUNCH_ENV]: "boh" })).toEqual({
+      mode: "attached",
+      ignored: "boh",
+    });
+  });
+
+  it("plans each mode", () => {
+    const exe = "C:/Program Files/Adobe/Adobe After Effects 2026/Support Files/aerender.exe";
+    const argv = ["-comp", "Comp 1", "-OMtemplate", "H.264 - Match Render Settings - 15 Mbps"];
+    expect(aerenderLaunchPlan("attached", exe, argv)).toEqual({
+      command: exe,
+      argv,
+      detached: false,
+      verbatim: false,
+    });
+    expect(aerenderLaunchPlan("detached", exe, argv)).toEqual({
+      command: exe,
+      argv,
+      detached: true,
+      verbatim: false,
+    });
+    expect(aerenderLaunchPlan("shell", exe, argv)).toEqual({
+      command: "cmd.exe",
+      argv: [
+        "/d",
+        "/s",
+        "/c",
+        `""${exe}" "-comp" "Comp 1" "-OMtemplate" "H.264 - Match Render Settings - 15 Mbps""`,
+      ],
+      detached: false,
+      verbatim: true,
+    });
+  });
+
+  it.each(['Comp "1"', "100% rosso", "riga\ndue"])(
+    "shell mode refuses an argument cmd.exe would misread: %j",
+    (bad) => {
+      const plan = aerenderLaunchPlan("shell", "C:/a/aerender.exe", ["-comp", bad]);
+      expect(plan).toHaveProperty("error");
+    },
+  );
+
+  it("starts attached by default, with a hidden window and the agent kept out", async () => {
+    const r = await ok("aerender.start", { comp: "Principale", output: out() });
+    expect(r.launch).toBe("attached");
+    expect(spawned[0]!.options).toMatchObject({ detached: false, windowsHide: true });
+    expect(spawned[0]!.options.windowsVerbatimArguments).toBeUndefined();
+    const st = await waitDone(String(r.id));
+    expect(st).toMatchObject({ status: "finito", launch: "attached" });
+    expect(readFileSync(path.join(outDir, "spot.aerender.log"), "utf8")).toContain(
+      "avvio attached",
+    );
+  });
+
+  it("switches strategy through AE_MCP_AERENDER_LAUNCH without rebuilding", async () => {
+    process.env[AERENDER_LAUNCH_ENV] = "shell";
+    const a = await ok("aerender.start", { comp: "Principale", output: out("a.mp4") });
+    expect(a.launch).toBe("shell");
+    expect(spawned[0]!.command).toBe("cmd.exe");
+    expect(spawned[0]!.options).toMatchObject({ detached: false, windowsVerbatimArguments: true });
+    expect((await waitDone(String(a.id))).status).toBe("finito");
+
+    process.env[AERENDER_LAUNCH_ENV] = "detached";
+    const b = await ok("aerender.start", { comp: "Principale", output: out("b.mp4") });
+    expect(spawned[1]!.options).toMatchObject({ detached: true });
+    await waitDone(String(b.id));
+
+    process.env[AERENDER_LAUNCH_ENV] = "boh";
+    const c = await ok("aerender.start", { comp: "Principale", output: out("c.mp4") });
+    expect(c.launch).toBe("attached");
+    expect((c.warnings as string[]).join(" ")).toContain("boh");
+    await waitDone(String(c.id));
+  });
+
+  it("refuses, before writing anything, an argument shell mode cannot quote", async () => {
+    process.env[AERENDER_LAUNCH_ENV] = "shell";
+    const e = await refused(
+      "aerender.start",
+      { comp: "Principale", output: out() },
+      fakeAe(prepAnswer({ comp: { ...prepAnswer().comp, name: "100% rosso" } })),
+    );
+    expect(e.message).toContain("100% rosso");
+    expect(spawned).toHaveLength(0);
+  });
+
+  it.runIf(process.platform === "win32")(
+    "shell mode, through the real cmd.exe: quoting, the log redirect and the exit code all hold",
+    async () => {
+      // node.exe stands in for aerender.exe; the fake is its first argument.
+      const dir = path.join(root, "cmd vero");
+      mkdirSync(dir, { recursive: true });
+      const output = path.join(dir, "uscita con spazi.mp4");
+      const plan = aerenderLaunchPlan("shell", process.execPath, [
+        FAKE,
+        "-comp",
+        "Comp 1",
+        "-output",
+        output,
+      ]);
+      if ("error" in plan) throw new Error(plan.error);
+      const logFile = path.join(dir, "log.txt");
+      const fd = openSync(logFile, "w");
+      const code = await new Promise<number | null>((resolve) => {
+        const child = nodeSpawn(plan.command, plan.argv, {
+          windowsHide: true,
+          windowsVerbatimArguments: plan.verbatim,
+          stdio: ["ignore", fd, fd],
+          env: { ...process.env, FAKE_AERENDER_FRAMES: "2", FAKE_AERENDER_EXIT: "0" },
+        });
+        child.on("exit", resolve);
+      });
+      closeSync(fd);
+      expect(code).toBe(0);
+      expect(readFileSync(output, "utf8")).toBe("fake video bytes");
+      const log = readFileSync(logFile, "utf8");
+      expect(log).toContain('Starting composition "Comp 1"');
+      expect(log).toContain("PROGRESS:  0:00:00:01 (2)");
+    },
+  );
 });
