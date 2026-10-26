@@ -54,7 +54,20 @@ class Ctl {
     foregroundColor: null as unknown,
     backgroundColor: null as { color: number[] } | null,
   };
-  layout = { layout: () => {}, resize: () => {} };
+  layouts = 0;
+  layout = {
+    layout: () => {
+      this.layouts++;
+    },
+    resize: () => {},
+  };
+  listeners: Record<string, Array<() => void>> = {};
+  addEventListener(type: string, fn: () => void): void {
+    (this.listeners[type] ??= []).push(fn);
+  }
+  fire(type: string): void {
+    for (const fn of this.listeners[type] ?? []) fn();
+  }
   onClick?: () => void;
   onClose?: () => void;
   [key: string]: unknown;
@@ -108,11 +121,14 @@ class Ctl {
   word(): string {
     return this.find("statictext", /^(ON|OFF)$/).text;
   }
-  /** The coloured block around it. */
-  color(): number[] | null {
+  /** The coloured face of the block: the text sits in a group inside it. */
+  face(): Ctl {
     const word = this.find("statictext", /^(ON|OFF)$/);
-    const block = this.all().find((c) => c.children.includes(word))!;
-    return block.graphics.backgroundColor?.color.slice(0, 3) ?? null;
+    const body = this.all().find((c) => c.children.includes(word))!;
+    return this.all().find((c) => c.children.includes(body))!;
+  }
+  color(): number[] | null {
+    return this.face().graphics.backgroundColor?.color.slice(0, 3) ?? null;
   }
   toggle(): Ctl {
     return this.find("button", /^(Accendi|Spegni)$/);
@@ -225,7 +241,6 @@ describe("stability: only standard controls, no custom painting (2026-10-26 cras
       "measureString",
       ".update(",
       "win.remove(",
-      "addEventListener",
     ]) {
       expect(code.includes(banned), banned).toBe(false);
     }
@@ -302,6 +317,103 @@ describe("stability: only standard controls, no custom painting (2026-10-26 cras
   it("docked: builds into the Panel it is given and opens no window", () => {
     openPanel();
     expect(windows).toHaveLength(0);
+  });
+});
+
+describe("the look (2026-10-26 screenshot)", () => {
+  it("the title is bold and bigger, in a named family a statictext honours", () => {
+    const panel = openPanel();
+    expect(panel.find("statictext", "Parlez!").graphics.font).toEqual({ style: "BOLD", size: 24 });
+    expect(PANEL_SRC).toContain('"Tahoma"');
+  });
+
+  it("ON/OFF is centred in the block, and the status line under it is centred and grey", () => {
+    const panel = openPanel();
+    const word = panel.find("statictext", /^(ON|OFF)$/);
+    expect(word.justify).toBe("center");
+    expect(word.alignment).toEqual(["center", "center"]);
+    const body = panel.all().find((c) => c.children.includes(word))!;
+    expect(body.alignChildren).toEqual(["center", "center"]);
+    expect(body.alignment).toEqual(["fill", "fill"]);
+    const status = panel.find("statictext", "Claude fermo");
+    expect(status.justify).toBe("center");
+  });
+
+  it("looks pressable: a darker frame around the face and a lighter strip on top", () => {
+    const panel = openPanel();
+    const face = panel.face();
+    const frame = panel.all().find((c) => c.children.includes(face))!;
+    expect(frame.margins).toBe(2);
+    const frameColor = frame.graphics.backgroundColor!.color;
+    const shine = face.children[0];
+    expect(shine.preferredSize.height).toBe(2);
+    const faceColor = face.graphics.backgroundColor!.color;
+    const shineColor = shine.graphics.backgroundColor!.color;
+    for (let i = 0; i < 3; i++) {
+      expect(frameColor[i]).toBeLessThan(faceColor[i]);
+      expect(shineColor[i]).toBeGreaterThan(faceColor[i]);
+    }
+    expect(panel.says()).not.toMatch(/premi|clicca/i);
+  });
+
+  it("reacts to the mouse: lighter over, darker pressed, back when it leaves; a click toggles", () => {
+    const panel = openPanel();
+    const face = panel.face();
+    const base = panel.color()!;
+    face.fire("mouseover");
+    const over = panel.color()!;
+    face.fire("mousedown");
+    const down = panel.color()!;
+    face.fire("mouseup");
+    face.fire("mouseout");
+    expect(panel.color()).toEqual(base);
+    for (let i = 0; i < 3; i++) {
+      expect(over[i]).toBeGreaterThanOrEqual(base[i]);
+      expect(down[i]).toBeLessThan(base[i]);
+    }
+    expect(over).not.toEqual(base);
+    face.fire("click");
+    expect(setting(PAUSE_SETTINGS_KEY)).toBe("1");
+    expect(panel.word()).toBe("ON");
+  });
+
+  it("buttons: two rows of three, same width", () => {
+    const panel = openPanel();
+    const names = ["Annulla", "Ripristino", "Elenco", "Storico", "Cassetta", "Vista"];
+    const buttons = names.map((n) => panel.find("button", new RegExp(`^${n}$`)));
+    const rows = new Set(buttons.map((b) => panel.all().find((c) => c.children.includes(b))));
+    expect(rows.size).toBe(2);
+    for (const r of rows) expect(r!.children.filter((c) => c.type === "button")).toHaveLength(3);
+    expect(new Set(buttons.map((b) => b.preferredSize.width)).size).toBe(1);
+    expect(() => panel.find("button", "Ripristini")).toThrow();
+  });
+
+  it("an empty history takes one line; the first request opens it, with one layout", () => {
+    setEnabled("1");
+    const agent = startAgent();
+    const panel = openPanel();
+    const box = panel.all().find((c) => c.children.some((k) => k.text === "Ultime richieste"))!;
+    const rows = box.children.slice(1);
+    expect(rows.filter((r) => r.visible)).toHaveLength(1);
+    const layoutsBefore = panel.layouts;
+    serveOne(agent, "a", "layer.create_null");
+    refresh();
+    expect(rows.every((r) => r.visible)).toBe(true);
+    expect(panel.layouts).toBe(layoutsBefore + 1);
+    refresh();
+    serveOne(agent, "b", "layer.create_null");
+    refresh();
+    expect(panel.layouts).toBe(layoutsBefore + 1);
+  });
+
+  it("the compact view: block on the left, history in the middle, buttons on the right", () => {
+    setSetting("layout", "compatta");
+    const panel = openPanel();
+    expect(panel.orientation).toBe("row");
+    const [left, middle, right] = panel.children;
+    expect(left.all()).toContain(panel.face());
+    expect(middle.children[0].text).toBe("Ultime richieste");
+    expect(right.all().some((c) => c.text === "Annulla")).toBe(true);
   });
 });
 
@@ -597,7 +709,7 @@ describe("«Annulla»", () => {
   });
 });
 
-describe("«Ripristino»", () => {
+describe("«Ripristino» and «Elenco»", () => {
   function openProject(name = "ShotA.aep") {
     const dir = path.join(tmp, "work");
     mkdirSync(dir, { recursive: true });
@@ -654,14 +766,14 @@ describe("«Ripristino»", () => {
     expect(engine.app.project.saves).toBe(0);
   });
 
-  it("«Ripristini» opens the folder, or says there is none yet", () => {
+  it("«Elenco» opens the folder, or says there is none yet", () => {
     const dir = openProject();
     const panel = openPanel();
-    panel.find("button", "Ripristini").onClick!();
+    panel.find("button", "Elenco").onClick!();
     expect(panel.says()).toContain("Nessun punto di ripristino");
     expect(EsFolder.executed).toEqual([]);
     panel.find("button", /^Ripristino$/).onClick!();
-    panel.find("button", "Ripristini").onClick!();
+    panel.find("button", "Elenco").onClick!();
     expect(EsFolder.executed).toEqual([
       path.join(dir, DEFAULT_CHECKPOINT_SUBDIR).replace(/\\/g, "/"),
     ]);

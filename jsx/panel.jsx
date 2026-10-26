@@ -19,14 +19,19 @@
 // Two layouts, "verticale" for a side column and "compatta" (horizontal) to
 // dock under the timeline; "Vista" saves the choice for the next opening.
 //
-// STABILITY FIRST (2026-10-26: After Effects kept crashing with the previous
-// build). Only standard controls - group, statictext, button, checkbox -
-// with colours set through graphics.backgroundColor / foregroundColor: no
-// onDraw, no custom painting, no update(). Controls are created once, when
-// the panel opens, and never removed or rebuilt while it is open. The timer
-// refresh only changes texts and colours, only when they changed, never lays
-// out, and does nothing while the panel is hidden. Nothing outside the panel
-// (the agent included) calls into it.
+// STABILITY FIRST. Custom painting in docked ScriptUI panels is fragile (an
+// earlier build drew the block with onDraw; the crashes seen on 2026-10-26
+// turned out to come from a damaged project, but the lesson stands). Only
+// standard controls - group, statictext, button, checkbox - with colours set
+// through graphics.backgroundColor / foregroundColor: no onDraw, no custom
+// painting, no update(). The block looks pressable through a darker frame
+// and a lighter top strip (groups), and reacts to the mouse through
+// ordinary event listeners. Controls are created once, when the panel
+// opens, and never removed or rebuilt while it is open. The timer refresh
+// only changes texts and colours, only when they changed, does nothing while
+// the panel is hidden, and lays the panel out again only when the history
+// goes from empty to not empty. Nothing outside the panel (the agent
+// included) calls into it.
 //
 // Safe mode ("Sicura", or automatic): no colours, no fonts, text only. It
 // switches itself on when the previous opening never finished - a marker
@@ -394,9 +399,18 @@
     if (autoSafe) writeSwitch(KEY_SAFE, "1");
     var safe = autoSafe || readSwitch(KEY_SAFE) === "1";
 
+    // "dialog" is honoured by custom drawing but, on AE 26.5, not by a
+    // statictext (seen 2026-10-26: the title stayed small); a named family is.
+    var FONT_FAMILIES = ["Tahoma", "dialog"];
+
     function setFont(ctrl, style, size) {
         if (safe) return;
-        try { ctrl.graphics.font = ScriptUI.newFont("dialog", style, size); } catch (eFont) { /* default font */ }
+        for (var i = 0; i < FONT_FAMILIES.length; i++) {
+            try {
+                ctrl.graphics.font = ScriptUI.newFont(FONT_FAMILIES[i], style, size);
+                return;
+            } catch (eFont) { /* next family */ }
+        }
     }
 
     function setTextColor(ctrl, rgb) {
@@ -416,6 +430,16 @@
         } catch (eFill) { /* no fill */ }
     }
 
+    /** `rgb` lighter (factor > 1) or darker (< 1), each channel kept in 0..1. */
+    function shade(rgb, factor) {
+        var out = [];
+        for (var i = 0; i < 3; i++) {
+            var v = (factor >= 1) ? rgb[i] + (1 - rgb[i]) * (factor - 1) : rgb[i] * factor;
+            out.push(Math.round(Math.max(0, Math.min(1, v)) * 1000) / 1000);
+        }
+        return out;
+    }
+
     function text(parent, value, size, color) {
         var t = parent.add("statictext", undefined, value);
         t.alignment = ["fill", "center"];
@@ -424,9 +448,11 @@
         return t;
     }
 
-    function button(parent, label, tip) {
+    function button(parent, label, tip, width) {
         var b = parent.add("button", undefined, label);
         b.helpTip = tip;
+        b.alignment = ["fill", "center"];
+        if (width > 0) b.preferredSize.width = width;
         return b;
     }
 
@@ -434,6 +460,7 @@
         var g = parent.add("group");
         g.orientation = "row";
         g.alignChildren = ["fill", "center"];
+        g.alignment = ["fill", "top"];
         g.spacing = 4;
         return g;
     }
@@ -447,6 +474,7 @@
     var notice = autoSafe
         ? "Modalit\u00e0 sicura: l'ultima apertura del pannello non era finita."
         : "";
+    var BUTTON_WIDTH = compact ? 78 : 84;
 
     setFill(win, BG);
     win.orientation = compact ? "row" : "column";
@@ -454,69 +482,98 @@
     win.spacing = compact ? 12 : 8;
     win.margins = compact ? [10, 8, 10, 8] : 12;
 
-    var ui = { rows: [], lastColor: "", shown: {} };
+    var ui = { rows: [], lastColor: "", base: GREY, hover: false, shown: {}, rowsOpen: true };
 
-    // Title, block, toggle, status, read-only.
+    // Title, the ON/OFF block, status, toggle, read-only.
     var head = win.add("group");
     head.orientation = "column";
     head.alignChildren = ["fill", "top"];
     head.spacing = 6;
-    if (compact) head.preferredSize.width = 150;
+    if (compact) head.preferredSize.width = 160;
     ui.title = head.add("statictext", undefined, TITLE);
-    setFont(ui.title, "BOLD", compact ? 16 : 22);
+    setFont(ui.title, "BOLD", compact ? 18 : 24);
     setTextColor(ui.title, TEXT);
 
-    ui.block = head.add("group");
-    ui.block.orientation = "column";
-    ui.block.alignChildren = ["center", "center"];
-    ui.block.alignment = ["fill", "top"];
-    ui.block.margins = compact ? 8 : 14;
-    ui.word = ui.block.add("statictext", undefined, "OFF");
+    // The block looks pressable without saying so: a 2 px darker frame
+    // around the coloured face, and a 2 px lighter strip along its top edge
+    // (a bevel). Groups and a statictext only - nothing is drawn by hand.
+    ui.frame = head.add("group");
+    ui.frame.orientation = "column";
+    ui.frame.alignChildren = ["fill", "fill"];
+    ui.frame.alignment = ["fill", "top"];
+    ui.frame.margins = 2;
+    ui.frame.spacing = 0;
+    setFill(ui.frame, [0.08, 0.08, 0.08]);
+    ui.face = ui.frame.add("group");
+    ui.face.orientation = "column";
+    ui.face.alignChildren = ["fill", "top"];
+    ui.face.alignment = ["fill", "fill"];
+    ui.face.margins = 0;
+    ui.face.spacing = 0;
+    ui.shine = ui.face.add("group");
+    ui.shine.alignment = ["fill", "top"];
+    ui.shine.preferredSize.height = 2;
+    ui.body = ui.face.add("group");
+    ui.body.orientation = "column";
+    ui.body.alignChildren = ["center", "center"];
+    ui.body.alignment = ["fill", "fill"];
+    ui.body.margins = compact ? [8, 10, 8, 12] : [12, 16, 12, 18];
+    ui.word = ui.body.add("statictext", undefined, "OFF");
     ui.word.justify = "center";
     ui.word.alignment = ["center", "center"];
-    setFont(ui.word, "BOLD", compact ? 26 : 40);
+    setFont(ui.word, "BOLD", compact ? 30 : 44);
     setTextColor(ui.word, WHITE);
 
-    ui.toggle = button(head, "Accendi", "Accende o spegne Claude in After Effects.");
-    ui.toggle.alignment = ["fill", "top"];
-    ui.status = text(head, "", 12);
+    ui.status = head.add("statictext", undefined, "");
+    ui.status.justify = "center";
+    ui.status.alignment = ["fill", "center"];
+    setFont(ui.status, "REGULAR", 11);
+    setTextColor(ui.status, [0.70, 0.70, 0.70]);
+    ui.toggle = button(head, "Accendi", "Accende o spegne Claude in After Effects (come un clic sul riquadro colorato).", 0);
     ui.readOnly = head.add("checkbox", undefined, "Sola lettura");
     ui.readOnly.helpTip = "Claude pu\u00f2 guardare il progetto ma non modificarlo: le richieste che cambierebbero qualcosa vengono rifiutate.";
 
-    // History.
-    var hist = win.add("group");
-    hist.orientation = "column";
-    hist.alignChildren = ["fill", "top"];
-    hist.spacing = 2;
-    hist.margins = [8, 6, 8, 6];
-    setFill(hist, SECTION_BG);
-    if (compact) hist.preferredSize.width = 300;
-    var histTitle = text(hist, "Ultime richieste", 11, DIM);
+    // History. While it is empty only its first line shows, so the buttons
+    // stay in sight in a short panel.
+    ui.hist = win.add("group");
+    ui.hist.orientation = "column";
+    ui.hist.alignChildren = ["fill", "top"];
+    ui.hist.spacing = 2;
+    ui.hist.margins = [8, 6, 8, 6];
+    setFill(ui.hist, SECTION_BG);
+    if (compact) ui.hist.preferredSize.width = 300;
+    var histTitle = text(ui.hist, "Ultime richieste", 11, DIM);
     histTitle.helpTip = "Le richieste pi\u00f9 recenti di Claude in questa sessione: ora, cosa, esito, durata. Lo storico completo \u00e8 nel bottone Storico.";
     var rowCount = compact ? 5 : 8;
-    for (var r = 0; r < rowCount; r++) ui.rows.push(text(hist, "", 11));
+    for (var r = 0; r < rowCount; r++) ui.rows.push(text(ui.hist, "", 11));
 
-    // Buttons, then the small print.
+    // Buttons, two rows of three of the same width, then the small print.
     var tail = win.add("group");
     tail.orientation = "column";
     tail.alignChildren = ["fill", "top"];
     tail.spacing = 4;
     var rowA = row(tail);
-    ui.undo = button(rowA, "Annulla", "Annulla l'ultima modifica di Claude (Modifica \u203a Annulla, una volta). Chiede conferma.");
-    ui.checkpoint = button(rowA, "Ripristino", "Salva il progetto e ne fa una copia in " + CHECKPOINT_SUBDIR + ", accanto al progetto.");
+    ui.undo = button(rowA, "Annulla", "Annulla l'ultima modifica di Claude (Modifica \u203a Annulla, una volta). Chiede conferma.", BUTTON_WIDTH);
+    ui.checkpoint = button(rowA, "Ripristino", "Crea un punto di ripristino adesso: salva il progetto e ne fa una copia in " + CHECKPOINT_SUBDIR + ", accanto al progetto.", BUTTON_WIDTH);
+    ui.checkpointFolder = button(rowA, "Elenco", "Apre la cartella con l'elenco dei punti di ripristino di questo progetto.", BUTTON_WIDTH);
     var rowB = row(tail);
-    ui.checkpointFolder = button(rowB, "Ripristini", "Apre la cartella dei punti di ripristino di questo progetto.");
-    ui.history = button(rowB, "Storico", "Apre lo storico completo delle richieste di questa sessione (file di testo).");
-    ui.mailbox = button(rowB, "Cassetta", "Apre la cartella dove Claude e After Effects si scambiano le richieste.");
-    var rowC = row(tail);
-    ui.layout = button(rowC, "Vista", "Passa alla vista " + (compact ? "verticale (colonna laterale)" : "compatta (sotto la timeline)") +
-        ". La nuova vista arriva alla prossima apertura del pannello.");
-    ui.safe = rowC.add("checkbox", undefined, "Sicura");
+    ui.history = button(rowB, "Storico", "Apre lo storico completo delle richieste di questa sessione (file di testo).", BUTTON_WIDTH);
+    ui.mailbox = button(rowB, "Cassetta", "Apre la cartella dove Claude e After Effects si scambiano le richieste.", BUTTON_WIDTH);
+    ui.layout = button(rowB, "Vista", "Passa alla vista " + (compact ? "verticale (colonna laterale)" : "compatta (sotto la timeline)") +
+        ". La nuova vista arriva alla prossima apertura del pannello.", BUTTON_WIDTH);
+    ui.notice = text(tail, notice, 10, DIM);
+    var small = row(tail);
+    var smallText = small.add("group");
+    smallText.orientation = "column";
+    smallText.alignChildren = ["fill", "top"];
+    smallText.alignment = ["fill", "top"];
+    smallText.spacing = 0;
+    ui.counts = text(smallText, "", 9, DIM);
+    ui.instance = text(smallText, "", 9, DIM);
+    ui.safe = small.add("checkbox", undefined, "Sicura");
+    ui.safe.alignment = ["right", "top"];
     ui.safe.helpTip = "Modalit\u00e0 sicura: niente colori n\u00e9 caratteri speciali, solo testo. Vale dalla prossima apertura del pannello.";
     ui.safe.value = safe;
-    ui.notice = text(tail, notice, 10, DIM);
-    ui.counts = text(tail, "", 9, DIM);
-    ui.instance = text(tail, "", 9, DIM);
 
     // --- Refreshing: texts and colours only, and only when they change ---
     var current = { agent: null, target: null };
@@ -537,6 +594,33 @@
         put("notice.text", ui.notice, "text", message);
     }
 
+    /**
+     * The block's colours: the state's colour, lighter while the mouse is
+     * over it, darker while it is pressed. Set only when they change.
+     */
+    function paintBlock() {
+        var face = ui.pressed ? shade(ui.base, 0.85) : (ui.hover ? shade(ui.base, 1.12) : ui.base);
+        var key = face.join(",");
+        if (key === ui.lastColor) return;
+        setFill(ui.face, face);
+        setFill(ui.shine, shade(face, 1.35));
+        ui.lastColor = key;
+    }
+
+    /**
+     * Empty history: only the first line, so the box is short. This and
+     * opening are the only two moments the panel is laid out again - here at
+     * most once per change between "empty" and "not empty".
+     */
+    function showRows(open) {
+        if (open === ui.rowsOpen) return;
+        for (var i = 1; i < ui.rows.length; i++) ui.rows[i].visible = open;
+        ui.rowsOpen = open;
+        if (ui.ready) {
+            try { win.layout.layout(true); } catch (eLay) { /* next resize lays it out */ }
+        }
+    }
+
     function refresh() {
         var now = new Date().getTime();
         var enabled = readEnabled();
@@ -546,11 +630,8 @@
 
         var state = blockFor(enabled, readOnly, agent, now);
         put("word.text", ui.word, "text", state.label);
-        var colorKey = state.color.join(",");
-        if (colorKey !== ui.lastColor) {
-            setFill(ui.block, state.color);
-            ui.lastColor = colorKey;
-        }
+        ui.base = state.color;
+        paintBlock();
         put("toggle.text", ui.toggle, "text", (enabled === true) ? "Spegni" : "Accendi");
         put("status.text", ui.status, "text", (safe ? state.label + " \u00b7 " : "") + state.status);
         put("status.helpTip", ui.status, "helpTip", state.tip);
@@ -560,6 +641,7 @@
 
         var recent = (agent !== null) ? agent.recent : [];
         var lines = historyLines(recent, ui.rows.length);
+        showRows(lines.length > 0);
         if (lines.length === 0) lines.push("Nessuna richiesta in questa sessione.");
         for (var i = 0; i < ui.rows.length; i++) put("row" + i, ui.rows[i], "text", (i < lines.length) ? lines[i] : "");
 
@@ -591,11 +673,35 @@
     }
 
     // --- Buttons ----------------------------------------------------------
-    ui.toggle.onClick = function () {
+    function toggleClaude() {
         var want = readEnabled() ? "0" : "1";
         say(writeSwitch(KEY_ENABLED, want) ? "" : "Non riesco a salvare la scelta nelle preferenze di After Effects.");
         refresh();
-    };
+    }
+    ui.toggle.onClick = toggleClaude;
+
+    // The block reacts to the mouse like a button and toggles on click.
+    // Mouse events reach a group in ScriptUI (and bubble up from the text
+    // on it); where they do not, the button above still toggles.
+    function onMouse(kind) {
+        return function () {
+            try {
+                if (kind === "over") ui.hover = true;
+                else if (kind === "out") { ui.hover = false; ui.pressed = false; }
+                else if (kind === "down") ui.pressed = true;
+                else if (kind === "up") ui.pressed = false;
+                paintBlock();
+                if (kind === "click") toggleClaude();
+            } catch (eMouse) { /* the panel is closing */ }
+        };
+    }
+    try {
+        ui.face.addEventListener("mouseover", onMouse("over"));
+        ui.face.addEventListener("mouseout", onMouse("out"));
+        ui.face.addEventListener("mousedown", onMouse("down"));
+        ui.face.addEventListener("mouseup", onMouse("up"));
+        ui.face.addEventListener("click", onMouse("click"));
+    } catch (eListen) { /* no mouse events here: the button toggles */ }
     ui.readOnly.onClick = function () {
         if (!writeSwitch(KEY_READ_ONLY, ui.readOnly.value ? "1" : "0")) {
             say("Non riesco a salvare la scelta nelle preferenze di After Effects.");
@@ -700,6 +806,7 @@
     };
 
     refresh();
+    ui.ready = true;
     if (isPanel) {
         win.layout.layout(true);
     } else {

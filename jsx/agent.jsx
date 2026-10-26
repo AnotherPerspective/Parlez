@@ -45,9 +45,10 @@
 // historyFile). Labels and titles are operation or tool names chosen by the
 // server; the request's code and payload are never recorded.
 //
-// The agent never calls into the panel: an earlier build asked it to redraw
-// around each request, from inside this scheduled task, and After Effects
-// kept crashing (2026-10-26). The panel reads the agent; never the reverse.
+// The agent never calls into the panel: touching user interface from inside
+// this scheduled task, while a request runs, is asking for trouble (an
+// earlier build did, to redraw the panel). The panel reads the agent; never
+// the reverse.
 //
 // SECURITY: same trust boundary as the shared mailbox — whoever can write
 // into <runtime>/instances/<id>/ executes code inside this AE. The directory
