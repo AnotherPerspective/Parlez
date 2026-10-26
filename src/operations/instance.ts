@@ -68,6 +68,8 @@ function summarizeInstance(i: InstanceInfo) {
     busy: i.heartbeat?.busy ?? false,
     // The user stopped Claude with the panel's switch: calls answer PAUSED.
     paused: i.heartbeat?.paused ?? false,
+    // "Sola lettura" in the panel: calls that change the project answer READ_ONLY.
+    readOnly: i.heartbeat?.readOnly ?? false,
     project: i.heartbeat?.project ?? null,
     projectName: i.heartbeat?.projectName ?? null,
     dirty: i.heartbeat?.dirty ?? null,
@@ -96,7 +98,8 @@ registerOp({
   category: "instance",
   description:
     "List the After Effects instances whose resident agent is live — id, open project, busy state, " +
-    "`paused` (the user stopped Claude with the switch in the After Effects panel; calls answer PAUSED) — " +
+    "`paused` (the user stopped Claude with the switch in the Parlez! panel; calls answer PAUSED), " +
+    "`readOnly` (the panel allows reading only; calls that change the project answer READ_ONLY) — " +
     "and which one this call would address. Instances are separate After Effects processes " +
     "(AfterFX.exe -m), each with its own project; address one on any tool with `instance: <id or project name>`. " +
     "Stale entries are instances that quit or stopped ticking (a modal dialog blocks scripting).",

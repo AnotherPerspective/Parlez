@@ -39,6 +39,19 @@ export interface EvalRequest {
    * suppression — they are the calls most likely to pop a modal.
    */
   suppressDialogs?: boolean;
+  /**
+   * False only when the call is known not to change the project or After
+   * Effects (a read-only operation or tool). Travels in the request so the
+   * Parlez! panel's "Sola lettura" switch can let reads through and refuse
+   * everything else; anything not marked false counts as a change, so a new
+   * call site is refused there until someone decides it only reads.
+   */
+  mutates?: boolean;
+  /**
+   * For `batch.run`: the names of the operations it runs, so the Parlez!
+   * panel's history can say what the batch did. Names only, never arguments.
+   */
+  steps?: string[];
   /** Per-call timeout in milliseconds. */
   timeoutMs?: number;
   /**
@@ -95,4 +108,18 @@ export interface AeTransport {
    * destination may omit it.
    */
   describeTarget?(): Promise<TargetResolution>;
+}
+
+/**
+ * The same transport with every call marked `mutates: false` — for a tool or
+ * operation that only reads, so each call it makes passes the panel's
+ * "Sola lettura" switch.
+ */
+export function readOnlyTransport(transport: AeTransport): AeTransport {
+  const wrapped: AeTransport = {
+    execute: (req) => transport.execute({ ...req, mutates: false }),
+  };
+  if (transport.close) wrapped.close = () => transport.close!();
+  if (transport.describeTarget) wrapped.describeTarget = () => transport.describeTarget!();
+  return wrapped;
 }

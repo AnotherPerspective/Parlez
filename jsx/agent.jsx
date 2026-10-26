@@ -25,12 +25,29 @@
 // flagged `busy` around a request so a stale timestamp during a long call
 // (ticks do not fire while a script runs) is not mistaken for a dead instance.
 //
-// Pause switch (Parlez!, nome provvisorio). Each tick also reads the switch the
-// panel writes (AE_MCP.isPaused, jsx/serve.jsx) and publishes it as `paused`
-// in the heartbeat — at once when it changes, so the server stops sending
-// within a tick. While paused the agent keeps ticking and heartbeating;
-// requests that still arrive are consumed and answered `paused` by
-// serveRequest without running, and counted as `refused`, not `served`.
+// The Parlez! panel's switches. Each tick also reads the two switches the
+// panel writes (AE_MCP.isPaused / isReadOnly, jsx/serve.jsx) and publishes
+// them as `paused` / `readOnly` in the heartbeat — at once when one changes,
+// so the server stops sending within a tick. While paused the agent keeps
+// ticking and heartbeating; requests that still arrive are consumed and
+// answered `paused` by serveRequest without running, and counted as
+// `refused`, not `served` (the same for `readOnly` and a request that may
+// change the project).
+//
+// With no choice saved the switch reads as "stopped" (the one rule lives in
+// AE_MCP.isEnabled, jsx/serve.jsx, and the panel uses it too).
+//
+// For the panel, the heartbeat also carries: the last RECENT_MAX requests
+// (time, label, the server's plain-Italian title, outcome, duration), when
+// the last one arrived, and how many are waiting (`pending`, "sta
+// ricevendo"). Every request also gets one line in a history file, one file
+// per After Effects session, in the user's application data folder (see
+// historyFile). Labels and titles are operation or tool names chosen by the
+// server; the request's code and payload are never recorded.
+//
+// Around each request the agent asks the panel to redraw
+// ($.global.AE_MCP_PANEL.onAgent), because no scheduled refresh can run
+// while a request does: that is the only moment "sta elaborando" can show.
 //
 // SECURITY: same trust boundary as the shared mailbox — whoever can write
 // into <runtime>/instances/<id>/ executes code inside this AE. The directory
@@ -56,7 +73,11 @@
 
 (function agentEntry() {
     // 2: stays out of the render engine (aerender) and knows the pause switch (`paused` / `refused` in the heartbeat).
-    var AGENT_VERSION = 2;
+    // 3: "Sola lettura" (`readOnly`), recent requests (`recent`, `lastRequestAt`, `pending`), history file.
+    var AGENT_VERSION = 3;
+    var RECENT_MAX = 8;
+    var LABEL_MAX = 60;
+    var TITLE_MAX = 120;
     var TICK_MS = 250;
     var HEARTBEAT_MS = 1000;
 
@@ -171,6 +192,59 @@
         return false;
     }
 
+    function pad2(n) {
+        return (n < 10 ? "0" : "") + String(n);
+    }
+
+    function stamp(d) {
+        return String(d.getFullYear()) + pad2(d.getMonth() + 1) + pad2(d.getDate()) + "-" +
+            pad2(d.getHours()) + pad2(d.getMinutes()) + pad2(d.getSeconds());
+    }
+
+    function clock(d) {
+        return pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds());
+    }
+
+    /** "0,4 s", "12 s": the way the panel and the history show a duration. */
+    function seconds(ms) {
+        if (typeof ms !== "number" || ms < 0) return "";
+        if (ms < 10000) return (Math.round(ms / 100) / 10).toString().replace(".", ",") + " s";
+        return String(Math.round(ms / 1000)) + " s";
+    }
+
+    var OUTCOME_WORDS = {
+        ok: "eseguita",
+        error: "errore",
+        paused: "rifiutata (pausa)",
+        readonly: "rifiutata (sola lettura)"
+    };
+
+    /** A label fit for the panel: one line, bounded, never empty. */
+    function cleanLabel(label, max) {
+        if (typeof label !== "string" || label.length === 0) return "(senza nome)";
+        var limit = max || LABEL_MAX;
+        var s = label.replace(/[\x00-\x1f\x7f]+/g, " ");
+        if (s.length > limit) s = s.substring(0, limit - 3) + "...";
+        return s;
+    }
+
+    /**
+     * Where this session's history goes: <user data>/Parlez/storico/ —
+     * %APPDATA%\Parlez\storico on Windows, ~/Library/Application Support/
+     * Parlez/storico on macOS. Not the mailbox (swept an hour after After
+     * Effects closes, and a temp folder the system may clear), not next to
+     * the project (that would put our files into client folders, and a
+     * session spans projects). Null when there is nowhere to write.
+     */
+    function historyDir() {
+        try {
+            var dir = normalizePath(Folder.userData.fsName) + "/Parlez/storico";
+            return ensureDir(dir) ? dir : null;
+        } catch (eDir) {
+            return null;
+        }
+    }
+
     function agentMain() {
         // One agent per process. A second evaluation (a `-r` run of this file,
         // a second stub) must not install a second poller: two tasks would
@@ -190,6 +264,11 @@
             served: 0,
             refused: 0,
             paused: false,
+            readOnly: false,
+            lastRequestAt: null,
+            pending: 0,
+            recent: [],
+            historyPath: null,
             busy: false,
             busySince: null,
             dir: null,
@@ -231,6 +310,10 @@
                 served: state.served,
                 refused: state.refused,
                 paused: state.paused,
+                readOnly: state.readOnly,
+                lastRequestAt: state.lastRequestAt,
+                pending: state.pending,
+                recent: state.recent,
                 busy: state.busy,
                 busySince: state.busySince,
                 lastError: state.lastError,
@@ -240,35 +323,120 @@
             state.lastHeartbeatAt = now;
         }
 
+        /**
+         * Add a request to `recent`. `undoable`: it ran to completion inside
+         * an undo group and may have changed the project — so one Undo right
+         * after reverts it (what the panel's "Annulla" button relies on).
+         */
+        function remember(summary, outcome, ms) {
+            try {
+                var label = cleanLabel(summary ? summary.label : null);
+                var entry = {
+                    t: state.lastRequestAt,
+                    label: label,
+                    title: (summary && typeof summary.title === "string") ? cleanLabel(summary.title, TITLE_MAX) : label,
+                    outcome: outcome,
+                    ms: ms,
+                    undoable: !!(summary && outcome === "ok" && summary.mutates && summary.undoGroup)
+                };
+                writeHistory(entry);
+                var next = [];
+                var from = state.recent.length - (RECENT_MAX - 1);
+                for (var i = (from > 0 ? from : 0); i < state.recent.length; i++) next.push(state.recent[i]);
+                next.push(entry);
+                state.recent = next;
+            } catch (eRemember) { /* the list is a convenience; serving goes on */ }
+        }
+
+        /** One line per request in this session's history file. Never throws. */
+        function writeHistory(entry) {
+            try {
+                if (state.historyPath === null) {
+                    var dir = historyDir();
+                    if (dir === null) return;
+                    state.historyPath = dir + "/storico-" + stamp(new Date(state.startedAt)) + "-" + state.id + ".txt";
+                    var head = new File(state.historyPath);
+                    head.encoding = "UTF-8";
+                    if (head.open("a")) {
+                        head.writeln("Parlez! - storico delle richieste di Claude, istanza " + state.id +
+                            ", After Effects " + app.version + ", aperto il " + new Date(state.startedAt).toString());
+                        head.writeln("ora      | cosa | operazione | esito | durata");
+                        head.close();
+                    }
+                }
+                var f = new File(state.historyPath);
+                f.encoding = "UTF-8";
+                if (!f.open("a")) return;
+                var words = OUTCOME_WORDS.hasOwnProperty(entry.outcome) ? OUTCOME_WORDS[entry.outcome] : entry.outcome;
+                f.writeln(clock(new Date(entry.t)) + " | " + entry.title + " | " + entry.label + " | " + words +
+                    " | " + seconds(entry.ms));
+                f.close();
+            } catch (eHistory) { /* the history is a convenience; serving goes on */ }
+        }
+
+        /** Let an open panel redraw now: no scheduled refresh runs during a request. */
+        function notifyPanel() {
+            try {
+                var panel = $.global.AE_MCP_PANEL;
+                if (panel && typeof panel.onAgent === "function") panel.onAgent();
+            } catch (ePanel) { /* the panel is a convenience; serving goes on */ }
+        }
+
+        function countPending() {
+            try {
+                var files = new Folder(state.dir).getFiles("request-*.json");
+                return files ? files.length : 0;
+            } catch (eCount) {
+                return 0;
+            }
+        }
+
         function tick() {
+            // A panel redraw during a request may let After Effects run a
+            // scheduled tick; one request at a time.
+            if (state.busy) return;
             try {
                 state.ticks++;
                 var paused = AE_MCP.isPaused();
-                var pauseChanged = (paused !== state.paused);
+                var readOnly = AE_MCP.isReadOnly();
+                var switchChanged = (paused !== state.paused) || (readOnly !== state.readOnly);
                 state.paused = paused;
+                state.readOnly = readOnly;
                 var dir = mailboxDir() + "/instances/" + state.id;
                 if (dir !== state.dir) {
                     if (!ensureDir(dir)) return;
                     state.dir = dir;
                     heartbeat(true);
                 }
-                heartbeat(pauseChanged);
+                heartbeat(switchChanged);
 
+                var pending = countPending();
+                if (pending !== state.pending) {
+                    state.pending = pending;
+                    heartbeat(true);
+                }
                 var request = AE_MCP.oldestRequestIn(state.dir);
                 if (request === null) return;
 
                 state.busy = true;
                 state.busySince = new Date().getTime();
+                state.lastRequestAt = state.busySince;
+                state.pending = (pending > 0) ? pending - 1 : 0;
                 heartbeat(true);
-                var outcome = null;
+                notifyPanel();
+                var summary = null;
                 try {
-                    outcome = AE_MCP.serveRequest(request, state.dir, state.dir + "/agent.log");
+                    summary = AE_MCP.serveRequest(request, state.dir, state.dir + "/agent.log");
                 } finally {
+                    var ms = new Date().getTime() - state.busySince;
                     state.busy = false;
                     state.busySince = null;
-                    if (outcome === "paused") state.refused++;
+                    var outcome = (summary && typeof summary.outcome === "string") ? summary.outcome : "error";
+                    if (outcome === "paused" || outcome === "readonly") state.refused++;
                     else state.served++;
+                    remember(summary, outcome, ms);
                     heartbeat(true);
+                    notifyPanel();
                 }
             } catch (eTick) {
                 state.lastError = describeError(eTick);

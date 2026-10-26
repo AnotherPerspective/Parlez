@@ -1,5 +1,5 @@
 import { errorResult } from "../errors.js";
-import { instanceLabel, isPaused, listInstances } from "../transport/instances.js";
+import { instanceLabel, isPaused, isReadOnly, listInstances } from "../transport/instances.js";
 import { defineTool, toMcpResult } from "./define-tool.js";
 
 const CODE = `
@@ -152,6 +152,7 @@ export const contextTool = defineTool({
       alive: i.alive,
       busy: i.heartbeat?.busy ?? false,
       paused: i.heartbeat?.paused ?? false,
+      readOnly: i.heartbeat?.readOnly ?? false,
       project: i.heartbeat?.project ?? null,
       aeVersion: i.heartbeat?.aeVersion ?? null,
       lastSeenMsAgo: i.ageMs,
@@ -174,7 +175,12 @@ export const contextTool = defineTool({
         target === null
           ? null
           : target.mode === "pull"
-            ? { mode: "pull", instance: target.instance.id, paused: isPaused(target.instance) }
+            ? {
+                mode: "pull",
+                instance: target.instance.id,
+                paused: isPaused(target.instance),
+                readOnly: isReadOnly(target.instance),
+              }
             : target.mode === "push"
               ? { mode: "push" }
               : { mode: "error", message: target.message },

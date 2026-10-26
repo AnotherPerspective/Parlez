@@ -78,8 +78,8 @@ class FakeAgent {
   served: Array<Record<string, unknown>> = [];
   /** Merged into every heartbeat (e.g. `{ paused: true }`). */
   beat: Record<string, unknown> = {};
-  /** Answer every request the way serve.jsx does while the pause switch is off. */
-  refuse = false;
+  /** Answer every request the way serve.jsx does while a panel switch refuses it. */
+  refuse: null | "paused" | "readOnly" = null;
 
   constructor(private readonly serve: ((request: Record<string, unknown>) => unknown) | null) {}
 
@@ -148,9 +148,9 @@ class FakeAgent {
             id,
             ok: false,
             phase: "dispatch",
-            paused: true,
+            [this.refuse]: true,
             result: null,
-            error: "paused",
+            error: this.refuse,
             stack: null,
             logs: [],
           }
@@ -442,7 +442,7 @@ describe("pull path: the pause switch (Parlez!)", () => {
 
   it("maps an agent's `paused` answer to PAUSED (switch flipped after the heartbeat)", async () => {
     agent = new FakeAgent(() => "ran");
-    agent.refuse = true;
+    agent.refuse = "paused";
     await agent.start();
     const transport = new FileIpcTransport({
       instance: agent.id,
@@ -473,6 +473,92 @@ describe("pull path: the pause switch (Parlez!)", () => {
     const res = await transport.execute({ code: "return 1;", timeoutMs: 5_000 });
     expect(res.ok, res.error ?? "").toBe(true);
     expect(res.result).toBe("ran");
+  });
+});
+
+describe("pull path: «Sola lettura» (Parlez!)", () => {
+  let agent: FakeAgent;
+
+  afterEach(async () => {
+    await agent?.stop();
+  });
+
+  it("answers READ_ONLY at once for a call that may change the project", async () => {
+    agent = new FakeAgent(() => "ran");
+    agent.beat = { readOnly: true, agentVersion: 3 };
+    await agent.start();
+    const transport = new FileIpcTransport({
+      instance: agent.id,
+      spawn: recordingSpawn(() => {}).spawn,
+    });
+    const started = Date.now();
+    const res = await transport.execute({ code: "return 1;", label: "write", timeoutMs: 30_000 });
+    expect(res.errorCode).toBe("READ_ONLY");
+    expect(res.error).toContain("sola lettura");
+    expect(res.error).toContain("pannello Parlez!");
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(agent.served).toEqual([]);
+  });
+
+  it("lets a call marked mutates: false through, and says so in the request", async () => {
+    agent = new FakeAgent(() => "ran");
+    agent.beat = { readOnly: true, agentVersion: 3 };
+    await agent.start();
+    const transport = new FileIpcTransport({
+      instance: agent.id,
+      spawn: recordingSpawn(() => {}).spawn,
+    });
+    const res = await transport.execute({
+      code: "return 1;",
+      label: "look",
+      mutates: false,
+      timeoutMs: 5_000,
+    });
+    expect(res.ok, res.error ?? "").toBe(true);
+    expect(agent.served[0]).toMatchObject({ label: "look", mutates: false });
+  });
+
+  it("sends mutates: true when the caller did not say", async () => {
+    agent = new FakeAgent(() => "ran");
+    await agent.start();
+    const transport = new FileIpcTransport({
+      instance: agent.id,
+      spawn: recordingSpawn(() => {}).spawn,
+    });
+    await transport.execute({ code: "return 1;", label: "plain", timeoutMs: 5_000 });
+    expect(agent.served[0]).toMatchObject({ mutates: true });
+  });
+
+  it("puts the plain-Italian title in the request, for the panel's history", async () => {
+    agent = new FakeAgent(() => "ran");
+    await agent.start();
+    const transport = new FileIpcTransport({
+      instance: agent.id,
+      spawn: recordingSpawn(() => {}).spawn,
+    });
+    await transport.execute({ code: "return 1;", label: "layer.create_text", timeoutMs: 5_000 });
+    await transport.execute({
+      code: "return 1;",
+      label: "batch.run",
+      steps: ["layer.create_null", "layer.move"],
+      timeoutMs: 5_000,
+    });
+    expect(agent.served.map((r) => r.title)).toEqual([
+      "crea livello di testo",
+      "lotto di 2 operazioni: crea oggetto nullo, sposta livello",
+    ]);
+  });
+
+  it("maps an agent's `readOnly` answer to READ_ONLY", async () => {
+    agent = new FakeAgent(() => "ran");
+    agent.refuse = "readOnly";
+    await agent.start();
+    const transport = new FileIpcTransport({
+      instance: agent.id,
+      spawn: recordingSpawn(() => {}).spawn,
+    });
+    const res = await transport.execute({ code: "return 1;", timeoutMs: 5_000 });
+    expect(res.errorCode).toBe("READ_ONLY");
   });
 });
 

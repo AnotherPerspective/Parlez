@@ -376,24 +376,30 @@ export const AGENT_JSX = path.join(PACKAGE_ROOT, "jsx", "agent.jsx");
 /** Name of the bootstrap stub `install-agent` drops into Scripts/Startup. */
 export const AGENT_STUB_FILENAME = "mcp-aftereffects-agent.jsx";
 
-// --- The pause switch (nome provvisorio) ---------------------------------------
+// --- The Parlez! panel: pause and read-only switches ---------------------------
 //
 // A ScriptUI panel inside After Effects (jsx/panel.jsx, copied into the
 // user-level Scripts/ScriptUI Panels folder by `install-panel`) lets the user
-// stop Claude without leaving AE. The switch is one app.settings entry —
-// "1" = Claude may work, "0" = stopped — read by jsx/serve.jsx before every
-// request on both paths and reported by the agent in heartbeat.json as
-// `paused`, which is how this side learns of it. The same section and key are
-// written literally in jsx/serve.jsx and jsx/panel.jsx; tests keep the three
-// in step.
+// stop Claude, or let it look without touching, without leaving AE. Each
+// switch is one app.settings entry in the PAUSE_SETTINGS_SECTION section:
+//   claudeEnabled  "1" = Claude may work, "0" = stopped
+//   readOnly       "1" = only requests the server marks `mutates: false` run
+// read by jsx/serve.jsx before every request on both paths and reported by
+// the agent in heartbeat.json as `paused` / `readOnly`, which is how this side
+// learns of them. The same section and keys are written literally in
+// jsx/serve.jsx, jsx/agent.jsx and jsx/panel.jsx; tests keep them in step.
 
 export const PANEL_JSX = path.join(PACKAGE_ROOT, "jsx", "panel.jsx");
 
 /** File name in ScriptUI Panels — After Effects lists the panel under Window by it. */
-export const PANEL_FILENAME = "Parlez (provvisorio).jsx";
+export const PANEL_FILENAME = "Parlez!.jsx";
+
+/** Names earlier builds installed the panel under; install/uninstall-panel clear them. */
+export const LEGACY_PANEL_FILENAMES = ["Parlez (provvisorio).jsx"];
 
 export const PAUSE_SETTINGS_SECTION = "Parlez";
 export const PAUSE_SETTINGS_KEY = "claudeEnabled";
+export const READ_ONLY_SETTINGS_KEY = "readOnly";
 
 export const INSTANCE_ID_MAX_LENGTH = 64;
 

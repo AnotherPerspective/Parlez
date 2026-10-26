@@ -29,10 +29,16 @@ export type AeErrorCode =
    */
   | "DIALOG_OPEN"
   /**
-   * The user stopped Claude with the switch in the After Effects panel
-   * (Parlez!, nome provvisorio). Not retryable: only the user can turn it back on.
+   * The user stopped Claude with the switch in the Parlez! panel inside
+   * After Effects. Not retryable: only the user can turn it back on.
    */
   | "PAUSED"
+  /**
+   * The user set the Parlez! panel to "Sola lettura": the call would change
+   * the project, and only reading is allowed. Not retryable as is. (Nome
+   * provvisorio del codice.)
+   */
+  | "READ_ONLY"
   /** AE never wrote a response before the deadline. */
   | "TIMEOUT"
   /** Node-side failure: spawn, filesystem, JSON write. */

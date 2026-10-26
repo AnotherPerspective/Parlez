@@ -19,8 +19,10 @@
 //     in scope, inside an undo group unless the request said `undoGroup:
 //     false`, with modal dialogs suppressed unless it said `suppressDialogs:
 //     false`;
-//   - while the user has stopped Claude from the panel (the pause switch,
-//     below), the request is consumed and answered `paused` without running;
+//   - while the user has stopped Claude from the Parlez! panel (the pause
+//     switch, below), the request is consumed and answered `paused` without
+//     running; while the panel says "Sola lettura", the same happens to every
+//     request not marked `mutates: false`, answered `readOnly`;
 //   - every failure mode writes a response. An exception escaping to AE's
 //     modal error dialog would block scripting for the rest of the session.
 //
@@ -73,34 +75,63 @@ AE_MCP.appendLog = function (logPath, msg) {
     } catch (eLog) { /* ignore */ }
 };
 
-// --- The pause switch (Parlez!, nome provvisorio) --------------------------
-// One app.settings entry, written by the panel (jsx/panel.jsx): "1" = Claude
-// may work, "0" = stopped. app.settings rather than a file in the mailbox:
-// the panel and both serving paths reach it without knowing where the
-// mailbox is or which instance id the agent picked, a change takes effect on
-// the very next request without restarting After Effects, and AE keeps it
-// between sessions, which the panel needs anyway. The server learns of it
-// through the agent's heartbeat (`paused`).
+// --- The Parlez! panel's switches ------------------------------------------
+// Two app.settings entries in the "Parlez" section, written by the panel
+// (jsx/panel.jsx):
+//   claudeEnabled  "1" = Claude may work, "0" = stopped
+//   readOnly       "1" = only requests marked `mutates: false` run
+// app.settings rather than a file in the mailbox: the panel and both serving
+// paths reach it without knowing where the mailbox is or which instance id
+// the agent picked, a change takes effect on the very next request without
+// restarting After Effects, and AE keeps it between sessions, which the panel
+// needs anyway. The server learns of them through the agent's heartbeat
+// (`paused`, `readOnly`).
 //
-// Absent — the panel was never opened — means allowed: an install without the
-// panel must keep working exactly as before, and a missing switch the user
-// cannot see must not stop anything. The panel writes "0" the first time it
-// opens, so whoever has the switch starts with Claude stopped. Anything but
-// "0" also means allowed, for the same reason.
+// ONE rule, here, for everyone: Claude may work only when claudeEnabled says
+// exactly "1". Absent (nobody ever touched the switch), "0", or anything
+// else means stopped. The panel calls AE_MCP.isEnabled too (it is exported
+// on $.global below), so what the panel shows and what the agent does cannot
+// disagree — they did on AE 26.5 on 2026-10-25, when this file read "absent"
+// as allowed while the panel showed "stopped". readOnly is on only when it
+// says exactly "1".
 //
-// Section and key are mirrored in src/config.ts and jsx/panel.jsx.
+// Consequence: without the panel there is no way to switch Claude on —
+// install-panel is part of the install.
+//
+// Section and keys are mirrored in src/config.ts and jsx/panel.jsx. Messages
+// use \u escapes so they read the same whatever encoding After Effects
+// assumes for this file.
 AE_MCP.PAUSE_SECTION = "Parlez";
 AE_MCP.PAUSE_KEY = "claudeEnabled";
-AE_MCP.PAUSED_MESSAGE = "Claude è in pausa in After Effects: accendi l'interruttore nel pannello Parlez!";
+AE_MCP.READ_ONLY_KEY = "readOnly";
+AE_MCP.PAUSED_MESSAGE = "Claude \u00e8 in pausa in After Effects: accendi l'interruttore nel pannello Parlez!";
+AE_MCP.READ_ONLY_MESSAGE = "Claude \u00e8 in sola lettura in After Effects: spegni \u00abSola lettura\u00bb nel pannello Parlez! per lasciarlo modificare.";
 
-AE_MCP.isPaused = function () {
+AE_MCP.readSwitch = function (key) {
     try {
-        if (!app.settings.haveSetting(AE_MCP.PAUSE_SECTION, AE_MCP.PAUSE_KEY)) return false;
-        return String(app.settings.getSetting(AE_MCP.PAUSE_SECTION, AE_MCP.PAUSE_KEY)) === "0";
-    } catch (ePause) {
-        return false;
+        if (!app.settings.haveSetting(AE_MCP.PAUSE_SECTION, key)) return null;
+        return String(app.settings.getSetting(AE_MCP.PAUSE_SECTION, key));
+    } catch (eSwitch) {
+        return null;
     }
 };
+
+AE_MCP.isEnabled = function () {
+    return AE_MCP.readSwitch(AE_MCP.PAUSE_KEY) === "1";
+};
+
+AE_MCP.isPaused = function () {
+    return !AE_MCP.isEnabled();
+};
+
+AE_MCP.isReadOnly = function () {
+    return AE_MCP.readSwitch(AE_MCP.READ_ONLY_KEY) === "1";
+};
+
+// The panel (a separate script, copied, that cannot #include this file)
+// finds the rule here. try: $.global is ExtendScript's; a missing one only
+// means the panel falls back to its own copy of the same rule.
+try { $.global.AE_MCP = AE_MCP; } catch (eExport) { /* not ExtendScript */ }
 
 /**
  * Oldest pending request-*.json directly inside `dir`, or null. Oldest-first
@@ -134,7 +165,10 @@ AE_MCP.oldestRequestIn = function (dir) {
  * @param requestFile  File   the request-<id>.json to serve
  * @param mailboxDir   string directory holding it; the response goes next to it
  * @param logPath      string append-only log for this serving path
- * @returns "paused" when the request was refused by the pause switch
+ * @returns { outcome, label, title, mutates, undoGroup } for the agent's list of
+ *   recent requests: outcome is "ok", "error" (the request or its code
+ *   failed), "paused" or "readonly" (refused by a panel switch, nothing ran);
+ *   label is the request's label, null when it could not be read.
  */
 AE_MCP.serveRequest = function (requestFile, mailboxDir, logPath) {
     var REQUEST_PREFIX = "request-";
@@ -171,6 +205,25 @@ AE_MCP.serveRequest = function (requestFile, mailboxDir, logPath) {
         stack: null,
         logs: []
     };
+
+    var request = null;
+
+    /** What the agent records about this request - never its code or payload. */
+    function summary(outcome) {
+        var label = null;
+        var title = null;
+        try {
+            if (request && typeof request.label === "string") label = request.label;
+            if (request && typeof request.title === "string") title = request.title;
+        } catch (eLbl) { /* keep null */ }
+        return {
+            outcome: outcome,
+            label: label,
+            title: title,
+            mutates: !(request && request.mutates === false),
+            undoGroup: !(request && request.undoGroup === false)
+        };
+    }
 
     var responsePath = mailboxDir + "/response-" + requestId + ".json";
     var tmpName = ".response-" + requestId + ".json.tmp";
@@ -245,13 +298,12 @@ AE_MCP.serveRequest = function (requestFile, mailboxDir, logPath) {
     }
 
     // --- Read request (consume-on-read) --------------------------------
-    var request = null;
     try {
         requestFile.encoding = "UTF-8";
         if (!requestFile.open("r")) {
             response.error = "cannot open " + requestName + ": " + requestFile.error;
             writeResponse();
-            return;
+            return summary("error");
         }
         var raw = requestFile.read();
         requestFile.close();
@@ -262,36 +314,45 @@ AE_MCP.serveRequest = function (requestFile, mailboxDir, logPath) {
         } catch (eRm2) {
             appendLog("WARN: consuming " + requestName + " threw: " + describeError(eRm2));
         }
-        // Checked after consuming, so a refused request cannot run later when
-        // the switch goes back on, and answered at once, so the caller does
-        // not wait out its timeout. `paused` is what the server maps to its
-        // PAUSED error; the message is only a fallback for older servers.
-        if (AE_MCP.isPaused()) {
-            response.paused = true;
-            response.error = AE_MCP.PAUSED_MESSAGE;
-            appendLog("refused " + requestName + ": Claude is paused");
-            writeResponse();
-            return "paused";
-        }
         request = JSON.parse(raw);
     } catch (eReq) {
         response.error = "failed to read request: " + describeError(eReq);
         response.stack = errStack(eReq);
         writeResponse();
-        return;
+        return summary("error");
+    }
+
+    // The panel's switches. Checked after consuming, so a refused request
+    // cannot run later when the switch goes back on, and answered at once, so
+    // the caller does not wait out its timeout. `paused` / `readOnly` are what
+    // the server maps to its PAUSED / READ_ONLY errors; the messages are only
+    // a fallback for older servers.
+    if (AE_MCP.isPaused()) {
+        response.paused = true;
+        response.error = AE_MCP.PAUSED_MESSAGE;
+        appendLog("refused " + requestName + ": Claude is paused");
+        writeResponse();
+        return summary("paused");
+    }
+    if (AE_MCP.isReadOnly() && !(request && request.mutates === false)) {
+        response.readOnly = true;
+        response.error = AE_MCP.READ_ONLY_MESSAGE;
+        appendLog("refused " + requestName + ": read-only, and the request may change the project");
+        writeResponse();
+        return summary("readonly");
     }
 
     if (!request || typeof request.code !== "string") {
         response.error = "request missing `code` field";
         writeResponse();
-        return;
+        return summary("error");
     }
     if (request.id && String(request.id) !== requestId) {
         // Body and filename disagree — refuse rather than answer under an id
         // the caller is not polling for.
         response.error = "request id mismatch: filename says " + requestId + ", body says " + String(request.id);
         writeResponse();
-        return;
+        return summary("error");
     }
 
     // --- Execute user code, normally inside an undo group --------------
@@ -371,4 +432,5 @@ AE_MCP.serveRequest = function (requestFile, mailboxDir, logPath) {
     }
 
     writeResponse();
+    return summary(response.ok ? "ok" : "error");
 };
