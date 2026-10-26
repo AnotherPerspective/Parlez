@@ -41,6 +41,94 @@ export function aerenderCandidates(afterFx: string, platform: NodeJS.Platform): 
   return [w.join(w.dirname(afterFx), "aerender.exe")];
 }
 
+// --- How aerender is launched ---------------------------------------------------
+//
+// AE 26.5 / Windows, 2026-10-26: launched by the server detached, aerender
+// started its render engine and then lost it ("An existing connection was
+// forcibly closed by the remote host … Unable to receive at line 518"); the
+// same command from an ordinary shell, stdout redirected to a file, rendered
+// fine. What differs is the console. With `detached: true` libuv creates the
+// process with DETACHED_PROCESS (and CREATE_NEW_PROCESS_GROUP): aerender gets
+// NO console at all. Not detached, with windowsHide and stdio going to files,
+// libuv uses CREATE_NO_WINDOW: a console exists, it just has no window — as
+// in the shell. aerender talks to its engine over a local connection and is a
+// console program; losing the engine only when it has no console is the most
+// likely explanation (not verified yet). Hence "attached" by default.
+
+/** Environment variable choosing the launch strategy (nome provvisorio). */
+export const AERENDER_LAUNCH_ENV = "AE_MCP_AERENDER_LAUNCH";
+
+/**
+ * - attached: a child of the server, hidden console. If the server process
+ *   ends, Windows ends the render too (libuv keeps its children in a job
+ *   object that closes with it).
+ * - shell: the same, through `cmd.exe /d /s /c "…"` — the closest copy of the
+ *   manual run that worked; also ends with the server.
+ * - detached: the first version (no console); survives the server, failed on
+ *   AE 26.5.
+ */
+export type AerenderLaunchMode = "attached" | "shell" | "detached";
+
+const LAUNCH_MODES: readonly AerenderLaunchMode[] = ["attached", "shell", "detached"];
+
+/** The strategy for this call: AE_MCP_AERENDER_LAUNCH when valid, else the platform default. */
+export function aerenderLaunchMode(
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv = process.env,
+): { mode: AerenderLaunchMode; ignored: string | null } {
+  const raw = env[AERENDER_LAUNCH_ENV]?.trim().toLowerCase();
+  if (raw && (LAUNCH_MODES as readonly string[]).includes(raw)) {
+    return { mode: raw as AerenderLaunchMode, ignored: null };
+  }
+  // macOS keeps the first behaviour: nothing went wrong there that we know
+  // of, and cancel signals the process group, which needs detached.
+  const mode: AerenderLaunchMode = platform === "win32" ? "attached" : "detached";
+  return { mode, ignored: raw ? raw : null };
+}
+
+export interface LaunchPlan {
+  command: string;
+  argv: string[];
+  detached: boolean;
+  /** cmd.exe needs its command line passed as written (shell mode only). */
+  verbatim: boolean;
+}
+
+/** Characters cmd.exe would act on even inside double quotes, or that would end them. */
+const CMD_UNSAFE = /["%\r\n]/;
+
+/**
+ * The process to start for `aerender argv`. In shell mode every argument is
+ * double-quoted for cmd.exe; one containing `"` or `%` (cmd would end the
+ * quote, or expand %VAR%) is refused rather than escaped half-right.
+ */
+export function aerenderLaunchPlan(
+  mode: AerenderLaunchMode,
+  aerender: string,
+  argv: string[],
+): LaunchPlan | { error: string } {
+  if (mode !== "shell") {
+    return { command: aerender, argv, detached: mode === "detached", verbatim: false };
+  }
+  const parts = [aerender, ...argv];
+  const bad = parts.find((p) => CMD_UNSAFE.test(p));
+  if (bad !== undefined) {
+    return {
+      error:
+        `Con ${AERENDER_LAUNCH_ENV}=shell un argomento non può contenere " né %: ${bad}. ` +
+        "Togli la variabile (modo attached) oppure rinomina con l'utente.",
+    };
+  }
+  const line = parts.map((p) => `"${p}"`).join(" ");
+  // /s: cmd strips exactly the outer pair of quotes and keeps the rest as is.
+  return {
+    command: "cmd.exe",
+    argv: ["/d", "/s", "/c", `"${line}"`],
+    detached: false,
+    verbatim: true,
+  };
+}
+
 /**
  * A path as the user (or the model) typed it: quotes from a copied Explorer /
  * Finder path stripped, `~` expanded, made absolute. Same reading as the

@@ -30,6 +30,10 @@ import { jsxFail, jsxVal, registerOp } from "../registry.js";
 import type { AeTransport } from "../transport/AeTransport.js";
 import {
   AERENDER_ENV,
+  AERENDER_LAUNCH_ENV,
+  type AerenderLaunchMode,
+  aerenderLaunchMode,
+  aerenderLaunchPlan,
   aerenderCandidates,
   existingOutputFiles,
   outputUnderOtherExtension,
@@ -117,6 +121,7 @@ interface Job {
   output: string;
   log: string;
   command: string[];
+  launch: AerenderLaunchMode;
   child: ChildProcess;
   pid: number | null;
   startedAt: number;
@@ -439,6 +444,7 @@ async function report(job: Job): Promise<Record<string, unknown>> {
     comp: job.comp,
     output: slash(job.output),
     log: slash(job.log),
+    launch: job.launch,
     frame,
     totalFrames: total,
     totalFrom: progress.totalFromLog !== null ? "log" : job.expectedFrom,
@@ -504,7 +510,8 @@ registerOp({
     "Render a comp in the BACKGROUND with aerender, without blocking After Effects; returns at once with an id for aerender.status / aerender.cancel. " +
     "aerender reads the project from disk, so the project must be saved: with unsaved changes the call is refused (ask the user, then ae_save_project or checkpoint.create). " +
     "`output` is required (absolute path; folders are created; image sequences use [#####]). Default output template: the first starting with 'H.264'; if none, the call lists them. " +
-    "If the output already exists it needs confirm: true. aerender's stdout goes to <name>.aerender.log next to the output.",
+    "If the output already exists it needs confirm: true. aerender's stdout goes to <name>.aerender.log next to the output. " +
+    `On Windows the render is a child of this server (launch mode 'attached', $${AERENDER_LAUNCH_ENV} changes it): it stops if the server stops.`,
   params: [
     { name: "comp", type: "any", description: "Comp name or id", required: true },
     {
@@ -691,13 +698,16 @@ registerOp({
     if (typeof args.mfr === "boolean") argv.push("-mfr", args.mfr ? "ON" : "OFF", "100");
     if (args.continueOnMissingFootage === true) argv.push("-continueOnMissingFootage");
     const command = [aerender, ...argv].map(slash);
+    const launch = aerenderLaunchMode(hooks.platform);
+    const plan = aerenderLaunchPlan(launch.mode, aerender, argv);
+    if ("error" in plan) return fail(plan.error, { errorCode: "INVALID_ARGS" });
 
     let fd: number;
     try {
       fd = openSync(log, "a");
       writeSync(
         fd,
-        `\n=== Parlez! aerender — ${new Date(hooks.now()).toISOString()} ===\n` +
+        `\n=== Parlez! aerender — ${new Date(hooks.now()).toISOString()} — avvio ${launch.mode} ===\n` +
           `${command.map((c) => (/\s/.test(c) ? `"${c}"` : c)).join(" ")}\n`,
       );
     } catch (err) {
@@ -707,13 +717,15 @@ registerOp({
     }
 
     // stdout and stderr go straight into the log file, not through pipes to
-    // this process: the render survives the server stopping, and the log is
-    // complete whoever reads it.
+    // this process: the log is complete whoever reads it, and a busy server
+    // never stalls aerender on a full pipe. How the process is started (and
+    // whether it outlives the server) is the launch mode, see aerender-paths.
     let child: ChildProcess;
     try {
-      child = hooks.spawn(aerender, argv, {
-        detached: true,
+      child = hooks.spawn(plan.command, plan.argv, {
+        detached: plan.detached,
         windowsHide: true,
+        ...(plan.verbatim ? { windowsVerbatimArguments: true } : {}),
         stdio: ["ignore", fd, fd],
         // The render engine loads Scripts/Startup too; without this the
         // resident agent registers it as a second instance and every unnamed
@@ -761,6 +773,7 @@ registerOp({
       output,
       log,
       command,
+      launch: launch.mode,
       child,
       pid: child.pid ?? null,
       startedAt: hooks.now(),
@@ -788,7 +801,8 @@ registerOp({
         )
         .catch(() => {});
     });
-    // The server may exit while aerender works; it must not wait for it.
+    // The server must never wait for aerender to exit. (Whether aerender
+    // outlives the server depends on the launch mode, not on this.)
     child.unref();
     jobs.set(id, job);
 
@@ -801,6 +815,11 @@ registerOp({
     if (omList === null && om !== "") {
       warnings.push(
         "Non ho potuto controllare che il modello di uscita esista (la coda di render è vuota): se il nome è sbagliato, aerender si fermerà e il log lo dirà.",
+      );
+    }
+    if (launch.ignored !== null) {
+      warnings.push(
+        `${AERENDER_LAUNCH_ENV}=${launch.ignored} non è un valore valido (attached, shell, detached): uso ${launch.mode}.`,
       );
     }
     if (outputTemplate === null) {
@@ -821,6 +840,7 @@ registerOp({
       renderTemplate,
       expectedFrames,
       command,
+      launch: launch.mode,
       ...(warnings.length > 0 ? { warnings } : {}),
       message: `Render avviato in sottofondo (${id}). Segui l'avanzamento con aerender.status.`,
     };
