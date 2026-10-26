@@ -25,7 +25,11 @@ import {
   sequencePattern,
   timecodeToFrames,
 } from "../src/operations/aerender-paths.js";
-import { resetAerenderJobsForTests, setAerenderHooksForTests } from "../src/operations/aerender.js";
+import {
+  resetAerenderJobsForTests,
+  resetAerenderTemplateCacheForTests,
+  setAerenderHooksForTests,
+} from "../src/operations/aerender.js";
 import "../src/operations/index.js";
 import { guardToolCall, resetPrivacyForTests } from "../src/privacy.js";
 import { getOp } from "../src/registry.js";
@@ -50,7 +54,6 @@ interface PrepAnswer {
   sameName: number;
   outputTemplates: string[] | null;
   renderTemplates: string[] | null;
-  tempQueueItem: boolean;
 }
 
 function prepAnswer(over: Partial<PrepAnswer> = {}): PrepAnswer {
@@ -68,7 +71,6 @@ function prepAnswer(over: Partial<PrepAnswer> = {}): PrepAnswer {
     sameName: 1,
     outputTemplates: ["Lossless", "H.264 - Match Render Settings - 15 Mbps", "H.264 - Other"],
     renderTemplates: ["Best Settings", "Draft Settings"],
-    tempQueueItem: false,
     ...over,
   };
 }
@@ -146,6 +148,7 @@ beforeEach(() => {
   spawned = [];
   fakeEnv = {};
   resetAerenderJobsForTests();
+  resetAerenderTemplateCacheForTests();
   installFake();
   delete process.env[AERENDER_ENV];
 });
@@ -568,22 +571,82 @@ describe("aerender.start → status → done", () => {
     await waitDone(String(r2.id));
   });
 
-  it("says when templates were read through a temporary queue item, and warns about duplicate comp names", async () => {
+  it("warns about duplicate comp names", async () => {
     const r = await ok(
       "aerender.start",
       { comp: "Principale", output: out() },
-      fakeAe(prepAnswer({ tempQueueItem: true, sameName: 2 })),
+      fakeAe(prepAnswer({ sameName: 2 })),
     );
-    expect((r.temporary as string[])[0]).toContain("coda di render");
     expect((r.warnings as string[])[0]).toContain("2 composizioni");
     await waitDone(String(r.id));
+  });
+
+  it("starts twice in a row on a clean project with an empty render queue (E2E 2026-10-26)", async () => {
+    // A fake After Effects with state, modelled on AE 26.5: any change to
+    // the render queue marks the project as modified, and a modified
+    // project refuses the next start. The first version added and removed a
+    // queue item to read the templates, and the second start failed.
+    const state = { dirty: false, queue: 0 };
+    const calls: EvalRequest[] = [];
+    const stateful: AeTransport = {
+      async execute(req: EvalRequest): Promise<EvalResult> {
+        calls.push(req);
+        if (/renderQueue\.items\.add\s*\(|\.remove\s*\(/.test(req.code)) state.dirty = true;
+        return {
+          ok: true,
+          result: {
+            ok: true,
+            ...prepAnswer({ dirty: state.dirty, outputTemplates: null, renderTemplates: null }),
+          },
+          error: null,
+          errorCode: null,
+          stack: null,
+          logs: [],
+          durationMs: 0,
+        };
+      },
+    };
+    const a = await ok("aerender.start", { comp: "Principale", output: out("a.mp4") }, stateful);
+    const b = await ok("aerender.start", { comp: "Principale", output: out("b.mp4") }, stateful);
+    expect(state).toEqual({ dirty: false, queue: 0 });
+    for (const c of calls) expect(c.code).not.toMatch(/items\.add\s*\(|\.remove\s*\(|\.save\s*\(/);
+    // No list could be read without touching the queue: aerender picks its
+    // default output module, and the response says so.
+    expect(a.outputTemplate).toBeNull();
+    expect(spawned[0]!.args).not.toContain("-OMtemplate");
+    expect((a.warnings as string[]).join(" ")).toContain("modello di uscita predefinito");
+    await waitDone(String(a.id));
+    await waitDone(String(b.id));
+  });
+
+  it("remembers the templates read from a queue item for later calls with an empty queue", async () => {
+    const first = await ok("aerender.start", { comp: "Principale", output: out("a.mp4") });
+    expect(first.outputTemplate).toBe("H.264 - Match Render Settings - 15 Mbps");
+    const later = await ok(
+      "aerender.start",
+      { comp: "Principale", output: out("b.mp4") },
+      fakeAe(prepAnswer({ outputTemplates: null, renderTemplates: null })),
+    );
+    expect(later.outputTemplate).toBe("H.264 - Match Render Settings - 15 Mbps");
+    expect(later.warnings).toBeUndefined();
+    await waitDone(String(first.id));
+    await waitDone(String(later.id));
+  });
+
+  it("finds the output under another extension when the template's format differs", async () => {
+    fakeEnv = { FAKE_AERENDER_EXT: ".mov" };
+    const r = await ok("aerender.start", { comp: "Principale", output: out("spot.mp4") });
+    const st = await waitDone(String(r.id));
+    expect(st).toMatchObject({ status: "finito", outputExists: true });
+    expect(st.outputActual).toBe(out("spot.mov").replace(/\\/g, "/"));
+    expect((st.warnings as string[])[0]).toContain("spot.mov");
   });
 
   it("asks After Effects only to read, with the comp encoded as a literal", async () => {
     const t = fakeAe();
     const evil = '"); app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES); ("';
     const r = await ok("aerender.start", { comp: evil, output: out() }, t);
-    const literal = JSON.stringify({ comp: evil, needTemplates: true });
+    const literal = JSON.stringify({ comp: evil });
     expect(t.calls[0]!.code).toContain(literal);
     // Outside that literal, the code neither saves nor closes anything.
     expect(t.calls[0]!.code.replace(literal, "")).not.toMatch(/\.save\s*\(|\.close\s*\(/);
@@ -607,6 +670,14 @@ describe("aerender failures and cancel", () => {
     const st = await waitDone(String(r.id));
     expect(st).toMatchObject({ status: "fallito", exitCode: 0 });
     expect(String(st.message)).toContain("non c'è");
+  });
+
+  it("puts aerender's own error first when it exits 0 without a file (AE 26.5, 2026-10-26)", async () => {
+    fakeEnv = { FAKE_AERENDER_ENGINE_LOST: "1" };
+    const r = await ok("aerender.start", { comp: "Principale", output: out() });
+    const st = await waitDone(String(r.id));
+    expect(st).toMatchObject({ status: "fallito", exitCode: 0, outputExists: false });
+    expect(String(st.message)).toContain("An existing connection was forcibly closed");
   });
 
   it("stops a running render, keeps the partial file, and leaves an ended one alone", async () => {

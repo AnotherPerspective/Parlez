@@ -76,6 +76,36 @@ describe("stub", () => {
     expect(src).toContain("if (!agentFile.exists) return;");
   });
 
+  it("loads nothing in aerender's render engine or with AE_MCP_AGENT_DISABLE=1", () => {
+    const src = stubSource();
+    // Both checks come before the agent is even looked for: in the engine
+    // not one of agent.jsx's #includes is evaluated.
+    const firstEval = src.indexOf("$.evalFile(");
+    expect(src.indexOf("app.isRenderEngine === true")).toBeGreaterThan(-1);
+    expect(src.indexOf("app.isRenderEngine === true")).toBeLessThan(src.indexOf("new File("));
+    expect(src.indexOf('$.getenv("AE_MCP_AGENT_DISABLE")')).toBeLessThan(firstEval);
+
+    // Run it: an ES3 stub is also valid JavaScript, so Node can play AE.
+    const run = (isRenderEngine: unknown, env: Record<string, string>) => {
+      const loaded: string[] = [];
+      const fakeDollar = {
+        global: {} as Record<string, unknown>,
+        getenv: (k: string) => env[k] ?? "",
+        evalFile: (f: { fullName: string }) => loaded.push(f.fullName),
+      };
+      class FakeFile {
+        exists = true;
+        constructor(readonly fullName: string) {}
+      }
+      new Function("app", "$", "File", src)({ isRenderEngine }, fakeDollar, FakeFile);
+      return loaded;
+    };
+    expect(run(false, {})).toHaveLength(1);
+    expect(run(undefined, {})).toHaveLength(1);
+    expect(run(true, {})).toEqual([]);
+    expect(run(false, { AE_MCP_AGENT_DISABLE: "1" })).toEqual([]);
+  });
+
   it("stays ES3 and quotes a hostile path", () => {
     const src = stubSource("C:\\it's\\agent.jsx", "/tmp/x");
     expect(src).toContain("'C:/it\\'s/agent.jsx'");

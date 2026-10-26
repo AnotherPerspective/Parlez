@@ -114,6 +114,41 @@ export function existingOutputFiles(output: string): OutputFiles {
 }
 
 /**
+ * A single-file output that came out under another extension: same folder,
+ * same name before the extension, written at or after `sinceMs`. Happens
+ * when aerender uses an output module whose format does not match the
+ * extension that was asked for (After Effects then picks the extension).
+ * Not verified on a real aerender; harmless when it never happens.
+ */
+export function outputUnderOtherExtension(output: string, sinceMs: number): OutputFiles | null {
+  if (sequencePattern(path.basename(output)) !== null) return null;
+  const dir = path.dirname(output);
+  const stem = path.basename(output, path.extname(output)).toLowerCase();
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return null;
+  }
+  for (const n of names) {
+    if (n.toLowerCase() === path.basename(output).toLowerCase()) continue;
+    const ext = path.extname(n);
+    if (ext === "" || ext.toLowerCase() === ".log") continue;
+    if (path.basename(n, ext).toLowerCase() !== stem) continue;
+    const full = path.join(dir, n);
+    try {
+      const st = statSync(full);
+      if (st.isFile() && st.mtimeMs >= sinceMs - 2000) {
+        return { files: [full], bytes: st.size, sequence: false };
+      }
+    } catch {
+      // gone: not there
+    }
+  }
+  return null;
+}
+
+/**
  * The confirm rule of aerender.start (see confirm-policy.ts): the reason a
  * call needs confirm: true because its output already exists, or null.
  */
