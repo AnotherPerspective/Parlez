@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import * as os from "node:os";
@@ -39,7 +40,42 @@ export const DISPATCHER_JSX = path.join(PACKAGE_ROOT, "jsx", "dispatcher.jsx");
 // DEFAULT_RUNTIME_DIR identically from the OS temp dir; when AE_MCP_RUNTIME_DIR
 // overrides it, Node drops a pointer file at the default location so the
 // dispatcher can still find the mailbox.
-export const RUNTIME_ROOT = path.join(os.tmpdir(), "mcp-aftereffects");
+//
+// On macOS "the OS temp dir" needs care. os.tmpdir() reads TMPDIR and falls
+// back to /tmp when it is unset — and MCP clients that build the server's
+// environment from the SDK's default list pass only HOME, LOGNAME, PATH,
+// SHELL, TERM and USER. The Terminal where `parlez setup` pins the mailbox
+// into the startup script has TMPDIR=/var/folders/…/T/, so the server would
+// sit in /tmp and the agent in /var/folders, never meeting. systemTempDir asks
+// the system for the same per-user folder launchd puts in TMPDIR.
+
+/** The per-user temp folder macOS hands out as TMPDIR, or null. */
+function readDarwinUserTempDir(): string | null {
+  try {
+    const out = execFileSync("/usr/bin/getconf", ["DARWIN_USER_TEMP_DIR"], {
+      encoding: "utf8",
+      timeout: 2_000,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return out.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export function systemTempDir(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  darwinUserTempDir: () => string | null = readDarwinUserTempDir,
+): string {
+  if (platform === "darwin" && !env.TMPDIR?.trim()) {
+    const dir = darwinUserTempDir();
+    if (dir && dir.startsWith("/")) return dir.length > 1 ? dir.replace(/\/+$/, "") : dir;
+  }
+  return os.tmpdir();
+}
+
+export const RUNTIME_ROOT = path.join(systemTempDir(), "mcp-aftereffects");
 export const DEFAULT_RUNTIME_DIR = path.join(RUNTIME_ROOT, "runtime");
 export const RUNTIME_POINTER_PATH = path.join(RUNTIME_ROOT, "runtime-dir.txt");
 
@@ -356,6 +392,11 @@ export const AGENT_GRACE_MS = 20_000;
  * timeout. Read at call time.
  */
 export const PULL_ONLY_ENV = "AE_MCP_PULL_ONLY";
+
+/** How the push path reaches After Effects here, as messages name it. */
+export function pushPathName(platform: NodeJS.Platform = process.platform): string {
+  return platform === "darwin" ? "osascript (DoScript)" : "AfterFX.exe -r";
+}
 
 export function pullOnlyMode(env: NodeJS.ProcessEnv = process.env): boolean {
   return env[PULL_ONLY_ENV]?.trim() === "1";

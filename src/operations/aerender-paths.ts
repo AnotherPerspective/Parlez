@@ -69,7 +69,10 @@ export const AERENDER_LAUNCH_ENV = "AE_MCP_AERENDER_LAUNCH";
  */
 export type AerenderLaunchMode = "attached" | "shell" | "detached";
 
-const LAUNCH_MODES: readonly AerenderLaunchMode[] = ["attached", "shell", "detached"];
+/** The modes this platform has: `shell` is cmd.exe, so Windows only. */
+export function aerenderLaunchModes(platform: NodeJS.Platform): readonly AerenderLaunchMode[] {
+  return platform === "win32" ? ["attached", "shell", "detached"] : ["attached", "detached"];
+}
 
 /** The strategy for this call: AE_MCP_AERENDER_LAUNCH when valid, else the platform default. */
 export function aerenderLaunchMode(
@@ -77,7 +80,7 @@ export function aerenderLaunchMode(
   env: NodeJS.ProcessEnv = process.env,
 ): { mode: AerenderLaunchMode; ignored: string | null } {
   const raw = env[AERENDER_LAUNCH_ENV]?.trim().toLowerCase();
-  if (raw && (LAUNCH_MODES as readonly string[]).includes(raw)) {
+  if (raw && (aerenderLaunchModes(platform) as readonly string[]).includes(raw)) {
     return { mode: raw as AerenderLaunchMode, ignored: null };
   }
   // macOS keeps the first behaviour: nothing went wrong there that we know

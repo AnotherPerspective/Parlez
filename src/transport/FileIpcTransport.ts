@@ -25,6 +25,7 @@ import {
   STALE_RUNTIME_FILE_MS,
   instanceTargetFromEnv,
   pullOnlyMode,
+  pushPathName,
   requestPathFor,
   resolveAfterFxPath,
   responsePathFor,
@@ -975,7 +976,7 @@ function pullOnlyRefusal(
     mode: "error",
     kind: "unmatched",
     message:
-      `Non ho inviato niente: ${cause}, e il percorso push (AfterFX.exe -r) è spento: ${PULL_ONLY_ENV}=1, ` +
+      `Non ho inviato niente: ${cause}, e il percorso push (${pushPathName()}) è spento: ${PULL_ONLY_ENV}=1, ` +
       `oppure in automatico perché lo script di avvio è installato (${PULL_ONLY_ENV}=0 lo riaccende).` +
       detail,
     hint:

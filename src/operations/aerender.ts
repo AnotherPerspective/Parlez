@@ -33,6 +33,7 @@ import {
   AERENDER_LAUNCH_ENV,
   type AerenderLaunchMode,
   aerenderLaunchMode,
+  aerenderLaunchModes,
   aerenderLaunchPlan,
   aerenderCandidates,
   existingOutputFiles,
@@ -819,7 +820,7 @@ registerOp({
     }
     if (launch.ignored !== null) {
       warnings.push(
-        `${AERENDER_LAUNCH_ENV}=${launch.ignored} non è un valore valido (attached, shell, detached): uso ${launch.mode}.`,
+        `${AERENDER_LAUNCH_ENV}=${launch.ignored} non è un valore valido su questo sistema (${aerenderLaunchModes(hooks.platform).join(", ")}): uso ${launch.mode}.`,
       );
     }
     if (outputTemplate === null) {

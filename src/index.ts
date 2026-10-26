@@ -11,6 +11,7 @@ import {
   instanceTargetFromEnv,
   pullOnlyMode,
   pullOnlySetting,
+  pushPathName,
   resolvePullOnlyDefault,
 } from "./config.js";
 import { errorResult } from "./errors.js";
@@ -100,7 +101,7 @@ async function instanceBanner(): Promise<string> {
       if (pullOnlyMode()) {
         return "instance: none live yet — calls wait for the resident agent (start After Effects; it registers about ten seconds after launch)";
       }
-      return "instance: none registered yet — calls launch AfterFX.exe -r into the running After Effects (instances started with -m need the agent: `parlez install-agent`)";
+      return `instance: none registered yet — calls launch ${pushPathName()} into the running After Effects (instances started with -m need the agent: \`parlez install-agent\`)`;
     case "error":
       return `instance: UNRESOLVED — ${target.message}`;
   }
@@ -122,7 +123,7 @@ async function main(): Promise<void> {
   if (setting === "auto" && resolvePullOnlyDefault(setting, await anyAgentInstalled())) {
     process.env[PULL_ONLY_ENV] = "1";
     console.error(
-      `[mcp-aftereffects] pull only: the startup script is installed, so calls never use AfterFX.exe -r ` +
+      `[mcp-aftereffects] pull only: the startup script is installed, so calls never use ${pushPathName()} ` +
         `(${PULL_ONLY_ENV}=0 to allow it)`,
     );
   } else if (setting === "on") {

@@ -52,9 +52,9 @@ Poi **riavvia After Effects**, apri il pannello da **Finestra → Parlez!** e ac
 
 ### Una sola cosa da fare a mano in After Effects
 
-In **Modifica → Preferenze → Script ed espressioni** accendi **«Consenti agli script di scrivere file e accedere alla rete»** e chiudi la finestra con OK. Nessun programma può accenderla al posto tuo. `parlez setup` ti dice se è già accesa. Sul Mac il menu dovrebbe essere After Effects → Impostazioni → Script ed espressioni (non ancora verificato).
+In **Modifica → Preferenze → Script ed espressioni** accendi **«Consenti agli script di scrivere file e accedere alla rete»** e chiudi la finestra con OK. Nessun programma può accenderla al posto tuo. `parlez setup` ti dice se è già accesa. Sul Mac la casella sta in **After Effects → Impostazioni → Script ed espressioni** (così la indica Adobe: «After Effects > Settings > Scripting & Expressions»).
 
-Sul Mac, la prima volta macOS può chiedere il permesso di **controllare After Effects** (Impostazioni di Sistema → Privacy e sicurezza → Automazione): rispondi Consenti.
+Sul Mac, con lo script di avvio installato, macOS non deve chiedere il permesso di **controllare After Effects** (Automazione): serve solo al collegamento diretto, che Parlez! in quel caso non usa. Se compare comunque, rispondi Consenti. Guida passo per passo per il Mac: [docs/mac-checklist.md](docs/mac-checklist.md).
 
 ### Controllare che sia tutto a posto
 
@@ -142,7 +142,7 @@ Until Parlez! is on npm, install the file you received instead: `npm install -g 
 
 Then **restart After Effects**, open **Window → Parlez!** and switch it on.
 
-**One thing to do by hand in After Effects:** Edit → Preferences → Scripting & Expressions → turn on **"Allow Scripts to Write Files and Access Network"**, then close the dialog with OK. On macOS: After Effects → Settings → Scripting & Expressions (not verified yet), and allow your terminal or Claude Desktop to control After Effects when macOS asks (System Settings → Privacy & Security → Automation).
+**One thing to do by hand in After Effects:** Edit → Preferences → Scripting & Expressions → turn on **"Allow Scripts to Write Files and Access Network"**, then close the dialog with OK. On macOS: After Effects → Settings → Scripting & Expressions (as Adobe documents it). With the startup script installed, macOS should not ask to let your terminal or Claude Desktop control After Effects (Automation): only the direct connection needs it. If it asks anyway, allow it.
 
 `parlez doctor --lang en` checks all of the above **without changing anything**; every "TO DO" line says what is missing.
 

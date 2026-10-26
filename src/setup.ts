@@ -30,7 +30,7 @@ import {
   listAeVersionDirs,
   type InstallOptions,
 } from "./agent-install.js";
-import { INSTANCES_DIR, PACKAGE_ROOT, PULL_ONLY_ENV } from "./config.js";
+import { INSTANCES_DIR, PACKAGE_ROOT, PULL_ONLY_ENV, pushPathName } from "./config.js";
 import { installPanel, panelInstallStatus } from "./panel-install.js";
 import { isPaused, isReadOnly, instanceLabel, listInstances } from "./transport/instances.js";
 
@@ -163,26 +163,52 @@ export type ScriptingPref = "on" | "off" | "unknown";
 /**
  * After Effects keeps the checkbox in <profile>/<version>/Adobe After Effects
  * <version> Prefs.txt and rewrites the file as soon as the box is clicked
- * (seen on 26.5 / Windows, 2026-10-25). Same name assumed on macOS, under
- * ~/Library/Preferences — not verified.
+ * (seen on 26.5 / Windows, 2026-10-25). On macOS the profile folder is
+ * ~/Library/Preferences/Adobe/After Effects/<version> (Adobe's preferences
+ * page); the file name inside it is assumed the same — not verified.
  */
 export function prefsFileFor(profileRoot: string, version: string): string {
   return path.join(profileRoot, version, `Adobe After Effects ${version} Prefs.txt`);
+}
+
+const SCRIPTING_PREF = /"Pref_SCRIPTING_FILE_NETWORK_SECURITY"\s*=\s*"?(\d)"?/;
+
+/**
+ * The main prefs file first, then the version's other prefs files
+ * ("… Prefs-indep-general.txt" and the like): should a Mac build keep the
+ * key elsewhere, the doctor still finds it instead of asking for a hand check.
+ */
+async function prefsFilesFor(profileRoot: string, version: string): Promise<string[]> {
+  const main = prefsFileFor(profileRoot, version);
+  const dir = path.dirname(main);
+  let names: string[] = [];
+  try {
+    names = await fs.readdir(dir);
+  } catch {
+    /* no folder: the main file will not be found either */
+  }
+  const prefix = `Adobe After Effects ${version} Prefs`;
+  const others = names
+    .filter((n) => n.startsWith(prefix) && n.endsWith(".txt") && n !== path.basename(main))
+    .map((n) => path.join(dir, n));
+  return [main, ...others];
 }
 
 export async function readScriptingPref(
   profileRoot: string,
   version: string,
 ): Promise<ScriptingPref> {
-  let text: string;
-  try {
-    text = await fs.readFile(prefsFileFor(profileRoot, version), "utf8");
-  } catch {
-    return "unknown";
+  for (const file of await prefsFilesFor(profileRoot, version)) {
+    let text: string;
+    try {
+      text = await fs.readFile(file, "utf8");
+    } catch {
+      continue;
+    }
+    const match = SCRIPTING_PREF.exec(text);
+    if (match) return match[1] === "1" ? "on" : "off";
   }
-  const match = /"Pref_SCRIPTING_FILE_NETWORK_SECURITY"\s*=\s*"?(\d)"?/.exec(text);
-  if (!match) return "unknown";
-  return match[1] === "1" ? "on" : "off";
+  return "unknown";
 }
 
 // --- The Claude configuration --------------------------------------------------
@@ -198,10 +224,35 @@ export interface ClaudeConfig {
 }
 
 /**
+ * Homebrew's process.execPath is the versioned Cellar copy
+ * (/opt/homebrew/Cellar/node@24/24.11.0/bin/node), which the next
+ * `brew upgrade` deletes; the opt link (/opt/homebrew/opt/node@24/bin/node)
+ * follows the upgrade, for a linked formula and a keg-only one alike.
+ */
+function stableNodePath(platform: NodeJS.Platform, execPath: string): string {
+  if (platform !== "darwin") return execPath;
+  const brew = /^(.+)\/Cellar\/([^/]+)\/[^/]+\/bin\/node$/.exec(execPath);
+  return brew ? `${brew[1]}/opt/${brew[2]}/bin/node` : execPath;
+}
+
+/** One argument for the user's shell: cmd/PowerShell on Windows, zsh on macOS. */
+function shellArg(platform: NodeJS.Platform, arg: string): string {
+  // In zsh a ! inside double quotes is history expansion and $ is expanded;
+  // single quotes keep both literal.
+  return platform === "win32" ? `"${arg}"` : `'${arg.replace(/'/g, "'\\''")}'`;
+}
+
+/** macOS's own tool folders, for the PATH handed to Claude Desktop. */
+const DARWIN_SYSTEM_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
+
+/**
  * How Claude should start the server. Installed with `npm i -g` (or from a
  * .tgz), the absolute Node and dist/index.js: no download, no PATH lookup,
  * none of the `cmd /c` wrapping Claude Code needs for npx on Windows. Run
  * through npx, the package lives in a cache that can be emptied, so npx it is.
+ * On macOS Claude Desktop starts servers with the system's short PATH, where
+ * neither npx nor the node its first line asks for is found when Node came
+ * from nodejs.org or Homebrew: so the full path of npx, and a PATH with node.
  */
 export function claudeConfig(machine: SetupEnvironment = {}): ClaudeConfig {
   const platform = machine.platform ?? process.platform;
@@ -209,18 +260,25 @@ export function claudeConfig(machine: SetupEnvironment = {}): ClaudeConfig {
   const home = machine.home ?? os.homedir();
   const packageRoot = machine.packageRoot ?? PACKAGE_ROOT;
   const viaNpx = packageRoot.split(/[\\/]/).includes("_npx");
+  const node = stableNodePath(platform, machine.execPath ?? process.execPath);
+  const join = platform === "darwin" ? path.posix.join : path.join;
 
-  const command = viaNpx ? "npx" : (machine.execPath ?? process.execPath);
-  const args = viaNpx ? ["-y", "parlez"] : [path.join(packageRoot, "dist", "index.js")];
+  const command = viaNpx ? "npx" : node;
+  const args = viaNpx ? ["-y", "parlez"] : [join(packageRoot, "dist", "index.js")];
   const prefix = `claude mcp add --scope user parlez -e ${PULL_ONLY_ENV}=1 --`;
   const claudeCode = viaNpx
     ? `${prefix} ${platform === "win32" ? "cmd /c " : ""}npx -y parlez`
-    : `${prefix} ${[command, ...args].map((a) => `"${a}"`).join(" ")}`;
-  const desktopJson = JSON.stringify(
-    { mcpServers: { parlez: { command, args, env: { [PULL_ONLY_ENV]: "1" } } } },
-    null,
-    2,
-  );
+    : `${prefix} ${[command, ...args].map((a) => shellArg(platform, a)).join(" ")}`;
+  const nodeDir = path.posix.dirname(node);
+  const desktop =
+    viaNpx && platform === "darwin"
+      ? {
+          command: `${nodeDir}/npx`,
+          args,
+          env: { [PULL_ONLY_ENV]: "1", PATH: `${nodeDir}:${DARWIN_SYSTEM_PATH}` },
+        }
+      : { command, args, env: { [PULL_ONLY_ENV]: "1" } };
+  const desktopJson = JSON.stringify({ mcpServers: { parlez: desktop } }, null, 2);
   const desktopConfigPath =
     platform === "win32"
       ? path.join(
@@ -233,6 +291,22 @@ export function claudeConfig(machine: SetupEnvironment = {}): ClaudeConfig {
 }
 
 // --- Messages --------------------------------------------------------------------
+
+/**
+ * Where the scripting checkbox is. macOS: Adobe's scripting page gives
+ * "After Effects > Settings > Scripting & Expressions"; the Italian names are
+ * the Windows ones' translation, so the English path rides along.
+ */
+const SCRIPTING_MENU = {
+  it: (mac: boolean) =>
+    mac
+      ? "After Effects → Impostazioni → Script ed espressioni (nei menu in inglese: After Effects → Settings → Scripting & Expressions)"
+      : "Modifica → Preferenze → Script ed espressioni",
+  en: (mac: boolean) =>
+    mac
+      ? "After Effects → Settings → Scripting & Expressions"
+      : "Edit → Preferences → Scripting & Expressions",
+};
 
 const TEXT = {
   it: {
@@ -274,13 +348,11 @@ const TEXT = {
       `After Effects ${v}: la casella «Consenti agli script di scrivere file e accedere alla rete» è accesa`,
     prefOff: (v: string, mac: boolean) =>
       `After Effects ${v}: accendi la casella «Consenti agli script di scrivere file e accedere alla rete» in ` +
-      (mac
-        ? "After Effects → Impostazioni (o Preferenze) → Script ed espressioni (percorso su Mac non ancora verificato)"
-        : "Modifica → Preferenze → Script ed espressioni") +
+      SCRIPTING_MENU.it(mac) +
       ", poi chiudi la finestra con OK. Senza, Claude va in timeout senza spiegazioni.",
-    prefUnknown: (v: string, file: string) =>
+    prefUnknown: (v: string, file: string, mac: boolean) =>
       `After Effects ${v}: non riesco a leggere la casella degli script (${file}). Controllala a mano: ` +
-      "Preferenze → Script ed espressioni → «Consenti agli script di scrivere file e accedere alla rete».",
+      `${SCRIPTING_MENU.it(mac)} → «Consenti agli script di scrivere file e accedere alla rete».`,
     claudeTitle: "Collegare Parlez! a Claude",
     claudeCodeIntro: "Claude Code: incolla questo comando nel terminale.",
     claudeDesktopIntro: (file: string) =>
@@ -310,12 +382,20 @@ const TEXT = {
     noLive:
       "nessun After Effects acceso con l'agente in questo momento. È normale se After Effects è chiuso; " +
       "se è aperto, riavvialo dopo l'installazione e aspetta una decina di secondi.",
-    pullAuto:
-      `collegamento: lo script di avvio è installato, quindi il server userà solo quello (non prova AfterFX.exe -r). ` +
-      `Per riaccendere il collegamento diretto: ${PULL_ONLY_ENV}=0.`,
-    pullNone:
-      "collegamento: script di avvio non installato, il server proverà il collegamento diretto (AfterFX.exe -r). " +
+    pullAuto: (push: string, mac: boolean) =>
+      `collegamento: lo script di avvio è installato, quindi il server userà solo quello (non prova ${push}). ` +
+      `Per riaccendere il collegamento diretto: ${PULL_ONLY_ENV}=0.` +
+      (mac
+        ? " Così macOS non chiede il permesso di Automazione: serve solo al collegamento diretto."
+        : ""),
+    pullNone: (push: string, mac: boolean) =>
+      `collegamento: script di avvio non installato, il server proverà il collegamento diretto (${push}). ` +
+      (mac
+        ? "La prima volta macOS chiede il permesso di Automazione per controllare After Effects: rispondi Consenti. "
+        : "") +
       "Su alcuni computer non funziona: per questo parlez setup installa lo script di avvio.",
+    mailbox: (dir: string) =>
+      `cassetta (la cartella dove Claude e After Effects si scambiano le richieste, con i log): ${dir}`,
     allGood: "Tutto pronto.",
     someTodo: "C'è ancora qualcosa da fare (righe DA FARE qui sopra).",
   },
@@ -358,13 +438,11 @@ const TEXT = {
       `After Effects ${v}: "Allow Scripts to Write Files and Access Network" is on`,
     prefOff: (v: string, mac: boolean) =>
       `After Effects ${v}: turn on "Allow Scripts to Write Files and Access Network" in ` +
-      (mac
-        ? "After Effects → Settings (or Preferences) → Scripting & Expressions (Mac path not verified yet)"
-        : "Edit → Preferences → Scripting & Expressions") +
+      SCRIPTING_MENU.en(mac) +
       ", then close the dialog with OK. Without it, Claude times out with no explanation.",
-    prefUnknown: (v: string, file: string) =>
+    prefUnknown: (v: string, file: string, mac: boolean) =>
       `After Effects ${v}: cannot read the scripting checkbox (${file}). Check it by hand: ` +
-      'Preferences → Scripting & Expressions → "Allow Scripts to Write Files and Access Network".',
+      `${SCRIPTING_MENU.en(mac)} → "Allow Scripts to Write Files and Access Network".`,
     claudeTitle: "Connecting Parlez! to Claude",
     claudeCodeIntro: "Claude Code: paste this command into the terminal.",
     claudeDesktopIntro: (file: string) =>
@@ -391,12 +469,20 @@ const TEXT = {
     noLive:
       "no After Effects running with the agent right now. That is normal if After Effects is closed; " +
       "if it is open, restart it after setup and wait about ten seconds.",
-    pullAuto:
-      `connection: the startup script is installed, so the server uses only that (it does not try AfterFX.exe -r). ` +
-      `To bring the direct connection back: ${PULL_ONLY_ENV}=0.`,
-    pullNone:
-      "connection: no startup script, so the server tries the direct connection (AfterFX.exe -r). " +
+    pullAuto: (push: string, mac: boolean) =>
+      `connection: the startup script is installed, so the server uses only that (it does not try ${push}). ` +
+      `To bring the direct connection back: ${PULL_ONLY_ENV}=0.` +
+      (mac
+        ? " So macOS does not ask for the Automation permission: only the direct connection needs it."
+        : ""),
+    pullNone: (push: string, mac: boolean) =>
+      `connection: no startup script, so the server tries the direct connection (${push}). ` +
+      (mac
+        ? "The first time, macOS asks for the Automation permission to control After Effects: answer Allow. "
+        : "") +
       "On some computers it does not work: that is why parlez setup installs the startup script.",
+    mailbox: (dir: string) =>
+      `mailbox (the folder where Claude and After Effects exchange requests, with the logs): ${dir}`,
     allGood: "All set.",
     someTodo: "Something is still left to do (the TO DO lines above).",
   },
@@ -605,7 +691,7 @@ async function runDoctorChecks(
     const pref = await readScriptingPref(root, version);
     if (pref === "on") line(true, t.prefOn(version));
     else if (pref === "off") line(false, t.prefOff(version, platform === "darwin"));
-    else line(false, t.prefUnknown(version, prefsFileFor(root, version)));
+    else line(false, t.prefUnknown(version, prefsFileFor(root, version), platform === "darwin"));
   }
 
   const instances = (
@@ -624,7 +710,10 @@ async function runDoctorChecks(
     env: machine.env ?? process.env,
     home: machine.home ?? os.homedir(),
   });
-  out(`${t.note}${agentInstalled ? t.pullAuto : t.pullNone}`);
+  const push = pushPathName(platform);
+  const mac = platform === "darwin";
+  out(`${t.note}${agentInstalled ? t.pullAuto(push, mac) : t.pullNone(push, mac)}`);
+  out(`${t.note}${t.mailbox(path.dirname(machine.instancesDir ?? INSTANCES_DIR))}`);
   out("");
   out(todo === 0 ? t.allGood : t.someTodo);
   return todo === 0 ? 0 : 1;
