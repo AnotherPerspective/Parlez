@@ -481,113 +481,149 @@
     var MIN_SIZE = compact ? [760, 210] : [344, 440];
     var BLOCK_SIZE = compact ? [200, 56] : [320, 88];
 
-    setFill(win, BG);
-    win.orientation = compact ? "row" : "column";
-    win.alignChildren = ["fill", "top"];
-    win.spacing = compact ? 12 : 8;
-    win.margins = compact ? [10, 8, 10, 8] : 12;
-    win.minimumSize = MIN_SIZE;
-    win.preferredSize = MIN_SIZE;
-
     var ui = { rows: [], lastLook: "", shown: {}, rowsOpen: true };
-
-    // The ON/OFF block, status, read-only. No title: the panel's tab already
-    // says "Parlez!".
-    var head = win.add("group");
-    head.orientation = "column";
-    head.alignChildren = ["fill", "top"];
-    head.spacing = 6;
-    // Every top-level group says how big it needs to be: when After Effects
-    // undocks the panel it sizes the floating window from what the content
-    // asks for, and groups that only say "fill" ask for nothing.
-    head.minimumSize = [BLOCK_SIZE[0], BLOCK_SIZE[1] + 52];
-    head.preferredSize = [compact ? BLOCK_SIZE[0] + 10 : BLOCK_SIZE[0], BLOCK_SIZE[1] + 52];
-
-    // The block: a picture button (see STABILITY FIRST above).
     var LOOKS = ["on", "off", "busy", "idle"];
-    var sizeSuffix = compact ? "-small" : "";
-    ui.images = loadImages(sizeSuffix);
-    if (ui.images !== null) {
-        ui.block = head.add("iconbutton", undefined, ui.images.off, { style: "toolbutton" });
-        ui.block.alignment = ["center", "top"];
-        // Fixed: the picture is never squeezed or stretched.
-        ui.block.preferredSize = BLOCK_SIZE;
-        ui.block.minimumSize = BLOCK_SIZE;
-        ui.block.maximumSize = BLOCK_SIZE;
-    } else {
-        ui.block = head.add("button", undefined, "OFF");
-        ui.block.alignment = ["fill", "top"];
-        ui.block.preferredSize = compact ? [140, 50] : [200, 64];
-        setFont(ui.block, "BOLD", compact ? 24 : 32);
+
+    // Every block of the interface is built inside guard(): an error shows
+    // up in the panel itself, with its line, instead of After Effects'
+    // "Unable to execute script" that keeps the panel from opening at all.
+    var failures = [];
+    function guard(name, fn) {
+        try {
+            fn();
+            return true;
+        } catch (e) {
+            var where = "";
+            var what = "errore";
+            try { if (e.line !== undefined && e.line !== null) where = " (riga " + String(e.line) + ")"; } catch (eLine) { /* no line */ }
+            try { if (e.message) what = String(e.message); } catch (eMsg) { /* no message */ }
+            failures.push(name + where + ": " + what);
+            return false;
+        }
     }
-    ui.block.helpTip = "Accende o spegne Claude in After Effects.";
 
-    ui.status = head.add("statictext", undefined, "");
-    ui.status.justify = "center";
-    ui.status.alignment = ["fill", "center"];
-    setFont(ui.status, "REGULAR", 11);
-    setTextColor(ui.status, [0.70, 0.70, 0.70]);
-    ui.readOnly = head.add("checkbox", undefined, "Sola lettura");
-    ui.readOnly.helpTip = "Claude pu\u00f2 guardare il progetto ma non modificarlo: le richieste che cambierebbero qualcosa vengono rifiutate.";
+    guard("aspetto", function () {
+        setFill(win, BG);
+        win.orientation = compact ? "row" : "column";
+        win.alignChildren = ["fill", "top"];
+        win.spacing = compact ? 12 : 8;
+        win.margins = compact ? [10, 8, 10, 8] : 12;
+        win.minimumSize = MIN_SIZE;
+        win.preferredSize = MIN_SIZE;
+    });
 
-    // History. While it is empty only its first line shows, so the buttons
-    // stay in sight in a short panel.
-    ui.hist = win.add("group");
-    ui.hist.orientation = "column";
-    ui.hist.alignChildren = ["fill", "top"];
-    ui.hist.spacing = 2;
-    ui.hist.margins = [8, 6, 8, 6];
-    setFill(ui.hist, SECTION_BG);
-    ui.hist.minimumSize = [compact ? 260 : BLOCK_SIZE[0], 48];
-    ui.hist.preferredSize = [compact ? 260 : BLOCK_SIZE[0], compact ? 120 : 160];
-    var histTitle = text(ui.hist, "Ultime richieste", 11, DIM);
-    histTitle.helpTip = "Le richieste pi\u00f9 recenti di Claude in questa sessione: ora, cosa, esito, durata. Lo storico completo \u00e8 nel bottone Storico.";
-    var rowCount = compact ? 5 : 8;
-    for (var r = 0; r < rowCount; r++) ui.rows.push(text(ui.hist, "", 11));
+    guard("riquadro", function () {
+        // The ON/OFF block, status, read-only. No title: the panel's tab already
+        // says "Parlez!".
+        var head = win.add("group");
+        head.orientation = "column";
+        head.alignChildren = ["fill", "top"];
+        head.spacing = 6;
+        // Every top-level group says how big it needs to be: when After Effects
+        // undocks the panel it sizes the floating window from what the content
+        // asks for, and groups that only say "fill" ask for nothing.
+        head.minimumSize = [BLOCK_SIZE[0], BLOCK_SIZE[1] + 52];
+        head.preferredSize = [compact ? BLOCK_SIZE[0] + 10 : BLOCK_SIZE[0], BLOCK_SIZE[1] + 52];
 
-    // Buttons: two rows of three, one word each, the same width, as wide as
-    // the block. Then the counters on one grey line, and the signature.
-    var tail = win.add("group");
-    tail.orientation = "column";
-    tail.alignChildren = ["fill", "top"];
-    tail.alignment = ["fill", "top"];
-    tail.spacing = 6;
-    var ROW_SIZE = [3 * BUTTON_WIDTH + 8, 26];
-    tail.minimumSize = [ROW_SIZE[0], 2 * ROW_SIZE[1] + 50];
-    tail.preferredSize = [ROW_SIZE[0], 2 * ROW_SIZE[1] + 50];
-    var rowA = row(tail);
-    rowA.minimumSize = ROW_SIZE;
-    ui.undo = button(rowA, "Annulla", "Annulla l'ultima modifica di Claude (Modifica \u203a Annulla, una volta). Chiede conferma.", BUTTON_WIDTH);
-    ui.checkpoint = button(rowA, "Ripristino", "Crea un punto di ripristino adesso: salva il progetto e ne fa una copia in " + CHECKPOINT_SUBDIR + ", accanto al progetto.", BUTTON_WIDTH);
-    ui.checkpointFolder = button(rowA, "Elenco", "Apre la cartella con l'elenco dei punti di ripristino di questo progetto.", BUTTON_WIDTH);
-    var rowB = row(tail);
-    rowB.minimumSize = ROW_SIZE;
-    ui.history = button(rowB, "Storico", "Apre lo storico completo delle richieste di questa sessione (file di testo).", BUTTON_WIDTH);
-    ui.mailbox = button(rowB, "Cassetta", "Apre la cartella dove Claude e After Effects si scambiano le richieste.", BUTTON_WIDTH);
-    ui.layout = button(rowB, "Vista", "Passa alla vista " + (compact ? "verticale (colonna laterale)" : "compatta (sotto la timeline)") +
-        ". La nuova vista arriva alla prossima apertura del pannello.", BUTTON_WIDTH);
-    ui.notice = text(tail, notice, 10, DIM);
-    ui.counts = text(tail, "", 9, DIM);
-    // The signature, glued to the bottom-right corner whatever the panel's
-    // size: a group that takes all the space left, with the signature in its
-    // bottom-right corner. It is a toolbutton (the only thing After Effects
-    // reliably delivers clicks to, see STABILITY FIRST) showing firma.png
-    // when the pictures' folder has it, else its text; a click opens SITE_URL.
-    var foot = (compact ? tail : win).add("group");
-    foot.orientation = "column";
-    foot.alignment = ["fill", "fill"];
-    foot.alignChildren = ["right", "bottom"];
-    foot.margins = 0;
-    foot.minimumSize = [200, 22];
-    var signature = signatureImage();
-    ui.credit = foot.add("iconbutton", undefined, signature, { style: "toolbutton" });
-    if (signature === null) {
-        ui.credit.text = "Parlez! by Another Perspective";
-        setFont(ui.credit, "REGULAR", 9);
-        setTextColor(ui.credit, DIM);
-    }
-    ui.credit.alignment = ["right", "bottom"];
-    ui.credit.helpTip = "Another Perspective: apre il sito nel browser.";
+        // The block: a picture button (see STABILITY FIRST above).
+        var sizeSuffix = compact ? "-small" : "";
+        ui.images = loadImages(sizeSuffix);
+        if (ui.images !== null) {
+            ui.block = head.add("iconbutton", undefined, ui.images.off, { style: "toolbutton" });
+            ui.block.alignment = ["center", "top"];
+            // Fixed: the picture is never squeezed or stretched.
+            ui.block.preferredSize = BLOCK_SIZE;
+            ui.block.minimumSize = BLOCK_SIZE;
+            ui.block.maximumSize = BLOCK_SIZE;
+        } else {
+            ui.block = head.add("button", undefined, "OFF");
+            ui.block.alignment = ["fill", "top"];
+            ui.block.preferredSize = compact ? [140, 50] : [200, 64];
+            setFont(ui.block, "BOLD", compact ? 24 : 32);
+        }
+        ui.block.helpTip = "Accende o spegne Claude in After Effects.";
+
+        ui.status = head.add("statictext", undefined, "");
+        ui.status.justify = "center";
+        ui.status.alignment = ["fill", "center"];
+        setFont(ui.status, "REGULAR", 11);
+        setTextColor(ui.status, [0.70, 0.70, 0.70]);
+        ui.readOnly = head.add("checkbox", undefined, "Sola lettura");
+        ui.readOnly.helpTip = "Claude pu\u00f2 guardare il progetto ma non modificarlo: le richieste che cambierebbero qualcosa vengono rifiutate.";
+    });
+
+    guard("storico", function () {
+        // History. While it is empty only its first line shows, so the buttons
+        // stay in sight in a short panel.
+        ui.hist = win.add("group");
+        ui.hist.orientation = "column";
+        ui.hist.alignChildren = ["fill", "top"];
+        ui.hist.spacing = 2;
+        ui.hist.margins = [8, 6, 8, 6];
+        setFill(ui.hist, SECTION_BG);
+        ui.hist.minimumSize = [compact ? 260 : BLOCK_SIZE[0], 48];
+        ui.hist.preferredSize = [compact ? 260 : BLOCK_SIZE[0], compact ? 120 : 160];
+        var histTitle = text(ui.hist, "Ultime richieste", 11, DIM);
+        histTitle.helpTip = "Le richieste pi\u00f9 recenti di Claude in questa sessione: ora, cosa, esito, durata. Lo storico completo \u00e8 nel bottone Storico.";
+        var rowCount = compact ? 5 : 8;
+        for (var r = 0; r < rowCount; r++) ui.rows.push(text(ui.hist, "", 11));
+    });
+
+    guard("bottoni", function () {
+        // Buttons: two rows of three, one word each, the same width, as wide as
+        // the block. Then the counters on one grey line, and the signature.
+        var tail = win.add("group");
+        ui.tail = tail;
+        tail.orientation = "column";
+        tail.alignChildren = ["fill", "top"];
+        tail.alignment = ["fill", "top"];
+        tail.spacing = 6;
+        var ROW_SIZE = [3 * BUTTON_WIDTH + 8, 26];
+        tail.minimumSize = [ROW_SIZE[0], 2 * ROW_SIZE[1] + 50];
+        tail.preferredSize = [ROW_SIZE[0], 2 * ROW_SIZE[1] + 50];
+        var rowA = row(tail);
+        rowA.minimumSize = ROW_SIZE;
+        ui.undo = button(rowA, "Annulla", "Annulla l'ultima modifica di Claude (Modifica \u203a Annulla, una volta). Chiede conferma.", BUTTON_WIDTH);
+        ui.checkpoint = button(rowA, "Ripristino", "Crea un punto di ripristino adesso: salva il progetto e ne fa una copia in " + CHECKPOINT_SUBDIR + ", accanto al progetto.", BUTTON_WIDTH);
+        ui.checkpointFolder = button(rowA, "Elenco", "Apre la cartella con l'elenco dei punti di ripristino di questo progetto.", BUTTON_WIDTH);
+        var rowB = row(tail);
+        rowB.minimumSize = ROW_SIZE;
+        ui.history = button(rowB, "Storico", "Apre lo storico completo delle richieste di questa sessione (file di testo).", BUTTON_WIDTH);
+        ui.mailbox = button(rowB, "Cassetta", "Apre la cartella dove Claude e After Effects si scambiano le richieste.", BUTTON_WIDTH);
+        ui.layout = button(rowB, "Vista", "Passa alla vista " + (compact ? "verticale (colonna laterale)" : "compatta (sotto la timeline)") +
+            ". La nuova vista arriva alla prossima apertura del pannello.", BUTTON_WIDTH);
+        ui.notice = text(tail, notice, 10, DIM);
+        ui.counts = text(tail, "", 9, DIM);
+    });
+
+    guard("firma", function () {
+        // The signature, glued to the bottom-right corner whatever the panel's
+        // size: a group that takes all the space left, with the signature in its
+        // bottom-right corner. With firma.png in the pictures' folder it is a
+        // toolbutton (see STABILITY FIRST) and a click opens SITE_URL.
+        var foot = (compact ? ui.tail : win).add("group");
+        foot.orientation = "column";
+        foot.alignment = ["fill", "fill"];
+        foot.alignChildren = ["right", "bottom"];
+        foot.margins = 0;
+        foot.minimumSize = [200, 22];
+        var signature = signatureImage();
+        if (signature !== null) {
+            ui.credit = foot.add("iconbutton", undefined, signature, { style: "toolbutton" });
+            ui.credit.helpTip = "Another Perspective: apre il sito nel browser.";
+        } else {
+            // An iconbutton needs a picture: created with null it is a "Bad
+            // argument" that stopped the whole panel from opening (AE 26.5,
+            // 2026-10-28). Without firma.png the signature is plain text, which
+            // After Effects does not let a script make clickable.
+            ui.credit = foot.add("statictext", undefined, "Parlez! by Another Perspective");
+            ui.credit.justify = "right";
+            ui.credit.helpTip = "Another Perspective: " + SITE_URL;
+            setFont(ui.credit, "REGULAR", 9);
+            setTextColor(ui.credit, DIM);
+        }
+        ui.credit.alignment = ["right", "bottom"];
+    });
 
     // --- Refreshing: texts and colours only, and only when they change ---
     var current = { agent: null, target: null };
@@ -598,6 +634,8 @@
      * to the ScriptUI objects themselves.
      */
     function put(key, ctrl, prop, value) {
+        // A control whose block failed to build is simply skipped.
+        if (!ctrl) return;
         if (ui.shown.hasOwnProperty(key) && ui.shown[key] === value) return;
         ctrl[prop] = value;
         ui.shown[key] = value;
@@ -610,8 +648,8 @@
 
     /** The block's picture (or, without pictures, its text), set only when it changes. */
     function paintBlock(state) {
-        if (state.look === ui.lastLook) return;
-        if (ui.images !== null) ui.block.image = ui.images[state.look];
+        if (!ui.block || state.look === ui.lastLook) return;
+        if (ui.images) ui.block.image = ui.images[state.look];
         else ui.block.text = state.label;
         ui.lastLook = state.look;
     }
@@ -708,70 +746,73 @@
         say(writeSwitch(KEY_ENABLED, want) ? "" : "Non riesco a salvare la scelta nelle preferenze di After Effects.");
         refresh();
     }
-    ui.block.onClick = function () {
-        toggleClaude();
-        // Nothing stays highlighted after the click.
-        try { ui.block.active = false; } catch (eFocus) { /* no focus to drop */ }
-    };
-    ui.readOnly.onClick = function () {
-        if (!writeSwitch(KEY_READ_ONLY, ui.readOnly.value ? "1" : "0")) {
-            say("Non riesco a salvare la scelta nelle preferenze di After Effects.");
-        }
-        ui.shown = {};
-        refresh();
-    };
-    ui.undo.onClick = function () {
-        var target = current.target;
-        if (target === null) return;
-        var what = (typeof target.title === "string") ? target.title : target.label;
-        var ok = confirm(
-            "Annullo l'ultima modifica di Claude?\n\n" +
-            "\u00ab" + what + "\u00bb delle " + clock(target.t) + "\n\n" +
-            "After Effects non permette di leggere la cronologia degli annullamenti: " +
-            "se dopo hai fatto tu altre modifiche, verr\u00e0 annullata la tua ultima modifica, non quella di Claude."
-        );
-        if (!ok) return;
-        try {
-            app.executeCommand(UNDO_COMMAND);
-            undoneMarks()[entryKey(target)] = true;
-            say("Annullato: " + what + ".");
-        } catch (eUndo) {
-            say("Annullamento non riuscito.");
-        }
-        refresh();
-    };
-    ui.checkpoint.onClick = function () {
-        say(makeCheckpoint().message);
-        refresh();
-    };
-    ui.checkpointFolder.onClick = function () {
-        var folder = checkpointFolder();
-        if (folder === null) say("Il progetto non \u00e8 ancora stato salvato.");
-        else if (!folder.exists) say("Nessun punto di ripristino per questo progetto, per ora.");
-        else folder.execute();
-    };
-    ui.history.onClick = function () {
-        var agent = current.agent;
-        if (agent !== null && agent.historyPath !== null && new File(agent.historyPath).exists) {
-            new File(agent.historyPath).execute();
-            return;
-        }
-        var folder = historyFolder();
-        if (folder !== null && folder.exists) folder.execute();
-        else say("Nessuna richiesta registrata finora.");
-    };
-    ui.mailbox.onClick = function () {
-        var agent = current.agent;
-        if (agent === null || agent.dir === null) return;
-        var folder = new Folder(agent.dir);
-        if (folder.exists) folder.execute();
-    };
-    // The layout is chosen for the NEXT opening: rebuilding the controls of
-    // an open panel is exactly what this build stays away from.
-    ui.layout.onClick = function () {
-        var next = compact ? "verticale" : "compatta";
-        if (writeSwitch(KEY_LAYOUT, next)) say("Vista " + next + ": chiudi e riapri il pannello per vederla.");
-    };
+    guard("comandi", function () {
+        ui.block.onClick = function () {
+            toggleClaude();
+            // Nothing stays highlighted after the click.
+            try { ui.block.active = false; } catch (eFocus) { /* no focus to drop */ }
+        };
+        ui.readOnly.onClick = function () {
+            if (!writeSwitch(KEY_READ_ONLY, ui.readOnly.value ? "1" : "0")) {
+                say("Non riesco a salvare la scelta nelle preferenze di After Effects.");
+            }
+            ui.shown = {};
+            refresh();
+        };
+        ui.undo.onClick = function () {
+            var target = current.target;
+            if (target === null) return;
+            var what = (typeof target.title === "string") ? target.title : target.label;
+            var ok = confirm(
+                "Annullo l'ultima modifica di Claude?\n\n" +
+                "\u00ab" + what + "\u00bb delle " + clock(target.t) + "\n\n" +
+                "After Effects non permette di leggere la cronologia degli annullamenti: " +
+                "se dopo hai fatto tu altre modifiche, verr\u00e0 annullata la tua ultima modifica, non quella di Claude."
+            );
+            if (!ok) return;
+            try {
+                app.executeCommand(UNDO_COMMAND);
+                undoneMarks()[entryKey(target)] = true;
+                say("Annullato: " + what + ".");
+            } catch (eUndo) {
+                say("Annullamento non riuscito.");
+            }
+            refresh();
+        };
+        ui.checkpoint.onClick = function () {
+            say(makeCheckpoint().message);
+            refresh();
+        };
+        ui.checkpointFolder.onClick = function () {
+            var folder = checkpointFolder();
+            if (folder === null) say("Il progetto non \u00e8 ancora stato salvato.");
+            else if (!folder.exists) say("Nessun punto di ripristino per questo progetto, per ora.");
+            else folder.execute();
+        };
+        ui.history.onClick = function () {
+            var agent = current.agent;
+            if (agent !== null && agent.historyPath !== null && new File(agent.historyPath).exists) {
+                new File(agent.historyPath).execute();
+                return;
+            }
+            var folder = historyFolder();
+            if (folder !== null && folder.exists) folder.execute();
+            else say("Nessuna richiesta registrata finora.");
+        };
+        ui.mailbox.onClick = function () {
+            var agent = current.agent;
+            if (agent === null || agent.dir === null) return;
+            var folder = new Folder(agent.dir);
+            if (folder.exists) folder.execute();
+        };
+        // The layout is chosen for the NEXT opening: rebuilding the controls of
+        // an open panel is exactly what this build stays away from.
+        ui.layout.onClick = function () {
+            var next = compact ? "verticale" : "compatta";
+            if (writeSwitch(KEY_LAYOUT, next)) say("Vista " + next + ": chiudi e riapri il pannello per vederla.");
+        };
+    });
+
     // Safe by default: with no choice saved yet, save "Claude fermo" - the
     // rule already reads "absent" as stopped; saving makes the choice
     // explicit and shows at once whether After Effects keeps it.
@@ -822,18 +863,33 @@
     win.onShow = function () {
         ensureSize();
     };
-    ui.credit.onClick = function () {
-        openSite();
-        try { ui.credit.active = false; } catch (eFocus) { /* no focus to drop */ }
-    };
+    guard("firma: clic", function () {
+        if (ui.credit && ui.credit.type === "iconbutton") {
+            ui.credit.onClick = function () {
+                openSite();
+                try { ui.credit.active = false; } catch (eFocus) { /* no focus to drop */ }
+            };
+        }
+    });
 
-    refresh();
+    guard("primo aggiornamento", refresh);
     ui.ready = true;
+    if (failures.length > 0) {
+        guard("messaggio d'errore", function () {
+            var report = win.add("statictext", undefined,
+                "Parlez!: una parte del pannello non si \u00e8 aperta. " + failures.join(" \u00b7 "),
+                { multiline: true });
+            report.alignment = ["fill", "top"];
+            report.preferredSize = [MIN_SIZE[0] - 24, 60];
+        });
+    }
     // After every child is in: lay out, then fit to the current size (the
     // dockable-panel pattern of Adobe's JavaScript Tools Guide and of Peter
     // Kahrel's "ScriptUI for Dummies").
-    win.layout.layout(true);
-    win.layout.resize();
+    guard("disposizione", function () {
+        win.layout.layout(true);
+        win.layout.resize();
+    });
     if (!isPanel) {
         win.onClose = function () {
             stopTimer();

@@ -36,6 +36,8 @@ import {
 
 /** Counts every write to a control's `text`, to prove the timer writes only changes. */
 let textWrites = 0;
+/** A control type whose creation throws, to see how the panel reports it. */
+let failOn: string | null = null;
 
 class Ctl {
   children: Ctl[] = [];
@@ -91,6 +93,9 @@ class Ctl {
   props: Record<string, unknown> | null = null;
   active = true;
   add(type: string, _bounds?: unknown, content?: unknown, props?: Record<string, unknown>): Ctl {
+    // As After Effects does (AE 26.5, 2026-10-28): an iconbutton without a
+    // picture is a "Bad argument", and so is whatever a test asks to fail.
+    if ((type === "iconbutton" && !content) || type === failOn) throw new Error("Bad argument");
     const c = new Ctl(type, typeof content === "string" ? content : "");
     if (content && typeof content === "object") c.image = content as Ctl["image"];
     c.props = props ?? null;
@@ -169,6 +174,7 @@ beforeEach(() => {
   engine = makeEngine(tmp);
   windows.length = 0;
   textWrites = 0;
+  failOn = null;
   systemCalls = [];
 });
 
@@ -379,7 +385,7 @@ describe("the look (2026-10-26 screenshot)", () => {
     const panel = openPanel();
     const named = panel.all().filter((c) => c.text.includes("Parlez!"));
     expect(named.map((c) => [c.type, c.text])).toEqual([
-      ["iconbutton", "Parlez! by Another Perspective"],
+      ["statictext", "Parlez! by Another Perspective"],
     ]);
     expect(PANEL_SRC).toContain('"Tahoma"');
   });
@@ -521,32 +527,65 @@ describe("the look (2026-10-26 screenshot)", () => {
   });
 });
 
+/** The signature: text, or (with firma.png) a picture button. */
 function credit(panel: Ctl): Ctl {
-  return panel.find("iconbutton", "Parlez! by Another Perspective");
+  const hit = panel
+    .all()
+    .find((c) => c.text === "Parlez! by Another Perspective" || c.helpTip.includes("apre il sito"));
+  if (!hit) throw new Error("no signature");
+  return hit;
+}
+
+/** A pictures' folder with every generated picture, plus firma.png. */
+async function sourceWithSignature(): Promise<string> {
+  const dir = path.join(tmp, "images");
+  mkdirSync(dir);
+  for (const name of readdirSync(PANEL_IMAGES_DIR)) {
+    writeFileSync(path.join(dir, name), readFileSync(path.join(PANEL_IMAGES_DIR, name)));
+  }
+  writeFileSync(path.join(dir, "firma.png"), "png", "utf8");
+  return panelSource(PANEL_JSX, dir);
 }
 
 describe("the signature", () => {
-  it("is a flat toolbutton that opens the site in the user's browser", () => {
+  it("without firma.png: plain grey text, never an iconbutton without a picture", () => {
     const panel = openPanel();
     const sig = credit(panel);
+    expect(sig.type).toBe("statictext");
+    expect(sig.alignment).toEqual(["right", "bottom"]);
+    expect(sig.helpTip).toContain("https://www.anotherperspectivepictures.com");
+    expect(panel.says()).not.toContain("non si è aperta");
+  });
+
+  it("with firma.png: a flat toolbutton that opens the site in the user's browser", async () => {
+    const panel = openPanel(await sourceWithSignature());
+    const sig = credit(panel);
+    expect(sig.type).toBe("iconbutton");
     expect(sig.props).toEqual({ style: "toolbutton" });
+    expect(path.basename(sig.image!.normal)).toBe("firma.png");
     sig.onClick!();
     expect(systemCalls).toEqual(['cmd /c start "" "https://www.anotherperspectivepictures.com"']);
     expect(sig.active).toBe(false);
     expect(PANEL_SRC).toContain('system.callSystem("open \\"" + SITE_URL');
     expect(PANEL_SRC).toContain('var SITE_URL = "https://www.anotherperspectivepictures.com";');
   });
+});
 
-  it("shows firma.png when the pictures' folder has it", async () => {
-    const dir = path.join(tmp, "images");
-    mkdirSync(dir);
-    for (const name of readdirSync(PANEL_IMAGES_DIR)) {
-      writeFileSync(path.join(dir, name), readFileSync(path.join(PANEL_IMAGES_DIR, name)));
-    }
-    writeFileSync(path.join(dir, "firma.png"), "png", "utf8");
-    const panel = openPanel(await panelSource(PANEL_JSX, dir));
-    const sig = panel.all().find((c) => c.type === "iconbutton" && c.helpTip.includes("sito"))!;
-    expect(path.basename(sig.image!.normal)).toBe("firma.png");
+describe("a failure while building shows in the panel, which still opens", () => {
+  it("names the block and the error, and the rest keeps working", () => {
+    setEnabled("1");
+    failOn = "checkbox";
+    const panel = openPanel();
+    expect(panel.says()).toMatch(
+      /una parte del pannello non si è aperta\. riquadro.*: Bad argument/,
+    );
+    // The block itself was built before the failing checkbox, and toggles.
+    panel.toggle().onClick!();
+    expect(setting(PAUSE_SETTINGS_KEY)).toBe("0");
+  });
+
+  it("says nothing when everything opened", () => {
+    expect(openPanel().says()).not.toContain("non si è aperta");
   });
 });
 
