@@ -291,10 +291,12 @@ describe("stability: only standard controls, no custom painting (2026-10-26 cras
       "measureString",
       ".update(",
       "win.remove(",
-      "addEventListener",
     ]) {
       expect(code.includes(banned), banned).toBe(false);
     }
+    // Mouse listeners only on the signature text, where nothing depends on them.
+    const listened = code.match(/([\w.]+)\.addEventListener\(/g) ?? [];
+    expect(new Set(listened)).toEqual(new Set(["ui.credit.addEventListener("]));
   });
 
   it("uses only group, statictext, iconbutton, button and checkbox", () => {
@@ -527,14 +529,44 @@ describe("the look (2026-10-26 screenshot)", () => {
   });
 });
 
-/** The signature: text, or (with firma.png) a picture button. */
+/** The signature. */
 function credit(panel: Ctl): Ctl {
-  const hit = panel
-    .all()
-    .find((c) => c.text === "Parlez! by Another Perspective" || c.helpTip.includes("apre il sito"));
-  if (!hit) throw new Error("no signature");
-  return hit;
+  return panel.find("statictext", "Parlez! by Another Perspective");
 }
+
+describe("the signature", () => {
+  it("is text, very light grey, never a button (Anthony, 2026-10-28)", () => {
+    const panel = openPanel();
+    const sig = credit(panel);
+    expect(sig.type).toBe("statictext");
+    expect(sig.alignment).toEqual(["right", "bottom"]);
+    expect(sig.graphics.foregroundColor).toEqual({ color: [0.86, 0.86, 0.86] });
+    expect(sig.helpTip).toContain("https://www.anotherperspectivepictures.com");
+    expect(panel.all().filter((c) => c.type === "iconbutton")).toHaveLength(1);
+  });
+
+  it("turns pure white under the mouse and back when it leaves", () => {
+    const sig = credit(openPanel());
+    sig.fire("mouseover");
+    expect(sig.graphics.foregroundColor).toEqual({ color: [1, 1, 1] });
+    sig.fire("mouseout");
+    expect(sig.graphics.foregroundColor).toEqual({ color: [0.86, 0.86, 0.86] });
+  });
+
+  it("a press (mousedown, not click) opens the site in the user's browser", () => {
+    const sig = credit(openPanel());
+    expect(sig.listeners.click).toBeUndefined();
+    sig.fire("mousedown");
+    expect(systemCalls).toEqual(['cmd /c start "" "https://www.anotherperspectivepictures.com"']);
+    expect(PANEL_SRC).toContain('system.callSystem("open \\"" + SITE_URL');
+    expect(PANEL_SRC).toContain('var SITE_URL = "https://www.anotherperspectivepictures.com";');
+  });
+
+  it("ignores firma.png: the picture made it look like a button", async () => {
+    const panel = openPanel(await sourceWithSignature());
+    expect(credit(panel).type).toBe("statictext");
+  });
+});
 
 /** A pictures' folder with every generated picture, plus firma.png. */
 async function sourceWithSignature(): Promise<string> {
@@ -546,30 +578,6 @@ async function sourceWithSignature(): Promise<string> {
   writeFileSync(path.join(dir, "firma.png"), "png", "utf8");
   return panelSource(PANEL_JSX, dir);
 }
-
-describe("the signature", () => {
-  it("without firma.png: plain grey text, never an iconbutton without a picture", () => {
-    const panel = openPanel();
-    const sig = credit(panel);
-    expect(sig.type).toBe("statictext");
-    expect(sig.alignment).toEqual(["right", "bottom"]);
-    expect(sig.helpTip).toContain("https://www.anotherperspectivepictures.com");
-    expect(panel.says()).not.toContain("non si è aperta");
-  });
-
-  it("with firma.png: a flat toolbutton that opens the site in the user's browser", async () => {
-    const panel = openPanel(await sourceWithSignature());
-    const sig = credit(panel);
-    expect(sig.type).toBe("iconbutton");
-    expect(sig.props).toEqual({ style: "toolbutton" });
-    expect(path.basename(sig.image!.normal)).toBe("firma.png");
-    sig.onClick!();
-    expect(systemCalls).toEqual(['cmd /c start "" "https://www.anotherperspectivepictures.com"']);
-    expect(sig.active).toBe(false);
-    expect(PANEL_SRC).toContain('system.callSystem("open \\"" + SITE_URL');
-    expect(PANEL_SRC).toContain('var SITE_URL = "https://www.anotherperspectivepictures.com";');
-  });
-});
 
 describe("a failure while building shows in the panel, which still opens", () => {
   it("names the block and the error, and the rest keeps working", () => {

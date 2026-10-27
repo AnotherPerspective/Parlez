@@ -21,9 +21,10 @@
 // dock under the timeline; "Vista" saves the choice for the next opening.
 //
 // STABILITY FIRST. Custom painting in docked ScriptUI panels is fragile, and
-// mouse events on groups and statictexts never reach a script in After
-// Effects (AE 26.5, 2026-10-27). So: no onDraw, no custom painting, no
-// update(), no mouse listeners. The ON/OFF block is an `iconbutton` in
+// mouse events on groups never reach a script in After Effects (AE 26.5,
+// 2026-10-27). So: no onDraw, no custom painting, no update(), and mouse
+// listeners only on the signature text, where nothing depends on them (if
+// they never fire it stays plain text). The ON/OFF block is an `iconbutton` in
 // "toolbutton" style - After Effects delivers its clicks reliably and draws
 // no frame or focus outline around it - showing a picture of the block, one
 // per state, with lighter and darker versions for mouse-over and pressed
@@ -93,6 +94,7 @@
     var SECTION_BG = [0.21, 0.21, 0.21];
     var TEXT = [0.86, 0.86, 0.86];
     var DIM = [0.55, 0.55, 0.55];
+    var WHITE = [1, 1, 1];
 
     // --- Switches -------------------------------------------------------
     function readSwitch(key) {
@@ -446,18 +448,6 @@
         }
     }
 
-    /** firma.png from the pictures' folder, or null (the signature is then text). */
-    function signatureImage() {
-        try {
-            var dir = imageFolder();
-            if (dir === null) return null;
-            var f = new File(dir.fsName + "/firma.png");
-            return f.exists ? ScriptUI.newImage(f.fsName) : null;
-        } catch (eSig) {
-            return null;
-        }
-    }
-
     /** Hand SITE_URL to the operating system, which opens the user's browser. */
     function openSite() {
         try {
@@ -599,30 +589,25 @@
     guard("firma", function () {
         // The signature, glued to the bottom-right corner whatever the panel's
         // size: a group that takes all the space left, with the signature in its
-        // bottom-right corner. With firma.png in the pictures' folder it is a
-        // toolbutton (see STABILITY FIRST) and a click opens SITE_URL.
+        // bottom-right corner.
         var foot = (compact ? ui.tail : win).add("group");
         foot.orientation = "column";
         foot.alignment = ["fill", "fill"];
         foot.alignChildren = ["right", "bottom"];
         foot.margins = 0;
         foot.minimumSize = [200, 22];
-        var signature = signatureImage();
-        if (signature !== null) {
-            ui.credit = foot.add("iconbutton", undefined, signature, { style: "toolbutton" });
-            ui.credit.helpTip = "Another Perspective: apre il sito nel browser.";
-        } else {
-            // An iconbutton needs a picture: created with null it is a "Bad
-            // argument" that stopped the whole panel from opening (AE 26.5,
-            // 2026-10-28). Without firma.png the signature is plain text, which
-            // After Effects does not let a script make clickable.
-            ui.credit = foot.add("statictext", undefined, "Parlez! by Another Perspective");
-            ui.credit.justify = "right";
-            ui.credit.helpTip = "Another Perspective: " + SITE_URL;
-            setFont(ui.credit, "REGULAR", 9);
-            setTextColor(ui.credit, DIM);
-        }
+        // Text, not a button (Anthony, 2026-10-28: anything that looks like a
+        // button there is wrong): very light grey like the panel's text,
+        // pure white under the mouse, and a press opens SITE_URL. Mouse
+        // events on a statictext may not reach a script in After Effects (on
+        // groups they do not); then it simply stays text, with the address in
+        // its tooltip.
+        ui.credit = foot.add("statictext", undefined, "Parlez! by Another Perspective");
+        ui.credit.justify = "right";
         ui.credit.alignment = ["right", "bottom"];
+        ui.credit.helpTip = "Another Perspective: " + SITE_URL;
+        setFont(ui.credit, "REGULAR", 9);
+        setTextColor(ui.credit, TEXT);
     });
 
     // --- Refreshing: texts and colours only, and only when they change ---
@@ -863,13 +848,18 @@
     win.onShow = function () {
         ensureSize();
     };
-    guard("firma: clic", function () {
-        if (ui.credit && ui.credit.type === "iconbutton") {
-            ui.credit.onClick = function () {
-                openSite();
-                try { ui.credit.active = false; } catch (eFocus) { /* no focus to drop */ }
-            };
-        }
+    guard("firma: mouse", function () {
+        ui.credit.addEventListener("mouseover", function () {
+            setTextColor(ui.credit, WHITE);
+        });
+        ui.credit.addEventListener("mouseout", function () {
+            setTextColor(ui.credit, TEXT);
+        });
+        // mousedown, not click: on a statictext it is the event most likely
+        // to arrive.
+        ui.credit.addEventListener("mousedown", function () {
+            openSite();
+        });
     });
 
     guard("primo aggiornamento", refresh);
