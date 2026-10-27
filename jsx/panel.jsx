@@ -538,7 +538,15 @@
         ui.status.alignment = ["fill", "center"];
         setFont(ui.status, "REGULAR", 11);
         setTextColor(ui.status, [0.70, 0.70, 0.70]);
-        ui.readOnly = head.add("checkbox", undefined, "Sola lettura");
+        // In a group with margins: flush with the panel's edge, the blue
+        // focus outline of a pressed checkbox was cut off on the left (AE
+        // 26.5, 2026-10-28). 10 px lines it up with the history's text.
+        var readOnlyRow = head.add("group");
+        readOnlyRow.orientation = "row";
+        readOnlyRow.alignment = ["fill", "top"];
+        readOnlyRow.alignChildren = ["left", "center"];
+        readOnlyRow.margins = [10, 2, 10, 2];
+        ui.readOnly = readOnlyRow.add("checkbox", undefined, "Sola lettura");
         ui.readOnly.helpTip = "Claude pu\u00f2 guardare il progetto ma non modificarlo: le richieste che cambierebbero qualcosa vengono rifiutate.";
     });
 

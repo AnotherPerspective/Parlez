@@ -806,6 +806,17 @@ describe("the traffic light", () => {
 });
 
 describe("«Sola lettura»", () => {
+  it("sits inset from the panel's edge, so its focus outline is never cut (both views)", () => {
+    for (const layout of ["verticale", "compatta"]) {
+      setSetting("layout", layout);
+      const panel = openPanel();
+      const box = panel.find("checkbox", "Sola lettura");
+      const holder = panel.all().find((c) => c.children.includes(box))!;
+      expect(holder.type, layout).toBe("group");
+      expect(holder.margins, layout).toEqual([10, 2, 10, 2]);
+    }
+  });
+
   it("is saved by the box, reaches the agent and shows in the status", () => {
     setEnabled("1");
     const agent = startAgent();
