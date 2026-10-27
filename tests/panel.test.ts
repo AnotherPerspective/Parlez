@@ -346,10 +346,38 @@ describe("stability: only standard controls, no custom painting (2026-10-26 cras
 });
 
 describe("the look (2026-10-26 screenshot)", () => {
-  it("the title is bold and bigger, in a named family a statictext honours", () => {
+  it("has no title inside: the tab already says Parlez!; only the signature names it", () => {
     const panel = openPanel();
-    expect(panel.find("statictext", "Parlez!").graphics.font).toEqual({ style: "BOLD", size: 24 });
+    const named = panel.all().filter((c) => c.type === "statictext" && c.text.includes("Parlez!"));
+    expect(named.map((c) => c.text)).toEqual(["Parlez! by Another Perspective"]);
     expect(PANEL_SRC).toContain('"Tahoma"');
+  });
+
+  it("has a minimum size fitting its content, docked or floating, vertical or compact", () => {
+    const vertical = openPanel();
+    expect(vertical.minimumSize).toEqual([344, 440]);
+    expect(vertical.preferredSize).toEqual([344, 440]);
+    setSetting("layout", "compatta");
+    const compact = openPanel();
+    expect(compact.minimumSize).toEqual([760, 210]);
+    engine.run(INSTALLED_SRC, {}, { Panel: FakePanel, Window: FakeWindow, ScriptUI: SCRIPTUI });
+    expect(windows[0].minimumSize).toEqual([760, 210]);
+    expect(windows[0].layouts).toBeGreaterThan(0);
+  });
+
+  it("never squeezes the ON/OFF picture, and lays out again when resized", () => {
+    const panel = openPanel();
+    const block = panel.toggle();
+    expect(block.minimumSize).toEqual(block.preferredSize);
+    expect(block.maximumSize).toEqual(block.preferredSize);
+    expect(block.alignment).toEqual(["center", "top"]);
+    let resized = 0;
+    panel.layout.resize = () => {
+      resized++;
+    };
+    (panel.onResizing as () => void)();
+    (panel.onResize as () => void)();
+    expect(resized).toBe(2);
   });
 
   it("one control does ON/OFF: a picture toolbutton, no frame, no twin", () => {

@@ -446,25 +446,30 @@
     var layout = readLayout();
     var compact = (layout === "compatta");
     var notice = "";
-    var BUTTON_WIDTH = compact ? 78 : 84;
+    var BUTTON_WIDTH = compact ? 76 : 100;
+    // The smallest the panel may get, docked or floating: what its content
+    // needs (the ON/OFF picture does not shrink). Without it a floating
+    // panel collapsed to the size of its close button (AE 26.5, 2026-10-27).
+    var MIN_SIZE = compact ? [760, 210] : [344, 440];
+    var BLOCK_SIZE = compact ? [200, 56] : [320, 88];
 
     setFill(win, BG);
     win.orientation = compact ? "row" : "column";
     win.alignChildren = ["fill", "top"];
     win.spacing = compact ? 12 : 8;
     win.margins = compact ? [10, 8, 10, 8] : 12;
+    win.minimumSize = MIN_SIZE;
+    win.preferredSize = MIN_SIZE;
 
     var ui = { rows: [], lastLook: "", shown: {}, rowsOpen: true };
 
-    // Title, the ON/OFF block, status, toggle, read-only.
+    // The ON/OFF block, status, read-only. No title: the panel's tab already
+    // says "Parlez!".
     var head = win.add("group");
     head.orientation = "column";
     head.alignChildren = ["fill", "top"];
     head.spacing = 6;
-    if (compact) head.preferredSize.width = 160;
-    ui.title = head.add("statictext", undefined, TITLE);
-    setFont(ui.title, "BOLD", compact ? 18 : 24);
-    setTextColor(ui.title, TEXT);
+    if (compact) head.preferredSize.width = BLOCK_SIZE[0] + 10;
 
     // The block: a picture button (see STABILITY FIRST above).
     var LOOKS = ["on", "off", "busy", "idle"];
@@ -473,7 +478,10 @@
     if (ui.images !== null) {
         ui.block = head.add("iconbutton", undefined, ui.images.off, { style: "toolbutton" });
         ui.block.alignment = ["center", "top"];
-        ui.block.preferredSize = compact ? [200, 56] : [320, 88];
+        // Fixed: the picture is never squeezed or stretched.
+        ui.block.preferredSize = BLOCK_SIZE;
+        ui.block.minimumSize = BLOCK_SIZE;
+        ui.block.maximumSize = BLOCK_SIZE;
     } else {
         ui.block = head.add("button", undefined, "OFF");
         ui.block.alignment = ["fill", "top"];
@@ -498,7 +506,7 @@
     ui.hist.spacing = 2;
     ui.hist.margins = [8, 6, 8, 6];
     setFill(ui.hist, SECTION_BG);
-    if (compact) ui.hist.preferredSize.width = 300;
+    if (compact) ui.hist.preferredSize.width = 260;
     var histTitle = text(ui.hist, "Ultime richieste", 11, DIM);
     histTitle.helpTip = "Le richieste pi\u00f9 recenti di Claude in questa sessione: ora, cosa, esito, durata. Lo storico completo \u00e8 nel bottone Storico.";
     var rowCount = compact ? 5 : 8;
@@ -511,7 +519,7 @@
     tail.alignChildren = ["fill", "top"];
     tail.alignment = ["fill", "top"];
     tail.spacing = 6;
-    if (compact) tail.preferredSize.width = 260;
+    if (compact) tail.preferredSize.width = 3 * BUTTON_WIDTH + 8;
     var rowA = row(tail);
     ui.undo = button(rowA, "Annulla", "Annulla l'ultima modifica di Claude (Modifica \u203a Annulla, una volta). Chiede conferma.", BUTTON_WIDTH);
     ui.checkpoint = button(rowA, "Ripristino", "Crea un punto di ripristino adesso: salva il progetto e ne fa una copia in " + CHECKPOINT_SUBDIR + ", accanto al progetto.", BUTTON_WIDTH);
@@ -730,7 +738,7 @@
     };
 
     win.onResizing = win.onResize = function () {
-        try { this.layout.resize(); } catch (eResize) { /* ignore */ }
+        try { win.layout.resize(); } catch (eResize) { /* ignore */ }
     };
 
     refresh();
@@ -741,6 +749,7 @@
         win.onClose = function () {
             stopTimer();
         };
+        win.layout.layout(true);
         win.center();
         win.show();
     }
