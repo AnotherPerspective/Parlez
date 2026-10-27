@@ -93,7 +93,10 @@ describe("the pictures", () => {
 
 describe("jsx/panel-images/", () => {
   it("holds exactly what the generator produces (run `npm run build` after changing it)", () => {
-    const onDisk = readdirSync(PANEL_IMAGES_DIR).filter((n) => n.endsWith(".png"));
+    // firma.png, when present, is drawn by scripts/render-signature.ps1, not here.
+    const onDisk = readdirSync(PANEL_IMAGES_DIR).filter(
+      (n) => n.endsWith(".png") && n !== "firma.png",
+    );
     expect(onDisk.sort()).toEqual([...built.keys()].sort());
     for (const [name, bytes] of built) {
       expect(readFileSync(path.join(PANEL_IMAGES_DIR, name)).equals(bytes), name).toBe(true);

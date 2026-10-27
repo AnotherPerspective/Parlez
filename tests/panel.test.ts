@@ -169,6 +169,7 @@ beforeEach(() => {
   engine = makeEngine(tmp);
   windows.length = 0;
   textWrites = 0;
+  systemCalls = [];
 });
 
 afterEach(() => {
@@ -191,10 +192,28 @@ const SCRIPTUI = {
   }),
 };
 
+/** Commands the panel handed to the operating system (system.callSystem). */
+let systemCalls: string[] = [];
+const SYSTEM = {
+  callSystem: (cmd: string) => {
+    systemCalls.push(cmd);
+    return "";
+  },
+};
+
 function openPanel(source = INSTALLED_SRC): Ctl {
   const panel = new FakePanel("panel");
-  engine.run(source, panel, { Panel: FakePanel, Window: FakeWindow, ScriptUI: SCRIPTUI });
+  engine.run(source, panel, {
+    Panel: FakePanel,
+    Window: FakeWindow,
+    ScriptUI: SCRIPTUI,
+    system: SYSTEM,
+  });
   return panel;
+}
+
+function settle() {
+  (engine.global.AE_MCP_PANEL as { settle: () => void }).settle();
 }
 
 function refresh() {
@@ -248,8 +267,9 @@ function historyRows(panel: Ctl): string[] {
   return box.children.map((c) => c.text).filter((t) => t && t !== "Ultime richieste");
 }
 
+/** Repeating tasks still scheduled (the one-shot size check runs once and is gone). */
 function activeTasks(code: string) {
-  return engine.app.tasks.filter((t) => !t.cancelled && t.code.includes(code));
+  return engine.app.tasks.filter((t) => t.repeat && !t.cancelled && t.code.includes(code));
 }
 
 describe("stability: only standard controls, no custom painting (2026-10-26 crashes)", () => {
@@ -329,7 +349,16 @@ describe("stability: only standard controls, no custom painting (2026-10-26 cras
   });
 
   it("run as a plain script: a palette window whose timer stops when it closes", () => {
-    engine.run(INSTALLED_SRC, {}, { Panel: FakePanel, Window: FakeWindow, ScriptUI: SCRIPTUI });
+    engine.run(
+      INSTALLED_SRC,
+      {},
+      {
+        Panel: FakePanel,
+        Window: FakeWindow,
+        ScriptUI: SCRIPTUI,
+        system: SYSTEM,
+      },
+    );
     expect(windows).toHaveLength(1);
     expect(windows[0].type).toBe("window:palette");
     expect(windows[0].text).toBe("Parlez!");
@@ -348,8 +377,10 @@ describe("stability: only standard controls, no custom painting (2026-10-26 cras
 describe("the look (2026-10-26 screenshot)", () => {
   it("has no title inside: the tab already says Parlez!; only the signature names it", () => {
     const panel = openPanel();
-    const named = panel.all().filter((c) => c.type === "statictext" && c.text.includes("Parlez!"));
-    expect(named.map((c) => c.text)).toEqual(["Parlez! by Another Perspective"]);
+    const named = panel.all().filter((c) => c.text.includes("Parlez!"));
+    expect(named.map((c) => [c.type, c.text])).toEqual([
+      ["iconbutton", "Parlez! by Another Perspective"],
+    ]);
     expect(PANEL_SRC).toContain('"Tahoma"');
   });
 
@@ -360,7 +391,16 @@ describe("the look (2026-10-26 screenshot)", () => {
     setSetting("layout", "compatta");
     const compact = openPanel();
     expect(compact.minimumSize).toEqual([760, 210]);
-    engine.run(INSTALLED_SRC, {}, { Panel: FakePanel, Window: FakeWindow, ScriptUI: SCRIPTUI });
+    engine.run(
+      INSTALLED_SRC,
+      {},
+      {
+        Panel: FakePanel,
+        Window: FakeWindow,
+        ScriptUI: SCRIPTUI,
+        system: SYSTEM,
+      },
+    );
     expect(windows[0].minimumSize).toEqual([760, 210]);
     expect(windows[0].layouts).toBeGreaterThan(0);
   });
@@ -387,7 +427,9 @@ describe("the look (2026-10-26 screenshot)", () => {
     expect(block.props).toEqual({ style: "toolbutton" });
     expect(block.preferredSize).toEqual([320, 88]);
     expect(panel.all().filter((c) => /^(ON|OFF|Accendi|Spegni)$/.test(c.text))).toHaveLength(0);
-    expect(panel.all().filter((c) => c.type === "iconbutton")).toHaveLength(1);
+    expect(panel.all().filter((c) => c.type === "iconbutton" && c !== credit(panel))).toHaveLength(
+      1,
+    );
     expect(panel.look()).toBe("off");
     block.onClick!();
     expect(setting(PAUSE_SETTINGS_KEY)).toBe("1");
@@ -430,9 +472,9 @@ describe("the look (2026-10-26 screenshot)", () => {
     expect(counts.text).toMatch(/^eseguite 0 · rifiutate 0 · nessuna richiesta · shotA v3$/);
     // The signature: in a group that takes all the space left, glued to its
     // bottom-right corner, and that group is the panel's last child.
-    const credit = panel.find("statictext", "Parlez! by Another Perspective");
-    expect(credit.alignment).toEqual(["right", "bottom"]);
-    const foot = panel.all().find((c) => c.children.includes(credit))!;
+    const sig = credit(panel);
+    expect(sig.alignment).toEqual(["right", "bottom"]);
+    const foot = panel.all().find((c) => c.children.includes(sig))!;
     expect(foot.alignment).toEqual(["fill", "fill"]);
     expect(panel.children[panel.children.length - 1]).toBe(foot);
   });
@@ -476,6 +518,107 @@ describe("the look (2026-10-26 screenshot)", () => {
     expect(path.basename(panel.toggle().image!.normal)).toBe("off-small.png");
     expect(middle.children[0].text).toBe("Ultime richieste");
     expect(right.all().some((c) => c.text === "Annulla")).toBe(true);
+  });
+});
+
+function credit(panel: Ctl): Ctl {
+  return panel.find("iconbutton", "Parlez! by Another Perspective");
+}
+
+describe("the signature", () => {
+  it("is a flat toolbutton that opens the site in the user's browser", () => {
+    const panel = openPanel();
+    const sig = credit(panel);
+    expect(sig.props).toEqual({ style: "toolbutton" });
+    sig.onClick!();
+    expect(systemCalls).toEqual(['cmd /c start "" "https://www.anotherperspectivepictures.com"']);
+    expect(sig.active).toBe(false);
+    expect(PANEL_SRC).toContain('system.callSystem("open \\"" + SITE_URL');
+    expect(PANEL_SRC).toContain('var SITE_URL = "https://www.anotherperspectivepictures.com";');
+  });
+
+  it("shows firma.png when the pictures' folder has it", async () => {
+    const dir = path.join(tmp, "images");
+    mkdirSync(dir);
+    for (const name of readdirSync(PANEL_IMAGES_DIR)) {
+      writeFileSync(path.join(dir, name), readFileSync(path.join(PANEL_IMAGES_DIR, name)));
+    }
+    writeFileSync(path.join(dir, "firma.png"), "png", "utf8");
+    const panel = openPanel(await panelSource(PANEL_JSX, dir));
+    const sig = panel.all().find((c) => c.type === "iconbutton" && c.helpTip.includes("sito"))!;
+    expect(path.basename(sig.image!.normal)).toBe("firma.png");
+  });
+});
+
+describe("undocking: never collapsed (AE 26.5, 2026-10-27)", () => {
+  it("every top-level group asks for a size, not just «fill»", () => {
+    for (const layout of ["verticale", "compatta"]) {
+      setSetting("layout", layout);
+      const panel = openPanel();
+      for (const child of panel.children) {
+        const min = child.minimumSize as number[] | undefined;
+        expect(min, `${layout}: ${child.type}`).toBeDefined();
+        expect(min![0] * min![1], `${layout}: ${child.type}`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("lays out, then resizes, after every child is in", () => {
+    let calls: string[] = [];
+    const panel = new FakePanel("panel");
+    panel.layout = {
+      layout: () => {
+        calls.push("layout");
+      },
+      resize: () => {
+        calls.push("resize");
+      },
+    };
+    engine.run(INSTALLED_SRC, panel, {
+      Panel: FakePanel,
+      Window: FakeWindow,
+      ScriptUI: SCRIPTUI,
+      system: SYSTEM,
+    });
+    expect(calls.slice(0, 2)).toEqual(["layout", "resize"]);
+    calls = [];
+  });
+
+  it("schedules one check right after opening, and grows a collapsed panel back", () => {
+    const panel = openPanel();
+    const once = engine.app.tasks.filter((t) => !t.repeat && t.code.includes("settle"));
+    expect(once).toHaveLength(1);
+    panel.size = [24, 24];
+    settle();
+    expect(panel.size).toEqual([344, 440]);
+  });
+
+  it("does the same when shown and from the timer", () => {
+    const panel = openPanel();
+    panel.size = [20, 30];
+    (panel.onShow as () => void)();
+    expect(panel.size).toEqual([344, 440]);
+    panel.size = [20, 30];
+    refresh();
+    expect(panel.size).toEqual([344, 440]);
+  });
+
+  it("leaves a narrow column the user docked it in alone", () => {
+    const panel = openPanel();
+    panel.size = [260, 900];
+    settle();
+    refresh();
+    expect(panel.size).toEqual([260, 900]);
+  });
+
+  it("gives up after three tries, so it never fights After Effects from the timer", () => {
+    const panel = openPanel();
+    const before = panel.layouts;
+    for (let i = 0; i < 6; i++) {
+      panel.size = [10, 10];
+      settle();
+    }
+    expect(panel.layouts - before).toBe(3);
   });
 });
 

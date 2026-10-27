@@ -13,8 +13,11 @@ const { buildPanelImages } = await import(new URL("../dist/panel-images.js", imp
 const outDir = join(root, "jsx", "panel-images");
 mkdirSync(outDir, { recursive: true });
 const files = buildPanelImages();
+// firma.png (the signature) is not generated here: scripts/render-signature.ps1
+// draws it with a system font, and it stays when present.
+const KEEP = new Set(["firma.png"]);
 for (const name of readdirSync(outDir)) {
-  if (name.endsWith(".png") && !files.has(name)) unlinkSync(join(outDir, name));
+  if (name.endsWith(".png") && !files.has(name) && !KEEP.has(name)) unlinkSync(join(outDir, name));
 }
 for (const [name, bytes] of files) writeFileSync(join(outDir, name), bytes);
 console.log(`panel images: ${files.size} written to ${outDir}`);

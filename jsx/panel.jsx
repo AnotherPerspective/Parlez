@@ -76,6 +76,12 @@
     // Edit > Undo.
     var UNDO_COMMAND = 16;
     var TITLE_CHARS = 30;
+    // The signature at the bottom right opens this page in the user's own
+    // browser when clicked (nome provvisorio dell'indirizzo, da confermare con
+    // Anthony). That is the user opening a page, not this program going on
+    // the internet: nothing here connects anywhere, the click hands the
+    // address to the operating system, as a link in any document would.
+    var SITE_URL = "https://www.anotherperspectivepictures.com";
     // Written by install-panel: the package's jsx/panel-images folder.
     var IMAGE_DIR = null; // INSTALL_PANEL_IMAGE_DIR
 
@@ -440,6 +446,28 @@
         }
     }
 
+    /** firma.png from the pictures' folder, or null (the signature is then text). */
+    function signatureImage() {
+        try {
+            var dir = imageFolder();
+            if (dir === null) return null;
+            var f = new File(dir.fsName + "/firma.png");
+            return f.exists ? ScriptUI.newImage(f.fsName) : null;
+        } catch (eSig) {
+            return null;
+        }
+    }
+
+    /** Hand SITE_URL to the operating system, which opens the user's browser. */
+    function openSite() {
+        try {
+            if (String($.os).indexOf("Windows") >= 0) system.callSystem("cmd /c start \"\" \"" + SITE_URL + "\"");
+            else system.callSystem("open \"" + SITE_URL + "\"");
+        } catch (eOpen) {
+            say("Non riesco ad aprire il browser: " + SITE_URL);
+        }
+    }
+
     // --- Building (once, when the panel opens) --------------------------
     var isPanel = (typeof Panel !== "undefined") && (thisObj instanceof Panel);
     var win = isPanel ? thisObj : new Window("palette", TITLE, undefined, { resizeable: true });
@@ -469,7 +497,11 @@
     head.orientation = "column";
     head.alignChildren = ["fill", "top"];
     head.spacing = 6;
-    if (compact) head.preferredSize.width = BLOCK_SIZE[0] + 10;
+    // Every top-level group says how big it needs to be: when After Effects
+    // undocks the panel it sizes the floating window from what the content
+    // asks for, and groups that only say "fill" ask for nothing.
+    head.minimumSize = [BLOCK_SIZE[0], BLOCK_SIZE[1] + 52];
+    head.preferredSize = [compact ? BLOCK_SIZE[0] + 10 : BLOCK_SIZE[0], BLOCK_SIZE[1] + 52];
 
     // The block: a picture button (see STABILITY FIRST above).
     var LOOKS = ["on", "off", "busy", "idle"];
@@ -506,7 +538,8 @@
     ui.hist.spacing = 2;
     ui.hist.margins = [8, 6, 8, 6];
     setFill(ui.hist, SECTION_BG);
-    if (compact) ui.hist.preferredSize.width = 260;
+    ui.hist.minimumSize = [compact ? 260 : BLOCK_SIZE[0], 48];
+    ui.hist.preferredSize = [compact ? 260 : BLOCK_SIZE[0], compact ? 120 : 160];
     var histTitle = text(ui.hist, "Ultime richieste", 11, DIM);
     histTitle.helpTip = "Le richieste pi\u00f9 recenti di Claude in questa sessione: ora, cosa, esito, durata. Lo storico completo \u00e8 nel bottone Storico.";
     var rowCount = compact ? 5 : 8;
@@ -519,12 +552,16 @@
     tail.alignChildren = ["fill", "top"];
     tail.alignment = ["fill", "top"];
     tail.spacing = 6;
-    if (compact) tail.preferredSize.width = 3 * BUTTON_WIDTH + 8;
+    var ROW_SIZE = [3 * BUTTON_WIDTH + 8, 26];
+    tail.minimumSize = [ROW_SIZE[0], 2 * ROW_SIZE[1] + 50];
+    tail.preferredSize = [ROW_SIZE[0], 2 * ROW_SIZE[1] + 50];
     var rowA = row(tail);
+    rowA.minimumSize = ROW_SIZE;
     ui.undo = button(rowA, "Annulla", "Annulla l'ultima modifica di Claude (Modifica \u203a Annulla, una volta). Chiede conferma.", BUTTON_WIDTH);
     ui.checkpoint = button(rowA, "Ripristino", "Crea un punto di ripristino adesso: salva il progetto e ne fa una copia in " + CHECKPOINT_SUBDIR + ", accanto al progetto.", BUTTON_WIDTH);
     ui.checkpointFolder = button(rowA, "Elenco", "Apre la cartella con l'elenco dei punti di ripristino di questo progetto.", BUTTON_WIDTH);
     var rowB = row(tail);
+    rowB.minimumSize = ROW_SIZE;
     ui.history = button(rowB, "Storico", "Apre lo storico completo delle richieste di questa sessione (file di testo).", BUTTON_WIDTH);
     ui.mailbox = button(rowB, "Cassetta", "Apre la cartella dove Claude e After Effects si scambiano le richieste.", BUTTON_WIDTH);
     ui.layout = button(rowB, "Vista", "Passa alla vista " + (compact ? "verticale (colonna laterale)" : "compatta (sotto la timeline)") +
@@ -532,18 +569,25 @@
     ui.notice = text(tail, notice, 10, DIM);
     ui.counts = text(tail, "", 9, DIM);
     // The signature, glued to the bottom-right corner whatever the panel's
-    // size: a group that takes all the space left, with the text in its
-    // bottom-right corner.
+    // size: a group that takes all the space left, with the signature in its
+    // bottom-right corner. It is a toolbutton (the only thing After Effects
+    // reliably delivers clicks to, see STABILITY FIRST) showing firma.png
+    // when the pictures' folder has it, else its text; a click opens SITE_URL.
     var foot = (compact ? tail : win).add("group");
     foot.orientation = "column";
     foot.alignment = ["fill", "fill"];
     foot.alignChildren = ["right", "bottom"];
     foot.margins = 0;
-    ui.credit = foot.add("statictext", undefined, "Parlez! by Another Perspective");
-    ui.credit.justify = "right";
+    foot.minimumSize = [200, 22];
+    var signature = signatureImage();
+    ui.credit = foot.add("iconbutton", undefined, signature, { style: "toolbutton" });
+    if (signature === null) {
+        ui.credit.text = "Parlez! by Another Perspective";
+        setFont(ui.credit, "REGULAR", 9);
+        setTextColor(ui.credit, DIM);
+    }
     ui.credit.alignment = ["right", "bottom"];
-    setFont(ui.credit, "REGULAR", 9);
-    setTextColor(ui.credit, DIM);
+    ui.credit.helpTip = "Another Perspective: apre il sito nel browser.";
 
     // --- Refreshing: texts and colours only, and only when they change ---
     var current = { agent: null, target: null };
@@ -622,6 +666,31 @@
         put("mailbox.enabled", ui.mailbox, "enabled", agent !== null && agent.dir !== null);
         put("checkpointFolder.enabled", ui.checkpointFolder, "enabled", !!app.project.file);
         put("checkpoint.enabled", ui.checkpoint, "enabled", !!app.project.file);
+    }
+
+    /**
+     * Back to MIN_SIZE when After Effects left the panel collapsed -
+     * undocked, it gave the floating window the size of its close button
+     * (AE 26.5, 2026-10-27). Only a collapse (under COLLAPSED px), not a
+     * narrow column the user docked it in, and at most MAX_FIXES times per
+     * opening, so it can never fight the layout from the timer.
+     */
+    var COLLAPSED = 120;
+    var MAX_FIXES = 3;
+    var fixes = 0;
+    function ensureSize() {
+        try {
+            if (fixes >= MAX_FIXES) return;
+            var sz = win.size;
+            if (!sz) return;
+            var w = Number(sz[0]);
+            var h = Number(sz[1]);
+            if (w >= COLLAPSED && h >= COLLAPSED) return;
+            fixes++;
+            win.size = [Math.max(w, MIN_SIZE[0]), Math.max(h, MIN_SIZE[1])];
+            win.layout.layout(true);
+            win.layout.resize();
+        } catch (eSize) { /* the panel is closing */ }
     }
 
     /** False while the panel is hidden (a docked tab in the background, a closed window). */
@@ -730,29 +799,51 @@
         refresh: function () {
             try {
                 if (!isShown()) return;
+                ensureSize();
                 refresh();
             } catch (eRefresh) {
                 stopTimer();
             }
+        },
+        // Once, shortly after opening: by then After Effects has placed the
+        // panel (docked or floating) and its real size is known.
+        settle: function () {
+            ensureSize();
         }
     };
 
     win.onResizing = win.onResize = function () {
-        try { win.layout.resize(); } catch (eResize) { /* ignore */ }
+        try {
+            this.layout.resize();
+        } catch (eResize) {
+            try { win.layout.resize(); } catch (eResize2) { /* ignore */ }
+        }
+    };
+    win.onShow = function () {
+        ensureSize();
+    };
+    ui.credit.onClick = function () {
+        openSite();
+        try { ui.credit.active = false; } catch (eFocus) { /* no focus to drop */ }
     };
 
     refresh();
     ui.ready = true;
-    if (isPanel) {
-        win.layout.layout(true);
-    } else {
+    // After every child is in: lay out, then fit to the current size (the
+    // dockable-panel pattern of Adobe's JavaScript Tools Guide and of Peter
+    // Kahrel's "ScriptUI for Dummies").
+    win.layout.layout(true);
+    win.layout.resize();
+    if (!isPanel) {
         win.onClose = function () {
             stopTimer();
         };
-        win.layout.layout(true);
         win.center();
         win.show();
     }
+    try {
+        app.scheduleTask("$.global.AE_MCP_PANEL.settle()", 300, false);
+    } catch (eSettle) { /* the timer checks the size too */ }
     try {
         $.global.AE_MCP_PANEL.taskId = app.scheduleTask("$.global.AE_MCP_PANEL.refresh()", REFRESH_MS, true);
     } catch (eSchedule) { /* refreshed by the buttons only */ }
