@@ -10,10 +10,17 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { aeProfileRoot } from "../src/agent-install.js";
 import { runCli } from "../src/cli.js";
-import { LEGACY_PANEL_FILENAMES, PANEL_FILENAME, PANEL_JSX } from "../src/config.js";
 import {
+  LEGACY_PANEL_FILENAMES,
+  PANEL_FILENAME,
+  PANEL_IMAGES_DIR,
+  PANEL_JSX,
+} from "../src/config.js";
+import {
+  PANEL_IMAGE_DIR_LINE,
   PANEL_MARKER,
   installPanel,
+  panelSource,
   panelInstallStatus,
   scriptUiPanelsDirFor,
   uninstallPanel,
@@ -91,7 +98,11 @@ describe("install / status / uninstall", () => {
     const first = await installPanel({ ...base(), version: "26.5" });
     const target = path.join(scriptUiPanelsDirFor(root(), "26.5"), PANEL_FILENAME);
     expect(first).toEqual({ written: [target], unchanged: [], removedLegacy: [] });
-    expect(await fs.readFile(target, "utf8")).toBe(PANEL_SRC);
+    const written = await fs.readFile(target, "utf8");
+    expect(written).toBe(await panelSource());
+    // jsx/panel.jsx with the pictures' folder filled in, nothing else changed.
+    expect(written).toContain(`var IMAGE_DIR = '${PANEL_IMAGES_DIR.replace(/\\/g, "/")}';`);
+    expect(written.replace(/^ {4}var IMAGE_DIR = .*$/m, PANEL_IMAGE_DIR_LINE)).toBe(PANEL_SRC);
 
     expect(await installPanel({ ...base(), version: "26.5" })).toEqual({
       written: [],

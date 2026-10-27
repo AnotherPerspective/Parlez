@@ -14,16 +14,18 @@ import {
 } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   AGENT_JSX,
+  PANEL_IMAGES_DIR,
   PANEL_JSX,
   PAUSE_SETTINGS_KEY,
   PAUSE_SETTINGS_SECTION,
   READ_ONLY_SETTINGS_KEY,
 } from "../src/config.js";
 import { DEFAULT_CHECKPOINT_SUBDIR, parseCheckpointName } from "../src/operations/checkpoint.js";
+import { panelSource } from "../src/panel-install.js";
 import {
   EsFile,
   EsFolder,
@@ -85,8 +87,13 @@ class Ctl {
     textWrites++;
     this._text = v;
   }
-  add(type: string, _bounds?: unknown, text?: string): Ctl {
-    const c = new Ctl(type, text ?? "");
+  image: { normal: string; disabled: string; pressed: string; rollover: string } | null = null;
+  props: Record<string, unknown> | null = null;
+  active = true;
+  add(type: string, _bounds?: unknown, content?: unknown, props?: Record<string, unknown>): Ctl {
+    const c = new Ctl(type, typeof content === "string" ? content : "");
+    if (content && typeof content === "object") c.image = content as Ctl["image"];
+    c.props = props ?? null;
     this.children.push(c);
     return c;
   }
@@ -117,20 +124,26 @@ class Ctl {
       .map((c) => c.text)
       .join("\n");
   }
-  /** The one ON / OFF control: a native button. */
+  /** The one ON / OFF control: the picture button (or, without pictures, a plain one). */
   toggle(): Ctl {
-    return this.find("button", /^(ON|OFF)$/);
+    const hit = this.all().find(
+      (c) => c.type === "iconbutton" || (c.type === "button" && /^(ON|OFF)$/.test(c.text)),
+    );
+    if (!hit) throw new Error("no ON/OFF control");
+    return hit;
+  }
+  /** Which picture it shows: on, off, busy, idle. */
+  look(): string {
+    const block = this.toggle();
+    if (block.image === null) return block.text === "OFF" ? "off" : "on";
+    return path.basename(block.image.normal).replace(/(-small)?\.png$/, "");
   }
   word(): string {
-    return this.toggle().text;
+    return this.look() === "off" ? "OFF" : "ON";
   }
-  /** The coloured frame around it: the traffic light. */
-  face(): Ctl {
-    const block = this.toggle();
-    return this.all().find((c) => c.children.includes(block))!;
-  }
-  color(): number[] | null {
-    return this.face().graphics.backgroundColor?.color.slice(0, 3) ?? null;
+  /** The traffic-light colour of that picture. */
+  color(): number[] {
+    return { on: GREEN, off: RED, busy: YELLOW, idle: GREY }[this.look()]!;
   }
 }
 
@@ -163,12 +176,24 @@ afterEach(() => {
 });
 
 const PANEL_SRC = readFileSync(PANEL_JSX, "utf8");
-const SCRIPTUI = { newFont: (_f: string, style: string, size: number) => ({ style, size }) };
-const MARKER = () => path.join(tmp, "userData", "Parlez", "pannello-in-apertura.txt");
+/** What install-panel writes: the same file with the pictures' folder filled in. */
+let INSTALLED_SRC = "";
+beforeAll(async () => {
+  INSTALLED_SRC = await panelSource();
+});
+const SCRIPTUI = {
+  newFont: (_f: string, style: string, size: number) => ({ style, size }),
+  newImage: (normal: string, disabled: string, pressed: string, rollover: string) => ({
+    normal,
+    disabled,
+    pressed,
+    rollover,
+  }),
+};
 
-function openPanel(): Ctl {
+function openPanel(source = INSTALLED_SRC): Ctl {
   const panel = new FakePanel("panel");
-  engine.run(PANEL_SRC, panel, { Panel: FakePanel, Window: FakeWindow, ScriptUI: SCRIPTUI });
+  engine.run(source, panel, { Panel: FakePanel, Window: FakeWindow, ScriptUI: SCRIPTUI });
   return panel;
 }
 
@@ -246,13 +271,13 @@ describe("stability: only standard controls, no custom painting (2026-10-26 cras
     }
   });
 
-  it("uses only group, statictext, button and checkbox", () => {
+  it("uses only group, statictext, iconbutton, button and checkbox", () => {
     const kinds = new Set(
       openPanel()
         .all()
         .map((c) => c.type),
     );
-    expect([...kinds].sort()).toEqual(["button", "checkbox", "group", "statictext"]);
+    expect([...kinds].sort()).toEqual(["button", "checkbox", "group", "iconbutton", "statictext"]);
   });
 
   it("the timer writes nothing when nothing changed", () => {
@@ -304,7 +329,7 @@ describe("stability: only standard controls, no custom painting (2026-10-26 cras
   });
 
   it("run as a plain script: a palette window whose timer stops when it closes", () => {
-    engine.run(PANEL_SRC, {}, { Panel: FakePanel, Window: FakeWindow, ScriptUI: SCRIPTUI });
+    engine.run(INSTALLED_SRC, {}, { Panel: FakePanel, Window: FakeWindow, ScriptUI: SCRIPTUI });
     expect(windows).toHaveLength(1);
     expect(windows[0].type).toBe("window:palette");
     expect(windows[0].text).toBe("Parlez!");
@@ -327,18 +352,39 @@ describe("the look (2026-10-26 screenshot)", () => {
     expect(PANEL_SRC).toContain('"Tahoma"');
   });
 
-  it("one control does ON/OFF: a native button inside the coloured frame, no twin", () => {
+  it("one control does ON/OFF: a picture toolbutton, no frame, no twin", () => {
     const panel = openPanel();
     const block = panel.toggle();
-    expect(block.type).toBe("button");
-    expect(block.preferredSize[0]).toBeGreaterThanOrEqual(180);
-    expect(block.preferredSize[1]).toBeGreaterThanOrEqual(56);
-    expect(block.graphics.font).toEqual({ style: "BOLD", size: 32 });
-    expect(panel.face().margins).toBeGreaterThanOrEqual(6);
-    expect(panel.all().filter((c) => /^(ON|OFF|Accendi|Spegni)$/.test(c.text))).toHaveLength(1);
+    expect(block.type).toBe("iconbutton");
+    expect(block.props).toEqual({ style: "toolbutton" });
+    expect(block.preferredSize).toEqual([320, 88]);
+    expect(panel.all().filter((c) => /^(ON|OFF|Accendi|Spegni)$/.test(c.text))).toHaveLength(0);
+    expect(panel.all().filter((c) => c.type === "iconbutton")).toHaveLength(1);
+    expect(panel.look()).toBe("off");
     block.onClick!();
     expect(setting(PAUSE_SETTINGS_KEY)).toBe("1");
     expect(panel.word()).toBe("ON");
+    // Nothing stays highlighted after the click.
+    expect(block.active).toBe(false);
+  });
+
+  it("each picture comes with its mouse-over and pressed versions, all present", () => {
+    const panel = openPanel();
+    const image = panel.toggle().image!;
+    expect(path.basename(image.normal)).toBe("off.png");
+    expect(path.basename(image.rollover)).toBe("off-over.png");
+    expect(path.basename(image.pressed)).toBe("off-down.png");
+    for (const f of [image.normal, image.rollover, image.pressed]) expect(existsSync(f)).toBe(true);
+    expect(path.resolve(path.dirname(image.normal))).toBe(path.resolve(PANEL_IMAGES_DIR));
+  });
+
+  it("without the pictures it falls back to a plain button reading ON / OFF", () => {
+    const panel = openPanel(PANEL_SRC);
+    const block = panel.toggle();
+    expect(block.type).toBe("button");
+    expect(block.text).toBe("OFF");
+    block.onClick!();
+    expect(block.text).toBe("ON");
   });
 
   it("the status line under the block is centred and grey, said once", () => {
@@ -354,12 +400,13 @@ describe("the look (2026-10-26 screenshot)", () => {
     const panel = openPanel();
     const counts = panel.find("statictext", /^eseguite /);
     expect(counts.text).toMatch(/^eseguite 0 · rifiutate 0 · nessuna richiesta · shotA v3$/);
+    // The signature: in a group that takes all the space left, glued to its
+    // bottom-right corner, and that group is the panel's last child.
     const credit = panel.find("statictext", "Parlez! by Another Perspective");
-    expect(credit.justify).toBe("right");
+    expect(credit.alignment).toEqual(["right", "bottom"]);
     const foot = panel.all().find((c) => c.children.includes(credit))!;
-    expect(foot.children[foot.children.length - 1]).toBe(credit);
-    const tail = panel.all().find((c) => c.children.includes(foot))!;
-    expect(tail.children[tail.children.length - 1]).toBe(foot);
+    expect(foot.alignment).toEqual(["fill", "fill"]);
+    expect(panel.children[panel.children.length - 1]).toBe(foot);
   });
 
   it("buttons: two rows of three, same width", () => {
@@ -396,58 +443,22 @@ describe("the look (2026-10-26 screenshot)", () => {
     const panel = openPanel();
     expect(panel.orientation).toBe("row");
     const [left, middle, right] = panel.children;
-    expect(left.all()).toContain(panel.face());
+    expect(left.all()).toContain(panel.toggle());
+    expect(panel.toggle().preferredSize).toEqual([200, 56]);
+    expect(path.basename(panel.toggle().image!.normal)).toBe("off-small.png");
     expect(middle.children[0].text).toBe("Ultime richieste");
     expect(right.all().some((c) => c.text === "Annulla")).toBe(true);
   });
 });
 
-describe("safe mode", () => {
-  function coloured(panel: Ctl): Ctl[] {
-    return [panel, ...panel.all()].filter(
-      (c) =>
-        c.graphics.backgroundColor !== null ||
-        c.graphics.foregroundColor !== null ||
-        c.graphics.font !== null,
-    );
-  }
-
-  it("normally: dark background and a coloured block", () => {
+describe("no safe mode in the panel", () => {
+  it("has no «Sicura» box, no safeMode setting, no marker file", () => {
     const panel = openPanel();
-    expect(panel.graphics.backgroundColor?.color.slice(0, 3)).toEqual([0.18, 0.18, 0.18]);
-    expect(panel.color()).toEqual(RED);
-  });
-
-  it("with «Sicura» saved: no colours, no fonts, the button still says ON/OFF", () => {
-    setSetting("safeMode", "1");
-    const panel = openPanel();
-    expect(coloured(panel)).toEqual([]);
-    expect(panel.word()).toBe("OFF");
-    expect(panel.says()).toContain("Claude fermo");
-    expect(panel.find("checkbox", "Sicura").value).toBe(true);
-  });
-
-  it("the box saves the choice for the next opening", () => {
-    const panel = openPanel();
-    const box = panel.find("checkbox", "Sicura");
-    box.value = true;
-    box.onClick!();
-    expect(setting("safeMode")).toBe("1");
-    expect(panel.says()).toContain("prossima apertura");
-  });
-
-  it("switches itself on when the previous opening never finished", () => {
-    mkdirSync(path.dirname(MARKER()), { recursive: true });
-    writeFileSync(MARKER(), "left behind by a crash", "utf8");
-    const panel = openPanel();
-    expect(coloured(panel)).toEqual([]);
-    expect(setting("safeMode")).toBe("1");
-    expect(panel.says()).toContain("Modalità sicura");
-  });
-
-  it("a normal opening leaves no marker behind", () => {
-    openPanel();
-    expect(existsSync(MARKER())).toBe(false);
+    expect(() => panel.find("checkbox", "Sicura")).toThrow();
+    for (const gone of ["safeMode", "Sicura", "sicura", "pannello-in-apertura"]) {
+      expect(PANEL_SRC.includes(gone), gone).toBe(false);
+    }
+    expect(existsSync(path.join(tmp, "userData", "Parlez"))).toBe(false);
   });
 });
 

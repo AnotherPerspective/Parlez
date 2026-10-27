@@ -26,7 +26,8 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 
-import { LEGACY_PANEL_FILENAMES, PANEL_FILENAME, PANEL_JSX } from "./config.js";
+import { LEGACY_PANEL_FILENAMES, PANEL_FILENAME, PANEL_IMAGES_DIR, PANEL_JSX } from "./config.js";
+import { jsxPath } from "./transport/launcher.js";
 import {
   type InstallOptions,
   type StubStatus,
@@ -50,8 +51,28 @@ export function scriptUiPanelsDirFor(root: string, version: string): string {
   return path.join(root, version, "Scripts", "ScriptUI Panels");
 }
 
-export async function panelSource(panelJsx: string = PANEL_JSX): Promise<string> {
-  return fs.readFile(panelJsx, "utf8");
+/** The line of jsx/panel.jsx that install-panel fills in. */
+export const PANEL_IMAGE_DIR_LINE = "    var IMAGE_DIR = null; // INSTALL_PANEL_IMAGE_DIR";
+
+/**
+ * What install-panel writes: jsx/panel.jsx with the folder of its pictures
+ * filled in. The copy in ScriptUI Panels loads them from the package, the
+ * way the agent's stub loads jsx/agent.jsx, so updating the package updates
+ * the pictures; re-running install-panel is needed when the package moves
+ * (panel-status reports the copy as stale).
+ */
+export async function panelSource(
+  panelJsx: string = PANEL_JSX,
+  imagesDir: string = PANEL_IMAGES_DIR,
+): Promise<string> {
+  const source = await fs.readFile(panelJsx, "utf8");
+  if (!source.includes(PANEL_IMAGE_DIR_LINE)) {
+    throw new Error(`${panelJsx} has no IMAGE_DIR line for install-panel to fill in`);
+  }
+  return source.replace(
+    PANEL_IMAGE_DIR_LINE,
+    `    var IMAGE_DIR = ${jsxPath(imagesDir)}; // INSTALL_PANEL_IMAGE_DIR`,
+  );
 }
 
 async function targetPanelDirs(
