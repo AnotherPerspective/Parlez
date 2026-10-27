@@ -239,8 +239,6 @@ export interface EsEngine {
   env: Record<string, string>;
   /** What confirm() answers next, and what alert()/confirm() were shown. */
   dialogs: { answer: boolean; shown: string[] };
-  /** ExtendScript's `$`: set `fileName` to say which file the code runs from. */
-  dollar: { fileName?: string; os: string };
   run(source: string, thisObj?: unknown, extra?: Record<string, unknown>): unknown;
 }
 
@@ -254,7 +252,6 @@ export function makeEngine(tempDir: string): EsEngine {
   const env: Record<string, string> = {};
   const dollar = {
     global,
-    fileName: undefined as string | undefined,
     os: "Windows 10.0",
     getenv: (name: string) => (name in env ? env[name] : null),
   };
@@ -271,7 +268,6 @@ export function makeEngine(tempDir: string): EsEngine {
     global,
     env,
     dialogs,
-    dollar,
     run(source, thisObj, extra = {}) {
       const names = ["app", "$", "File", "Folder", "confirm", "alert", ...Object.keys(extra)];
       const values = [app, dollar, EsFile, EsFolder, confirm, alert, ...Object.values(extra)];

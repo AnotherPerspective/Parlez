@@ -34,8 +34,9 @@
 // plain button reading ON / OFF. Controls are created once, when the panel
 // opens, and never removed or rebuilt while it is open. The timer refresh
 // only changes texts and pictures, only when they changed, does nothing
-// while the panel is hidden, and never touches the panel's size or layout.
-// Nothing outside the panel (the agent included) calls into it.
+// while the panel is hidden, and lays the panel out again only when the
+// history goes from empty to not empty. Nothing outside the panel (the
+// agent included) calls into it.
 //
 // How it talks to the rest. The switches are app.settings entries in the
 // "Parlez" section (claudeEnabled, readOnly; layout is the
@@ -470,7 +471,7 @@
     var MIN_SIZE = compact ? [760, 210] : [344, 440];
     var BLOCK_SIZE = compact ? [200, 56] : [320, 88];
 
-    var ui = { rows: [], lastLook: "", shown: {} };
+    var ui = { rows: [], lastLook: "", shown: {}, rowsOpen: true };
     var LOOKS = ["on", "off", "busy", "idle"];
 
     // Every block of the interface is built inside guard(): an error shows
@@ -550,8 +551,8 @@
     });
 
     guard("storico", function () {
-        // History: a fixed number of lines, always there (hiding them while
-        // empty meant laying the panel out again from the timer).
+        // History. While it is empty only its first line shows, so the buttons
+        // stay in sight in a short panel.
         ui.hist = win.add("group");
         ui.hist.orientation = "column";
         ui.hist.alignChildren = ["fill", "top"];
@@ -646,6 +647,20 @@
         ui.lastLook = state.look;
     }
 
+    /**
+     * Empty history: only the first line, so the box is short. This and
+     * opening are the only two moments the panel is laid out again - here at
+     * most once per change between "empty" and "not empty".
+     */
+    function showRows(open) {
+        if (open === ui.rowsOpen) return;
+        for (var i = 1; i < ui.rows.length; i++) ui.rows[i].visible = open;
+        ui.rowsOpen = open;
+        if (ui.ready) {
+            try { win.layout.layout(true); } catch (eLay) { /* next resize lays it out */ }
+        }
+    }
+
     function refresh() {
         var now = new Date().getTime();
         var enabled = readEnabled();
@@ -663,6 +678,7 @@
 
         var recent = (agent !== null) ? agent.recent : [];
         var lines = historyLines(recent, ui.rows.length);
+        showRows(lines.length > 0);
         if (lines.length === 0) lines.push("Nessuna richiesta in questa sessione.");
         for (var i = 0; i < ui.rows.length; i++) put("row" + i, ui.rows[i], "text", (i < lines.length) ? lines[i] : "");
 
@@ -681,6 +697,31 @@
         put("mailbox.enabled", ui.mailbox, "enabled", agent !== null && agent.dir !== null);
         put("checkpointFolder.enabled", ui.checkpointFolder, "enabled", !!app.project.file);
         put("checkpoint.enabled", ui.checkpoint, "enabled", !!app.project.file);
+    }
+
+    /**
+     * Back to MIN_SIZE when After Effects left the panel collapsed -
+     * undocked, it gave the floating window the size of its close button
+     * (AE 26.5, 2026-10-27). Only a collapse (under COLLAPSED px), not a
+     * narrow column the user docked it in, and at most MAX_FIXES times per
+     * opening, so it can never fight the layout from the timer.
+     */
+    var COLLAPSED = 120;
+    var MAX_FIXES = 3;
+    var fixes = 0;
+    function ensureSize() {
+        try {
+            if (fixes >= MAX_FIXES) return;
+            var sz = win.size;
+            if (!sz) return;
+            var w = Number(sz[0]);
+            var h = Number(sz[1]);
+            if (w >= COLLAPSED && h >= COLLAPSED) return;
+            fixes++;
+            win.size = [Math.max(w, MIN_SIZE[0]), Math.max(h, MIN_SIZE[1])];
+            win.layout.layout(true);
+            win.layout.resize();
+        } catch (eSize) { /* the panel is closing */ }
     }
 
     /** False while the panel is hidden (a docked tab in the background, a closed window). */
@@ -792,10 +833,16 @@
         refresh: function () {
             try {
                 if (!isShown()) return;
+                ensureSize();
                 refresh();
             } catch (eRefresh) {
                 stopTimer();
             }
+        },
+        // Once, shortly after opening: by then After Effects has placed the
+        // panel (docked or floating) and its real size is known.
+        settle: function () {
+            ensureSize();
         }
     };
 
@@ -805,6 +852,9 @@
         } catch (eResize) {
             try { win.layout.resize(); } catch (eResize2) { /* ignore */ }
         }
+    };
+    win.onShow = function () {
+        ensureSize();
     };
     guard("firma: mouse", function () {
         ui.credit.addEventListener("mouseover", function () {
@@ -821,6 +871,7 @@
     });
 
     guard("primo aggiornamento", refresh);
+    ui.ready = true;
     if (failures.length > 0) {
         guard("messaggio d'errore", function () {
             var report = win.add("statictext", undefined,
@@ -830,14 +881,12 @@
             report.preferredSize = [MIN_SIZE[0] - 24, 60];
         });
     }
-    // One layout, after every child is in - and never again: nothing after
-    // opening touches the panel's size or layout but the resize handlers
-    // above. The minimal diagnostic panels (jsx/diagnostica-sgancio-*.jsx),
-    // built exactly so, undock correctly on AE 26.5 (2026-10-28); this one,
-    // which also re-laid itself out from the timer and forced a size after
-    // opening, collapsed.
+    // After every child is in: lay out, then fit to the current size (the
+    // dockable-panel pattern of Adobe's JavaScript Tools Guide and of Peter
+    // Kahrel's "ScriptUI for Dummies").
     guard("disposizione", function () {
         win.layout.layout(true);
+        win.layout.resize();
     });
     if (!isPanel) {
         win.onClose = function () {
@@ -846,6 +895,9 @@
         win.center();
         win.show();
     }
+    try {
+        app.scheduleTask("$.global.AE_MCP_PANEL.settle()", 300, false);
+    } catch (eSettle) { /* the timer checks the size too */ }
     try {
         $.global.AE_MCP_PANEL.taskId = app.scheduleTask("$.global.AE_MCP_PANEL.refresh()", REFRESH_MS, true);
     } catch (eSchedule) { /* refreshed by the buttons only */ }
