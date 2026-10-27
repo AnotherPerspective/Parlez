@@ -218,10 +218,6 @@ function openPanel(source = INSTALLED_SRC): Ctl {
   return panel;
 }
 
-function settle() {
-  (engine.global.AE_MCP_PANEL as { settle: () => void }).settle();
-}
-
 function refresh() {
   (engine.global.AE_MCP_PANEL as { refresh: () => void }).refresh();
 }
@@ -498,22 +494,17 @@ describe("the look (2026-10-26 screenshot)", () => {
     expect(() => panel.find("button", "Ripristini")).toThrow();
   });
 
-  it("an empty history takes one line; the first request opens it, with one layout", () => {
+  it("the history keeps its lines, and the timer never lays the panel out", () => {
     setEnabled("1");
     const agent = startAgent();
     const panel = openPanel();
     const box = panel.all().find((c) => c.children.some((k) => k.text === "Ultime richieste"))!;
-    const rows = box.children.slice(1);
-    expect(rows.filter((r) => r.visible)).toHaveLength(1);
+    expect(box.children.slice(1).every((r) => r.visible)).toBe(true);
     const layoutsBefore = panel.layouts;
     serveOne(agent, "a", "layer.create_null");
     refresh();
-    expect(rows.every((r) => r.visible)).toBe(true);
-    expect(panel.layouts).toBe(layoutsBefore + 1);
     refresh();
-    serveOne(agent, "b", "layer.create_null");
-    refresh();
-    expect(panel.layouts).toBe(layoutsBefore + 1);
+    expect(panel.layouts).toBe(layoutsBefore);
   });
 
   it("the compact view: block on the left, history in the middle, buttons on the right", () => {
@@ -610,8 +601,8 @@ describe("undocking: never collapsed (AE 26.5, 2026-10-27)", () => {
     }
   });
 
-  it("lays out, then resizes, after every child is in", () => {
-    let calls: string[] = [];
+  it("lays out once, after every child is in, and never again", () => {
+    const calls: string[] = [];
     const panel = new FakePanel("panel");
     panel.layout = {
       layout: () => {
@@ -627,45 +618,24 @@ describe("undocking: never collapsed (AE 26.5, 2026-10-27)", () => {
       ScriptUI: SCRIPTUI,
       system: SYSTEM,
     });
-    expect(calls.slice(0, 2)).toEqual(["layout", "resize"]);
-    calls = [];
+    expect(calls).toEqual(["layout"]);
+    refresh();
+    refresh();
+    expect(calls).toEqual(["layout"]);
   });
 
-  it("schedules one check right after opening, and grows a collapsed panel back", () => {
+  it("never sets its own size after opening: no one-off check, no onShow, nothing from the timer", () => {
     const panel = openPanel();
-    const once = engine.app.tasks.filter((t) => !t.repeat && t.code.includes("settle"));
-    expect(once).toHaveLength(1);
+    expect(engine.app.tasks.filter((t) => !t.repeat)).toEqual([]);
+    expect(panel.onShow).toBeUndefined();
     panel.size = [24, 24];
-    settle();
-    expect(panel.size).toEqual([344, 440]);
-  });
-
-  it("does the same when shown and from the timer", () => {
-    const panel = openPanel();
-    panel.size = [20, 30];
-    (panel.onShow as () => void)();
-    expect(panel.size).toEqual([344, 440]);
-    panel.size = [20, 30];
     refresh();
-    expect(panel.size).toEqual([344, 440]);
-  });
-
-  it("leaves a narrow column the user docked it in alone", () => {
-    const panel = openPanel();
-    panel.size = [260, 900];
-    settle();
-    refresh();
-    expect(panel.size).toEqual([260, 900]);
-  });
-
-  it("gives up after three tries, so it never fights After Effects from the timer", () => {
-    const panel = openPanel();
-    const before = panel.layouts;
-    for (let i = 0; i < 6; i++) {
-      panel.size = [10, 10];
-      settle();
-    }
-    expect(panel.layouts - before).toBe(3);
+    expect(panel.size).toEqual([24, 24]);
+    const code = PANEL_SRC.split("\n")
+      .filter((line) => !/^\s*\/\//.test(line))
+      .join("\n");
+    expect(code).not.toMatch(/win\.size\s*=/);
+    expect(code.match(/layout\.layout\(/g)).toHaveLength(1);
   });
 });
 
