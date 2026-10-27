@@ -7,10 +7,11 @@
 // Scripts > Run Script File...) it opens as a floating window instead.
 //
 // What it shows:
-//   - one big ON / OFF block, which is also the traffic light: green ON =
-//     Claude may work and is waiting, yellow ON = requests are waiting or one
-//     is running, red OFF = stopped, grey = the resident agent is not there
-//     or not answering. The button under it switches Claude on or off;
+//   - one big ON / OFF button inside a coloured frame, which is also the
+//     traffic light: green = Claude may work and is waiting, yellow =
+//     requests are waiting or one is running, red = OFF, stopped, grey =
+//     the resident agent is not there or not answering. One click on the
+//     button switches Claude on or off;
 //   - "Sola lettura": Claude may look at the project but not change it;
 //   - the last requests, in plain Italian, with outcome and duration;
 //   - quick buttons: undo Claude's last change, restore point now, restore
@@ -24,9 +25,9 @@
 // turned out to come from a damaged project, but the lesson stands). Only
 // standard controls - group, statictext, button, checkbox - with colours set
 // through graphics.backgroundColor / foregroundColor: no onDraw, no custom
-// painting, no update(). The block looks pressable through a darker frame
-// and a lighter top strip (groups), and reacts to the mouse through
-// ordinary event listeners. Controls are created once, when the panel
+// painting, no update(), no mouse listeners (they do not reach a script in
+// After Effects). The ON/OFF control is a native button inside a coloured
+// frame. Controls are created once, when the panel
 // opens, and never removed or rebuilt while it is open. The timer refresh
 // only changes texts and colours, only when they changed, does nothing while
 // the panel is hidden, and lays the panel out again only when the history
@@ -88,7 +89,6 @@
     var SECTION_BG = [0.21, 0.21, 0.21];
     var TEXT = [0.86, 0.86, 0.86];
     var DIM = [0.55, 0.55, 0.55];
-    var WHITE = [1, 1, 1];
 
     // --- Switches -------------------------------------------------------
     function readSwitch(key) {
@@ -430,16 +430,6 @@
         } catch (eFill) { /* no fill */ }
     }
 
-    /** `rgb` lighter (factor > 1) or darker (< 1), each channel kept in 0..1. */
-    function shade(rgb, factor) {
-        var out = [];
-        for (var i = 0; i < 3; i++) {
-            var v = (factor >= 1) ? rgb[i] + (1 - rgb[i]) * (factor - 1) : rgb[i] * factor;
-            out.push(Math.round(Math.max(0, Math.min(1, v)) * 1000) / 1000);
-        }
-        return out;
-    }
-
     function text(parent, value, size, color) {
         var t = parent.add("statictext", undefined, value);
         t.alignment = ["fill", "center"];
@@ -482,7 +472,7 @@
     win.spacing = compact ? 12 : 8;
     win.margins = compact ? [10, 8, 10, 8] : 12;
 
-    var ui = { rows: [], lastColor: "", base: GREY, hover: false, shown: {}, rowsOpen: true };
+    var ui = { rows: [], lastColor: "", shown: {}, rowsOpen: true };
 
     // Title, the ON/OFF block, status, toggle, read-only.
     var head = win.add("group");
@@ -494,42 +484,26 @@
     setFont(ui.title, "BOLD", compact ? 18 : 24);
     setTextColor(ui.title, TEXT);
 
-    // The block looks pressable without saying so: a 2 px darker frame
-    // around the coloured face, and a 2 px lighter strip along its top edge
-    // (a bevel). Groups and a statictext only - nothing is drawn by hand.
+    // The block: a coloured frame (the traffic light) around a real button
+    // that reads ON or OFF. One control, and a native one: mouse events on
+    // groups and statictexts do not reach a script in After Effects 26.5
+    // (2026-10-27), a button's onClick always does.
     ui.frame = head.add("group");
     ui.frame.orientation = "column";
     ui.frame.alignChildren = ["fill", "fill"];
     ui.frame.alignment = ["fill", "top"];
-    ui.frame.margins = 2;
-    ui.frame.spacing = 0;
-    setFill(ui.frame, [0.08, 0.08, 0.08]);
-    ui.face = ui.frame.add("group");
-    ui.face.orientation = "column";
-    ui.face.alignChildren = ["fill", "top"];
-    ui.face.alignment = ["fill", "fill"];
-    ui.face.margins = 0;
-    ui.face.spacing = 0;
-    ui.shine = ui.face.add("group");
-    ui.shine.alignment = ["fill", "top"];
-    ui.shine.preferredSize.height = 2;
-    ui.body = ui.face.add("group");
-    ui.body.orientation = "column";
-    ui.body.alignChildren = ["center", "center"];
-    ui.body.alignment = ["fill", "fill"];
-    ui.body.margins = compact ? [8, 10, 8, 12] : [12, 16, 12, 18];
-    ui.word = ui.body.add("statictext", undefined, "OFF");
-    ui.word.justify = "center";
-    ui.word.alignment = ["center", "center"];
-    setFont(ui.word, "BOLD", compact ? 30 : 44);
-    setTextColor(ui.word, WHITE);
+    ui.frame.margins = compact ? 6 : 8;
+    ui.block = ui.frame.add("button", undefined, "OFF");
+    ui.block.alignment = ["fill", "fill"];
+    ui.block.preferredSize = compact ? [140, 50] : [200, 64];
+    setFont(ui.block, "BOLD", compact ? 24 : 32);
+    ui.block.helpTip = "Accende o spegne Claude in After Effects.";
 
     ui.status = head.add("statictext", undefined, "");
     ui.status.justify = "center";
     ui.status.alignment = ["fill", "center"];
     setFont(ui.status, "REGULAR", 11);
     setTextColor(ui.status, [0.70, 0.70, 0.70]);
-    ui.toggle = button(head, "Accendi", "Accende o spegne Claude in After Effects (come un clic sul riquadro colorato).", 0);
     ui.readOnly = head.add("checkbox", undefined, "Sola lettura");
     ui.readOnly.helpTip = "Claude pu\u00f2 guardare il progetto ma non modificarlo: le richieste che cambierebbero qualcosa vengono rifiutate.";
 
@@ -547,11 +521,14 @@
     var rowCount = compact ? 5 : 8;
     for (var r = 0; r < rowCount; r++) ui.rows.push(text(ui.hist, "", 11));
 
-    // Buttons, two rows of three of the same width, then the small print.
+    // Buttons: two rows of three, one word each, the same width, as wide as
+    // the block. Then the counters on one grey line, and the signature.
     var tail = win.add("group");
     tail.orientation = "column";
     tail.alignChildren = ["fill", "top"];
-    tail.spacing = 4;
+    tail.alignment = ["fill", "top"];
+    tail.spacing = 6;
+    if (compact) tail.preferredSize.width = 260;
     var rowA = row(tail);
     ui.undo = button(rowA, "Annulla", "Annulla l'ultima modifica di Claude (Modifica \u203a Annulla, una volta). Chiede conferma.", BUTTON_WIDTH);
     ui.checkpoint = button(rowA, "Ripristino", "Crea un punto di ripristino adesso: salva il progetto e ne fa una copia in " + CHECKPOINT_SUBDIR + ", accanto al progetto.", BUTTON_WIDTH);
@@ -562,18 +539,17 @@
     ui.layout = button(rowB, "Vista", "Passa alla vista " + (compact ? "verticale (colonna laterale)" : "compatta (sotto la timeline)") +
         ". La nuova vista arriva alla prossima apertura del pannello.", BUTTON_WIDTH);
     ui.notice = text(tail, notice, 10, DIM);
-    var small = row(tail);
-    var smallText = small.add("group");
-    smallText.orientation = "column";
-    smallText.alignChildren = ["fill", "top"];
-    smallText.alignment = ["fill", "top"];
-    smallText.spacing = 0;
-    ui.counts = text(smallText, "", 9, DIM);
-    ui.instance = text(smallText, "", 9, DIM);
-    ui.safe = small.add("checkbox", undefined, "Sicura");
-    ui.safe.alignment = ["right", "top"];
+    ui.counts = text(tail, "", 9, DIM);
+    var foot = row(tail);
+    ui.safe = foot.add("checkbox", undefined, "Sicura");
+    ui.safe.alignment = ["left", "center"];
     ui.safe.helpTip = "Modalit\u00e0 sicura: niente colori n\u00e9 caratteri speciali, solo testo. Vale dalla prossima apertura del pannello.";
     ui.safe.value = safe;
+    ui.credit = foot.add("statictext", undefined, "Parlez! by Another Perspective");
+    ui.credit.justify = "right";
+    ui.credit.alignment = ["fill", "center"];
+    setFont(ui.credit, "REGULAR", 9);
+    setTextColor(ui.credit, DIM);
 
     // --- Refreshing: texts and colours only, and only when they change ---
     var current = { agent: null, target: null };
@@ -594,16 +570,11 @@
         put("notice.text", ui.notice, "text", message);
     }
 
-    /**
-     * The block's colours: the state's colour, lighter while the mouse is
-     * over it, darker while it is pressed. Set only when they change.
-     */
-    function paintBlock() {
-        var face = ui.pressed ? shade(ui.base, 0.85) : (ui.hover ? shade(ui.base, 1.12) : ui.base);
-        var key = face.join(",");
+    /** The frame's colour, set only when it changes. */
+    function paintBlock(color) {
+        var key = color.join(",");
         if (key === ui.lastColor) return;
-        setFill(ui.face, face);
-        setFill(ui.shine, shade(face, 1.35));
+        setFill(ui.frame, color);
         ui.lastColor = key;
     }
 
@@ -629,11 +600,9 @@
         current.agent = agent;
 
         var state = blockFor(enabled, readOnly, agent, now);
-        put("word.text", ui.word, "text", state.label);
-        ui.base = state.color;
-        paintBlock();
-        put("toggle.text", ui.toggle, "text", (enabled === true) ? "Spegni" : "Accendi");
-        put("status.text", ui.status, "text", (safe ? state.label + " \u00b7 " : "") + state.status);
+        put("block.text", ui.block, "text", state.label);
+        paintBlock(state.color);
+        put("status.text", ui.status, "text", state.status);
         put("status.helpTip", ui.status, "helpTip", state.tip);
 
         put("readOnly.value", ui.readOnly, "value", readOnly);
@@ -647,13 +616,12 @@
 
         if (agent === null) {
             put("counts.text", ui.counts, "text", "");
-            put("instance.text", ui.instance, "text", "");
         } else {
             var since = (agent.lastRequestAt > 0)
                 ? "ultima " + Math.round((now - agent.lastRequestAt) / 1000) + " s fa"
                 : "nessuna richiesta";
-            put("counts.text", ui.counts, "text", "eseguite " + agent.served + " \u00b7 rifiutate " + agent.refused + " \u00b7 " + since);
-            put("instance.text", ui.instance, "text", agent.id + " \u00b7 agente v" + agent.version);
+            put("counts.text", ui.counts, "text", "eseguite " + agent.served + " \u00b7 rifiutate " + agent.refused + " \u00b7 " + since +
+                " \u00b7 " + agent.id + " v" + agent.version);
         }
 
         current.target = undoTarget(recent);
@@ -678,30 +646,7 @@
         say(writeSwitch(KEY_ENABLED, want) ? "" : "Non riesco a salvare la scelta nelle preferenze di After Effects.");
         refresh();
     }
-    ui.toggle.onClick = toggleClaude;
-
-    // The block reacts to the mouse like a button and toggles on click.
-    // Mouse events reach a group in ScriptUI (and bubble up from the text
-    // on it); where they do not, the button above still toggles.
-    function onMouse(kind) {
-        return function () {
-            try {
-                if (kind === "over") ui.hover = true;
-                else if (kind === "out") { ui.hover = false; ui.pressed = false; }
-                else if (kind === "down") ui.pressed = true;
-                else if (kind === "up") ui.pressed = false;
-                paintBlock();
-                if (kind === "click") toggleClaude();
-            } catch (eMouse) { /* the panel is closing */ }
-        };
-    }
-    try {
-        ui.face.addEventListener("mouseover", onMouse("over"));
-        ui.face.addEventListener("mouseout", onMouse("out"));
-        ui.face.addEventListener("mousedown", onMouse("down"));
-        ui.face.addEventListener("mouseup", onMouse("up"));
-        ui.face.addEventListener("click", onMouse("click"));
-    } catch (eListen) { /* no mouse events here: the button toggles */ }
+    ui.block.onClick = toggleClaude;
     ui.readOnly.onClick = function () {
         if (!writeSwitch(KEY_READ_ONLY, ui.readOnly.value ? "1" : "0")) {
             say("Non riesco a salvare la scelta nelle preferenze di After Effects.");

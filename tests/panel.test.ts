@@ -117,21 +117,20 @@ class Ctl {
       .map((c) => c.text)
       .join("\n");
   }
-  /** The big ON / OFF word. */
-  word(): string {
-    return this.find("statictext", /^(ON|OFF)$/).text;
+  /** The one ON / OFF control: a native button. */
+  toggle(): Ctl {
+    return this.find("button", /^(ON|OFF)$/);
   }
-  /** The coloured face of the block: the text sits in a group inside it. */
+  word(): string {
+    return this.toggle().text;
+  }
+  /** The coloured frame around it: the traffic light. */
   face(): Ctl {
-    const word = this.find("statictext", /^(ON|OFF)$/);
-    const body = this.all().find((c) => c.children.includes(word))!;
-    return this.all().find((c) => c.children.includes(body))!;
+    const block = this.toggle();
+    return this.all().find((c) => c.children.includes(block))!;
   }
   color(): number[] | null {
     return this.face().graphics.backgroundColor?.color.slice(0, 3) ?? null;
-  }
-  toggle(): Ctl {
-    return this.find("button", /^(Accendi|Spegni)$/);
   }
 }
 
@@ -241,6 +240,7 @@ describe("stability: only standard controls, no custom painting (2026-10-26 cras
       "measureString",
       ".update(",
       "win.remove(",
+      "addEventListener",
     ]) {
       expect(code.includes(banned), banned).toBe(false);
     }
@@ -327,54 +327,39 @@ describe("the look (2026-10-26 screenshot)", () => {
     expect(PANEL_SRC).toContain('"Tahoma"');
   });
 
-  it("ON/OFF is centred in the block, and the status line under it is centred and grey", () => {
+  it("one control does ON/OFF: a native button inside the coloured frame, no twin", () => {
     const panel = openPanel();
-    const word = panel.find("statictext", /^(ON|OFF)$/);
-    expect(word.justify).toBe("center");
-    expect(word.alignment).toEqual(["center", "center"]);
-    const body = panel.all().find((c) => c.children.includes(word))!;
-    expect(body.alignChildren).toEqual(["center", "center"]);
-    expect(body.alignment).toEqual(["fill", "fill"]);
-    const status = panel.find("statictext", "Claude fermo");
-    expect(status.justify).toBe("center");
-  });
-
-  it("looks pressable: a darker frame around the face and a lighter strip on top", () => {
-    const panel = openPanel();
-    const face = panel.face();
-    const frame = panel.all().find((c) => c.children.includes(face))!;
-    expect(frame.margins).toBe(2);
-    const frameColor = frame.graphics.backgroundColor!.color;
-    const shine = face.children[0];
-    expect(shine.preferredSize.height).toBe(2);
-    const faceColor = face.graphics.backgroundColor!.color;
-    const shineColor = shine.graphics.backgroundColor!.color;
-    for (let i = 0; i < 3; i++) {
-      expect(frameColor[i]).toBeLessThan(faceColor[i]);
-      expect(shineColor[i]).toBeGreaterThan(faceColor[i]);
-    }
-    expect(panel.says()).not.toMatch(/premi|clicca/i);
-  });
-
-  it("reacts to the mouse: lighter over, darker pressed, back when it leaves; a click toggles", () => {
-    const panel = openPanel();
-    const face = panel.face();
-    const base = panel.color()!;
-    face.fire("mouseover");
-    const over = panel.color()!;
-    face.fire("mousedown");
-    const down = panel.color()!;
-    face.fire("mouseup");
-    face.fire("mouseout");
-    expect(panel.color()).toEqual(base);
-    for (let i = 0; i < 3; i++) {
-      expect(over[i]).toBeGreaterThanOrEqual(base[i]);
-      expect(down[i]).toBeLessThan(base[i]);
-    }
-    expect(over).not.toEqual(base);
-    face.fire("click");
+    const block = panel.toggle();
+    expect(block.type).toBe("button");
+    expect(block.preferredSize[0]).toBeGreaterThanOrEqual(180);
+    expect(block.preferredSize[1]).toBeGreaterThanOrEqual(56);
+    expect(block.graphics.font).toEqual({ style: "BOLD", size: 32 });
+    expect(panel.face().margins).toBeGreaterThanOrEqual(6);
+    expect(panel.all().filter((c) => /^(ON|OFF|Accendi|Spegni)$/.test(c.text))).toHaveLength(1);
+    block.onClick!();
     expect(setting(PAUSE_SETTINGS_KEY)).toBe("1");
     expect(panel.word()).toBe("ON");
+  });
+
+  it("the status line under the block is centred and grey, said once", () => {
+    const panel = openPanel();
+    const status = panel.find("statictext", "Claude fermo");
+    expect(status.justify).toBe("center");
+    expect(panel.says().match(/Claude fermo/g)).toHaveLength(1);
+  });
+
+  it("the bottom: counters on one line, the signature bottom right", () => {
+    setEnabled("1");
+    startAgent();
+    const panel = openPanel();
+    const counts = panel.find("statictext", /^eseguite /);
+    expect(counts.text).toMatch(/^eseguite 0 · rifiutate 0 · nessuna richiesta · shotA v3$/);
+    const credit = panel.find("statictext", "Parlez! by Another Perspective");
+    expect(credit.justify).toBe("right");
+    const foot = panel.all().find((c) => c.children.includes(credit))!;
+    expect(foot.children[foot.children.length - 1]).toBe(credit);
+    const tail = panel.all().find((c) => c.children.includes(foot))!;
+    expect(tail.children[tail.children.length - 1]).toBe(foot);
   });
 
   it("buttons: two rows of three, same width", () => {
@@ -433,11 +418,12 @@ describe("safe mode", () => {
     expect(panel.color()).toEqual(RED);
   });
 
-  it("with «Sicura» saved: no colours, no fonts, ON/OFF said in words", () => {
+  it("with «Sicura» saved: no colours, no fonts, the button still says ON/OFF", () => {
     setSetting("safeMode", "1");
     const panel = openPanel();
     expect(coloured(panel)).toEqual([]);
-    expect(panel.says()).toContain("OFF · Claude fermo");
+    expect(panel.word()).toBe("OFF");
+    expect(panel.says()).toContain("Claude fermo");
     expect(panel.find("checkbox", "Sicura").value).toBe(true);
   });
 
@@ -473,7 +459,6 @@ describe("the ON / OFF switch", () => {
     expect(panel.word()).toBe("OFF");
     expect(panel.color()).toEqual(RED);
     expect(panel.says()).toContain("Claude fermo");
-    expect(panel.toggle().text).toBe("Accendi");
   });
 
   it("is one click each way, and a new opening shows the saved choice", () => {
@@ -481,7 +466,6 @@ describe("the ON / OFF switch", () => {
     panel.toggle().onClick!();
     expect(setting(PAUSE_SETTINGS_KEY)).toBe("1");
     expect(panel.word()).toBe("ON");
-    expect(panel.toggle().text).toBe("Spegni");
 
     const again = openPanel();
     expect(again.word()).toBe("ON");
@@ -624,7 +608,7 @@ describe("history and counters", () => {
     expect(rows[0]).toMatch(/^\d\d:\d\d {2}guarda la composizione {2}✓ {2}\d+(,\d)? s$/);
     expect(rows[1]).toMatch(/crea oggetto nullo {2}✓/);
     expect(panel.says()).toMatch(/eseguite 2 · rifiutate 0 · ultima \d+ s fa/);
-    expect(panel.says()).toContain("shotA · agente v3");
+    expect(panel.says()).toContain("· shotA v3");
   });
 
   it("marks refusals and shortens long titles", () => {
