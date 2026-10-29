@@ -53,7 +53,14 @@ if (typeof JSON === "undefined" || !JSON || typeof JSON.stringify !== "function"
             if (t === "boolean") return v ? "true" : "false";
             if (t === "string") return escString(v);
             if (t === "object") {
-                if (v instanceof Array || (typeof v.length === "number" && v.hasOwnProperty && v.hasOwnProperty("length"))) {
+                // An own numeric `length` alone is not enough: a response like
+                // { ok: true, length: 5, xmp: "..." } is a plain object, and
+                // treating it as an array wrote five nulls and lost every field
+                // (project.get_xmp on AE 26.5). Object literals have
+                // constructor === Object; AE collections and other array-likes
+                // do not. `constructor` is read last so it is touched only on
+                // values that already look array-like.
+                if (v instanceof Array || (typeof v.length === "number" && v.hasOwnProperty && v.hasOwnProperty("length") && v.constructor !== Object)) {
                     var parts = [];
                     for (var i = 0; i < v.length; i++) {
                         parts.push(stringify(v[i]));

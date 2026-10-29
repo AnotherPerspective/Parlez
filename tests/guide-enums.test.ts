@@ -176,7 +176,7 @@ describe("project.get_xmp hands back plain text", () => {
     ) as {
       ok: boolean;
       xmp?: unknown;
-      length?: number;
+      chars?: number;
       xmpType?: string;
       error?: string;
       note?: string;
@@ -185,7 +185,7 @@ describe("project.get_xmp hands back plain text", () => {
   it("a primitive string comes back unchanged", () => {
     expect(run("<x:xmpmeta/>")).toEqual({
       ok: true,
-      length: 12,
+      chars: 12,
       xmp: "<x:xmpmeta/>",
       xmpType: "string",
     });
@@ -196,7 +196,7 @@ describe("project.get_xmp hands back plain text", () => {
     const res = run(new String("<x:xmpmeta/>"));
     expect(res.xmp).toBe("<x:xmpmeta/>");
     expect(typeof res.xmp).toBe("string");
-    expect(res.length).toBe(12);
+    expect(res.chars).toBe(12);
     expect(res.xmpType).toBe("object");
   });
 
@@ -206,12 +206,12 @@ describe("project.get_xmp hands back plain text", () => {
     ["null", null],
     ["an empty string", ""],
   ])(
-    "no packet (%s) is an empty string with length 0 and a note, never a missing field",
+    "no packet (%s) is an empty string with chars 0 and a note, never a missing field",
     (_label, value) => {
       const res = run(value);
       expect(res).toEqual({
         ok: true,
-        length: 0,
+        chars: 0,
         xmp: "",
         xmpType: typeof value === "string" ? "string" : value === null ? "object" : "undefined",
         note: XMP_EMPTY_NOTE,

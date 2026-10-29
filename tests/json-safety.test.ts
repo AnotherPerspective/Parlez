@@ -12,6 +12,8 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { getOp } from "../src/registry.js";
+import "../src/operations/index.js";
 import { serializeRequest } from "../src/transport/FileIpcTransport.js";
 
 const JSON2_PATH = fileURLToPath(new URL("../jsx/json2.jsx", import.meta.url));
@@ -97,6 +99,48 @@ describe("json2.jsx stringify under ExtendScript's operator overloads", () => {
       const control = String.fromCharCode(1);
       expect(json.stringify(`tab\there\\and${control}`)).toBe('"tab\\there\\\\and\\u0001"');
     });
+  });
+});
+
+// AE 26.5, 29/10/2026: project.get_xmp answered a list of nulls. Its result
+// carried a numeric `length` field next to `xmp`, and the stringifier took any
+// object with an own numeric `length` for an array — N nulls, one per
+// character of the packet, and no `xmp` at all.
+describe("json2.jsx stringify: a `length` field does not make an array", () => {
+  it("a plain object with a numeric length stays an object", () => {
+    const json = loadPolyfill();
+    const out = JSON.parse(json.stringify({ ok: true, length: 5, xmp: "abcde" }));
+    expect(Array.isArray(out)).toBe(false);
+    expect(out).toEqual({ ok: true, length: 5, xmp: "abcde" });
+  });
+
+  it("a real array is still an array", () => {
+    const json = loadPolyfill();
+    expect(json.stringify([1, "a", null, [2]])).toBe('[1,"a",null,[2]]');
+  });
+
+  it("an array-like that is not a plain object (an AE collection) is still an array", () => {
+    const json = loadPolyfill();
+    function Collection(this: Record<string, unknown>) {
+      this.length = 2;
+      this[0] = "first";
+      this[1] = "second";
+    }
+    const coll = new (Collection as unknown as new () => object)();
+    expect(json.stringify(coll)).toBe('["first","second"]');
+  });
+
+  it("project.get_xmp's own answer comes through with the packet text", () => {
+    const json = loadPolyfill();
+    const packet = "<x:xmpmeta><rdf:RDF/></x:xmpmeta>";
+    // oxlint-disable-next-line no-new-func
+    const res = new Function("app", "AE", getOp("project.get_xmp")!.toJsx({}))(
+      { project: { xmpPacket: packet } },
+      { errText: (e: unknown) => String(e) },
+    );
+    const out = JSON.parse(json.stringify(res));
+    expect(Array.isArray(out)).toBe(false);
+    expect(out.xmp).toBe(packet);
   });
 });
 

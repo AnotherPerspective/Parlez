@@ -793,11 +793,11 @@ registerOp({
     return `
             var _xmp = null;
             try { _xmp = app.project.xmpPacket; } catch (eX) { return { ok: false, error: "xmpPacket read failed: " + AE.errText(eX) }; }
-            // On AE 26.5 the packet reached Node with a length but without the
-            // xmp field, so set_xmp got nothing to write back. A value that is
-            // not a primitive string (a String or XML object) can be dropped or
-            // mangled by the response serializer; hand back plain text, and say
-            // what AE gave us so the next run shows the cause.
+            // On AE 26.5 this answer reached Node as a list of nulls. The cause
+            // was the key, not the packet: json2.jsx took any object with an own
+            // numeric "length" for an array. The count is called "chars" so the
+            // answer never depends on that rule. Still hand back plain text — a
+            // String or XML object is not a primitive — and say what AE gave us.
             var _type = typeof _xmp;
             if (_type === "function") return { ok: false, error: "xmpPacket is a function on this After Effects, not text", xmpType: _type };
             // The second 26.5 run answered xmpType "undefined" on the suite's
@@ -805,10 +805,10 @@ registerOp({
             // not a failure — always hand back a string, empty when there is
             // nothing, and say how to get one.
             if (_xmp === null || _xmp === undefined || ("" + _xmp) === "") {
-                return { ok: true, length: 0, xmp: "", xmpType: _type, note: ${jsxVal(XMP_EMPTY_NOTE)} };
+                return { ok: true, chars: 0, xmp: "", xmpType: _type, note: ${jsxVal(XMP_EMPTY_NOTE)} };
             }
             var _text = "" + _xmp;
-            return { ok: true, length: _text.length, xmp: _text, xmpType: _type };
+            return { ok: true, chars: _text.length, xmp: _text, xmpType: _type };
         `;
   },
 });
@@ -824,7 +824,7 @@ registerOp({
   toJsx(args) {
     return `
             try { app.project.xmpPacket = ${jsxVal(args.xmp)}; } catch (eX) { return { ok: false, error: "xmpPacket write failed: " + AE.errText(eX) }; }
-            return { ok: true, length: app.project.xmpPacket.length };
+            return { ok: true, chars: ("" + app.project.xmpPacket).length };
         `;
   },
 });
