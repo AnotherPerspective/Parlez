@@ -82,7 +82,9 @@ describe("release-changelog", () => {
   it("starts a link block when the file has none", () => {
     const { read } = run(`${HEADER}\n${UNRELEASED}`, stamp);
     expect(
-      read().endsWith("\n[0.2.0]: https://github.com/AnotherPerspective/Parlez/releases/tag/v0.2.0\n"),
+      read().endsWith(
+        "\n[0.2.0]: https://github.com/AnotherPerspective/Parlez/releases/tag/v0.2.0\n",
+      ),
     ).toBe(true);
   });
 
