@@ -38,4 +38,4 @@ Prima versione di Parlez!. Parte da mcp-aftereffects 0.3.2 di kumo.productions (
 - Le guide create su After Effects 26.5 hanno di nuovo l'orientamento giusto.
 - La lettura dei metadati XMP del progetto è più robusta e dice che tipo di valore riceve.
 
-[0.1.0]: https://github.com/anthonyfesce/parlez/releases/tag/v0.1.0
+[0.1.0]: https://github.com/AnotherPerspective/Parlez/releases/tag/v0.1.0-beta
