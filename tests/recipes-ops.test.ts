@@ -3,18 +3,20 @@
 // (plus the read of comp names before it), undo a half-built piece, and turn
 // the verification reads into plain-Italian outcomes.
 
-import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
+import { decodePng } from "../src/color/png16.js";
 import "../src/operations/index.js";
 import type { Plan } from "../src/recipes/generate.js";
 import { getOp } from "../src/registry.js";
 import { doTool } from "../src/tools/do.js";
 import type { AeTransport, EvalRequest, EvalResult } from "../src/transport/AeTransport.js";
+import { encodePng16 } from "./helpers/images.js";
 
 const ARCHIVE = fileURLToPath(new URL("./fixtures/archivio-lanterna-blu/", import.meta.url));
 // A real folder: recipe.run now waits for the acceptance PNGs to land on disk.
@@ -41,12 +43,23 @@ function evalOk(result: unknown): EvalResult {
   };
 }
 
-/** A transport that answers each call with the next scripted function. */
+/** The project-settings read recipe.run makes before building (frame colors). */
+const SETTINGS_LABEL = "recipe.run: impostazioni";
+const settings8bit = () =>
+  evalOk({ ok: true, file: null, bitsPerChannel: 8, workingSpace: "None" });
+
+/**
+ * A transport that answers each call with the next scripted function. The
+ * settings read is answered aside — an 8 bpc project without color
+ * management, which needs no calibration — so the scripts stay about the
+ * names read and the batch.
+ */
 function scripted(...answers: Array<(req: EvalRequest) => EvalResult>) {
   const calls: EvalRequest[] = [];
   const transport: AeTransport & { calls: EvalRequest[] } = {
     calls,
     async execute(req) {
+      if (req.label === SETTINGS_LABEL) return settings8bit();
       calls.push(req);
       const next = answers[calls.length - 1];
       if (!next) throw new Error(`unexpected call ${calls.length}: ${req.label}`);
@@ -132,6 +145,13 @@ function batchResults(
     }
     return { ok: true, path: slot.outPath };
   });
+}
+
+/** A 16-bit capture of a 32 bpc project: the grey `v(x)` written ×0.1. */
+function grey(w: number, h: number, v: (x: number) => number): Buffer {
+  const rgb = new Float64Array(w * h * 3);
+  for (let i = 0; i < w * h; i++) rgb.fill(v(i % w) * 0.1, i * 3, i * 3 + 3);
+  return encodePng16(w, h, rgb);
 }
 
 const namesAnswer = (names: string[]) => () =>
@@ -424,6 +444,63 @@ describe("recipe.run", () => {
       ops: [{ operation: "recipe.run", args: { recipe: "lower-third" } }],
     });
     expect(jsx).toContain("runs on the Node side");
+  });
+
+  it("32 bpc without color management: frames come back at the viewer's values, one Ctrl+Z intact", async () => {
+    // After Effects 26.5, 29/10/2026: in a 32 bpc project saveFrameToPng
+    // writes every value ×0.1 (white 0.098), so Claude was looking at frames
+    // ten times darker than the comp. Fake AE: every capture is ×0.1.
+    const p = await plan();
+    const labels: string[] = [];
+    const t: AeTransport = {
+      async execute(req) {
+        labels.push(req.label ?? "");
+        if (req.label === "recipe.run: nomi") return namesAnswer([])();
+        if (req.label === SETTINGS_LABEL)
+          return evalOk({
+            ok: true,
+            file: "C:/prove/ricetta-32.aep",
+            bitsPerChannel: 32,
+            workingSpace: "None",
+          });
+        if (req.label === "capture_calibration") {
+          // The four solids of src/color/calibration.ts: 0.05, 0.18, 0.5, 1.0.
+          const file = JSON.parse(/new File\(("[^"]*")\)/.exec(req.code)![1]) as string;
+          writeFileSync(
+            file,
+            grey(160, 40, (x) => [0.05, 0.18, 0.5, 1][Math.floor(x / 40)]),
+          );
+          return { ...evalOk(null), result: { ok: true, saved: true } };
+        }
+        const results = batchResults(p);
+        for (const s of p.reads)
+          if (s.kind === "frame")
+            writeFileSync(
+              s.outPath,
+              grey(8, 8, () => 1),
+            );
+        return evalOk({ ok: true, results });
+      },
+    };
+    const r = (await getOp("recipe.run")!.run!(
+      { recipe: "r-lower-third-barra", args: ARGS, archivio: ARCHIVE, framesDir: FRAMES },
+      t,
+    )) as Record<string, any>;
+    expect(r.ok).toBe(true);
+    // The calibration comes BEFORE the build: the recipe stays the last undo step.
+    expect(labels).toEqual([
+      "recipe.run: nomi",
+      SETTINGS_LABEL,
+      "capture_calibration",
+      "Parlez! r-lower-third-barra",
+    ]);
+    expect(r.acceptance.colorPipeline).toMatch(/capture scale 1\/10\.00 restored \(32 bpc\)/);
+    expect(r.acceptance.colorWarning).toBeUndefined();
+    for (const f of r.acceptance.frames as string[]) {
+      const png = decodePng(readFileSync(f));
+      expect(png.bitDepth).toBe(8);
+      expect(Math.round(png.rgb[0] * 255)).toBe(255);
+    }
   });
 
   it("works end to end through ae_do", async () => {

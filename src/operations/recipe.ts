@@ -6,9 +6,15 @@
 // stops before After Effects and returns the operation list — it is what the
 // tests use and what Claude can show before running.
 
+import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
+import {
+  calibrationKey,
+  measureCaptureTransfer,
+  type CalibrationResult,
+} from "../color/calibration.js";
 import { readFileSettled } from "../color/settled-read.js";
 import { validateOpArgs } from "../opschema.js";
 import { executeOp } from "../recipes/execute.js";
@@ -18,6 +24,9 @@ import { RECIPES_DIR_ENV, listRecipes, planRecipe } from "../recipes/library.js"
 import { ARCHIVE_DIR_ENV } from "../recipes/archive.js";
 import { RecipeError } from "../recipes/types.js";
 import { getOp, jsxFail, registerOp } from "../registry.js";
+import { readOnlyMode } from "../policy.js";
+import { colorPostProcess, needsCalibration, type ColorPayload } from "../tools/render-frame.js";
+import type { AeTransport } from "../transport/AeTransport.js";
 
 function nodeOnly(name: string): string {
   return jsxFail(
@@ -90,6 +99,54 @@ async function waitForFrames(
     ),
   );
   return new Map(slots.map((s, i) => [s.outPath, arrived[i]]));
+}
+
+/**
+ * The acceptance frames are raw saveFrameToPng captures, so they get the same
+ * color pass as ae_render_frame (colorPostProcess) — without it a 32 bpc or
+ * color-managed project hands Claude frames far darker than the viewer. This
+ * half runs BEFORE the build: it reads the project's depth and working space
+ * and, where a capture calibration is needed, takes it now, so the
+ * calibration's own undo step sits under the recipe's and one Ctrl+Z still
+ * removes the whole recipe. Never fails the recipe: a problem becomes the
+ * warning returned with the frames.
+ */
+async function prepareFrameColor(
+  transport: AeTransport,
+): Promise<{ payload: ColorPayload; calib?: CalibrationResult | { error: string } }> {
+  const settings = await executeOp(
+    transport,
+    "project.get_settings",
+    {},
+    { label: "recipe.run: impostazioni" },
+  );
+  const s = (settings.ok ? settings.result : null) as {
+    ok?: unknown;
+    file?: string | null;
+    bitsPerChannel?: number | null;
+    workingSpace?: string | null;
+  } | null;
+  if (!s || s.ok !== true) {
+    return {
+      payload: {
+        colorWarning: `colori dei fotogrammi non corretti: non riesco a leggere le impostazioni del progetto (${settings.ok ? "risposta vuota" : settings.error})`,
+      },
+    };
+  }
+  const payload: ColorPayload = {
+    workingSpace: s.workingSpace ?? "None",
+    bitsPerChannel: s.bitsPerChannel ?? 8,
+    projectFile: s.file ?? null,
+    // render.frame captures the comp as it is: no OCIO adjustment layer.
+    captureKind: "direct",
+  };
+  if (!needsCalibration(payload.workingSpace!, payload.bitsPerChannel!)) return { payload };
+  const calib = await measureCaptureTransfer(
+    transport,
+    calibrationKey(payload.projectFile ?? null, payload.workingSpace!, payload.bitsPerChannel!),
+    !readOnlyMode(),
+  );
+  return { payload, calib };
 }
 
 /** Every generated op must exist and accept its arguments: a last guard before AE. */
@@ -261,6 +318,10 @@ registerOp({
     const plan = items.length > 0 ? planOrFail(args, items) : first;
     if ("ok" in plan) return plan;
 
+    const color = plan.reads.some((s) => s.kind === "frame")
+      ? await prepareFrameColor(transport)
+      : null;
+
     const timeoutMs = typeof args.timeoutMs === "number" ? args.timeoutMs : 120_000;
     const ran = await executeOp(transport, "batch.run", plan.batch.args, {
       label: `Parlez! ${plan.recipe.id}`,
@@ -302,6 +363,11 @@ registerOp({
     const framesTimeoutMs =
       typeof args.framesTimeoutMs === "number" ? args.framesTimeoutMs : FRAMES_TIMEOUT_MS;
     const framesOnDisk = await waitForFrames(plan, results, framesTimeoutMs);
+    const arrived = [...framesOnDisk].filter(([, ok]) => ok).map(([p]) => p);
+    if (color && color.payload.workingSpace !== undefined && arrived.length > 0) {
+      // waitForFrames has already seen them settle: a plain read is enough.
+      await colorPostProcess(color.payload, arrived, transport, (f) => fs.readFile(f), color.calib);
+    }
     const checks = evaluateAcceptance(plan, results, framesOnDisk);
     const failed = checks.filter((c) => c.outcome === "fallito").length;
     const unverified = checks.filter((c) => c.outcome === "non verificabile").length;
@@ -317,8 +383,10 @@ registerOp({
         checks,
         look: plan.look,
         // Only the files that are really there: a path in this list can be opened.
-        frames: [...framesOnDisk].filter(([, arrived]) => arrived).map(([p]) => p),
-        framesMissing: [...framesOnDisk].filter(([, arrived]) => !arrived).map(([p]) => p),
+        frames: arrived,
+        framesMissing: [...framesOnDisk].filter(([, ok]) => !ok).map(([p]) => p),
+        ...(color?.payload.colorPipeline ? { colorPipeline: color.payload.colorPipeline } : {}),
+        ...(color?.payload.colorWarning ? { colorWarning: color.payload.colorWarning } : {}),
       },
       usedCards: plan.usedCards,
       usedCardsLine: plan.usedCardsLine,

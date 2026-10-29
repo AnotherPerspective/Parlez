@@ -3,6 +3,7 @@
 // way real renders do), linear gradients, and text from sheet.ts's 5×7 font.
 
 import { promises as fs } from "node:fs";
+import * as zlib from "node:zlib";
 
 import { encodePngSrgb8 } from "../../src/color/png16.js";
 import { drawText, type Raster, type Rgb } from "../../src/color/sheet.js";
@@ -110,3 +111,39 @@ export const hexToRgb = (hex: string): Rgb => [
   parseInt(hex.slice(3, 5), 16) / 255,
   parseInt(hex.slice(5, 7), 16) / 255,
 ];
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const head = Buffer.alloc(8);
+  head.writeUInt32BE(data.length, 0);
+  head.write(type, 4, "latin1");
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(zlib.crc32(Buffer.concat([head.subarray(4), data])) >>> 0, 0);
+  return Buffer.concat([head, data, crc]);
+}
+
+/**
+ * A 16-bit RGB PNG with no color tags: what saveFrameToPng writes. Needed
+ * wherever values below 1/255 matter, such as the ×0.1 capture of a 32 bpc
+ * project.
+ */
+export function encodePng16(width: number, height: number, rgb: Float64Array): Buffer {
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr.writeUInt8(16, 8);
+  ihdr.writeUInt8(2, 9);
+  const stride = width * 6;
+  const raw = Buffer.alloc(height * (stride + 1));
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width * 3; x++) {
+      const v = Math.min(1, Math.max(0, rgb[y * width * 3 + x]));
+      raw.writeUInt16BE(Math.round(v * 65535), y * (stride + 1) + 1 + x * 2);
+    }
+  }
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", zlib.deflateSync(raw)),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}

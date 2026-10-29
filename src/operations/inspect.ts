@@ -69,7 +69,7 @@ registerOp({
   category: "render",
   description:
     "Render one frame to PNG (raw saveFrameToPng). As the LAST child of a batch.run, one call mutates and hands back visual proof. outPath must be absolute; raise ae_do's timeoutMs for slow renders. " +
-    "CAUTION: in color-managed projects (project.get_settings workingSpace != 'None') this writes raw working-space values that look dark/wrong — use the ae_render_frame TOOL there, which converts to display sRGB.",
+    "CAUTION: in color-managed projects (project.get_settings workingSpace != 'None') this writes raw working-space values that look dark/wrong, and in 32 bpc projects every value comes out ×0.1 (measured on AE 26.5) — use the ae_render_frame TOOL there, which converts to display sRGB. recipe.run's acceptance frames get the same correction.",
   params: [
     { name: "comp", type: "any", description: "Comp name or id", required: true },
     { name: "time", type: "number", description: "Time in seconds to render", required: true },

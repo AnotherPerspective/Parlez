@@ -2,7 +2,11 @@ import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import { z } from "zod";
 
-import { measureCaptureTransfer, calibrationKey } from "../color/calibration.js";
+import {
+  measureCaptureTransfer,
+  calibrationKey,
+  type CalibrationResult,
+} from "../color/calibration.js";
 import {
   encodeInlineImages,
   INLINE_DEFAULT_MAX_SIZE,
@@ -151,7 +155,9 @@ export const renderFrameTool = defineTool({
     "display transform via a transient OCIO Display Transform adjustment layer, and the PNG comes back " +
     "viewer-accurate and sRGB-tagged. Where that layer cannot be used — read-only mode, an AE without the " +
     "OCIO effect, or a failed capture calibration — the result falls back to a pure-math ACES conversion or " +
-    "to raw values with an explicit colorWarning; check colorPipeline / colorWarning on the response.",
+    "to raw values with an explicit colorWarning; check colorPipeline / colorWarning on the response. " +
+    "In 32 bpc projects without color management the capture is also scaled (×0.1 on AE 26.5); the same " +
+    "calibration measures that scale and the PNG comes back at the viewer's values.",
   group: "render",
   // Survives read-only mode: it writes a PNG, and the visual verification loop
   // is the whole point of an audit session. Note this is NOT a
@@ -333,7 +339,7 @@ async function attachAnalysis(
   }
 }
 
-type SettledRead = (file: string) => Promise<Buffer>;
+export type SettledRead = (file: string) => Promise<Buffer>;
 
 /**
  * readFileSettled once per file per call. Its stability wait (≥250 ms) is
@@ -730,35 +736,83 @@ async function nativeFlow(
   return out;
 }
 
+/** The project facts colorPostProcess works from, and the two fields it reports through. */
+export type ColorPayload = Pick<
+  RenderFramePayload,
+  | "workingSpace"
+  | "bitsPerChannel"
+  | "projectFile"
+  | "captureKind"
+  | "colorPipeline"
+  | "colorWarning"
+>;
+
+function isUnmanaged(workingSpace: string): boolean {
+  return workingSpace === "None" || workingSpace === "";
+}
+
+/**
+ * Whether colorPostProcess will ask for a capture calibration in this project.
+ * recipe.run uses it to measure BEFORE its build, so the calibration's own
+ * undo step never lands on top of the recipe's single one.
+ */
+export function needsCalibration(workingSpace: string, bitsPerChannel: number): boolean {
+  return !isUnmanaged(workingSpace) || bitsPerChannel === 32;
+}
+
 /**
  * Convert the captures in place to viewer-accurate, sRGB-tagged 8-bit PNGs
  * (see the tool description for the three pipelines). Reports through
- * payload.colorPipeline / payload.colorWarning; never throws.
+ * payload.colorPipeline / payload.colorWarning; never throws. `measured`
+ * hands in a calibration already taken; without it one is measured here.
  */
-async function colorPostProcess(
-  payload: RenderFramePayload,
+export async function colorPostProcess(
+  payload: ColorPayload,
   written: string[],
   transport: AeTransport,
   read: SettledRead,
+  measured?: CalibrationResult | { error: string },
 ): Promise<void> {
   const workingSpace = payload.workingSpace ?? "None";
-  try {
-    if (workingSpace === "None" || workingSpace === "") {
-      // Values are already display-referred; the only fix needed is an
-      // explicit color tag so viewers stop guessing at the 16-bit file.
-      for (const file of written) {
-        const img = decodePng(await read(file));
-        await fs.writeFile(file, encodePngSrgb8(img.width, img.height, img.rgb));
-      }
-      payload.colorPipeline = "untagged 16-bit → 8-bit sRGB-tagged (values unchanged)";
-      return;
-    }
-
-    const calib = await measureCaptureTransfer(
+  const measure = async () =>
+    measured ??
+    measureCaptureTransfer(
       transport,
       calibrationKey(payload.projectFile ?? null, workingSpace, payload.bitsPerChannel ?? 8),
       !readOnlyMode(),
     );
+  try {
+    if (isUnmanaged(workingSpace)) {
+      // Values are already display-referred; the fix needed is an explicit
+      // color tag so viewers stop guessing at the 16-bit file. At 32 bpc the
+      // float buffer is also written through the linear capture scale seen in
+      // color-managed projects (AE 26.5, 29/10/2026: white 0.098, every value
+      // ×0.1), so it is measured and undone — 8 and 16 bpc were verified exact.
+      let gain = 1;
+      if (payload.bitsPerChannel === 32) {
+        const calib = await measure();
+        if ("error" in calib || calib.kind === "unknown") {
+          payload.colorWarning =
+            `32 bpc project: the capture scale could not be measured (${"error" in calib ? calib.error : "non-linear transfer"}) — ` +
+            "the file is uniformly dark by that unknown scale (×0.1 on AE 26.5). Verify colors against the AE viewer manually.";
+        } else if (calib.kind === "linear") {
+          gain = 1 / calib.scale;
+        }
+      }
+      for (const file of written) {
+        const img = decodePng(await read(file));
+        if (gain !== 1) for (let i = 0; i < img.rgb.length; i++) img.rgb[i] *= gain;
+        await fs.writeFile(file, encodePngSrgb8(img.width, img.height, img.rgb));
+      }
+      payload.colorPipeline =
+        "untagged 16-bit → 8-bit sRGB-tagged" +
+        (gain !== 1
+          ? `, capture scale 1/${gain.toFixed(2)} restored (32 bpc)`
+          : " (values unchanged)");
+      return;
+    }
+
+    const calib = await measure();
     const calibFailed = "error" in calib || calib.kind === "unknown";
     const gain = !calibFailed && calib.kind === "linear" ? 1 / calib.scale : 1;
 
