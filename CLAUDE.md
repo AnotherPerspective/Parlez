@@ -39,7 +39,7 @@ Il proprietario è Anthony (Another Perspective Pictures SRL). Queste regole val
 
 - **Licenza MIT.**
 - **After Effects dal 2024.** Il 2023 è fuori dal piano. Le funzioni più recenti si controllano al momento («esiste?»), mai dal numero di versione.
-- **Nessun pannello** dentro After Effects (né CEP né UXP). Il collegamento veloce opzionale è l'agente di avvio di kumo (`install-agent`).
+- **Pannello «Parlez!»** (ScriptUI, `jsx/panel.jsx`, installato da `install-panel`): interruttore ON/OFF, sola lettura, storico. Deciso il 26/10/2026, sostituisce la scelta «nessun pannello» del 25/10. Niente CEP, niente UXP, niente modalità debug. Il collegamento veloce resta l'agente di avvio (`install-agent`); senza pannello Claude è fermo (regola unica della pausa).
 - **Il programma non si collega mai a internet.**
 - **Si prova solo su After Effects 2026 / Windows.** Mac, 2024 e 2025 sono «scritti per funzionare, non ancora provati»: non dichiararli provati.
 - **Prima lo strumento, poi l'archivio stilistico** (M1–M7, poi M8).
