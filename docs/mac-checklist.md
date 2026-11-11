@@ -168,7 +168,7 @@ parlez doctor
 
 In After Effects apri il menu **Finestra**: in fondo deve esserci **Parlez!**. Cliccalo.
 
-**Cosa devi vedere**: un pannello con un riquadro colorato e il bottone **Accendi**. Premi **Accendi**: il riquadro deve diventare verde. Prova anche a trascinarlo e agganciarlo vicino agli altri pannelli.
+**Cosa devi vedere**: un pannello con un grande bottone **OFF** (rosso). Premilo: deve diventare **ON** e il riquadro verde. Prova anche a trascinarlo e agganciarlo vicino agli altri pannelli.
 
 **Se non va**:
 
