@@ -1,12 +1,10 @@
-# Note su software di terzi / Third-party notices
+# Third-party notices / Note su software di terzi
 
 Copyright (c) 2026 Another Perspective Pictures SRL
 
-> **Da confermare:** la riga di copyright qui sopra (nome esatto della società e anno) va confermata prima della pubblicazione.
+Parlez! is released under the MIT License (see `LICENSE`). It contains or draws on the work of the three projects below, all also MIT-licensed. As the license requires, each one's copyright notice and full license text are reproduced here.
 
-Parlez! _(nome provvisorio)_ è distribuito con licenza MIT (vedi `LICENSE`). Contiene o si ispira al lavoro dei tre progetti qui sotto, anch'essi con licenza MIT. Come richiede la licenza, di ciascuno si riportano la nota di copyright e il testo completo della licenza.
-
-Parlez! (working name) is released under the MIT License (see `LICENSE`). It contains or draws on the work of the three projects below, all also MIT-licensed. As the license requires, each one's copyright notice and full license text are reproduced here.
+Parlez! è distribuito con licenza MIT (vedi `LICENSE`). Contiene o si ispira al lavoro dei tre progetti qui sotto, anch'essi con licenza MIT. Come richiede la licenza, di ciascuno si riportano la nota di copyright e il testo completo della licenza.
 
 ---
 
@@ -103,10 +101,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
-
----
-
-_Bozza M1.3. Da togliere nel file definitivo / Draft notes, to be removed in the final file:_
-
-- Sorgenti: i tre testi di licenza sono copiati parola per parola (solo i fine riga CRLF→LF) da `mcp-aftereffects/LICENSE`, `After-Effects-mcp-pro/LICENSE`, `after-effects-mcp/LICENSE`. Gli URL vengono dal `git remote` di ciascun clone e dai README. «Cosa riprende» da `the planning notes` §1.1–1.3, §2 e dalla richiesta di Fable.
-- Se in futuro si riprende altro (per esempio le fonti libere del §2 di `the planning notes`: Penner, Material 3, Carbon, eKeys/aeFunctions, LobzyJay), vanno aggiunte qui una per una dopo la verifica scritta della licenza (M7.2).

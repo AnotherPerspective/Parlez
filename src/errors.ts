@@ -35,8 +35,7 @@ export type AeErrorCode =
   | "PAUSED"
   /**
    * The user set the Parlez! panel to "Sola lettura": the call would change
-   * the project, and only reading is allowed. Not retryable as is. (Nome
-   * provvisorio del codice.)
+   * the project, and only reading is allowed. Not retryable as is.
    */
   | "READ_ONLY"
   /** AE never wrote a response before the deadline. */

@@ -1,7 +1,6 @@
 // Measurements on a reference image — the "passaporto della reference"
-// (M5.1, nome provvisorio): colors, gradient stops, corner radii, text size,
-// enlarged crops. Idea from a public description of a fidelity
-// passport; the methods and code are ours. Pure functions on decoded pixels:
+// (M5.1): colors, gradient stops, corner radii, text size,
+// enlarged crops. Pure functions on decoded pixels:
 // no After Effects, no dependency.
 //
 // Output keys are Italian because they go straight to the model and from

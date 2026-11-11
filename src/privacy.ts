@@ -1,4 +1,4 @@
-// Privacy mode (nome provvisorio) — what leaves this server towards the model.
+// Privacy mode — what leaves this server towards the model.
 //
 //   AE_MCP_PRIVACY=1                  — turn the filter on (off by default)
 //   AE_MCP_PRIVACY_WORDS=<file>       — words/phrases to hide behind labels,

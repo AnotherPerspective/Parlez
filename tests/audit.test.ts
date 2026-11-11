@@ -1,4 +1,4 @@
-// comp.audit (provisional name), offline. The generated ExtendScript runs in
+// comp.audit, offline. The generated ExtendScript runs in
 // Node against a fake object model (tests/helpers/audit-fakes.ts): every rule
 // is checked on a case that must be flagged and on one that must not, the
 // pure threshold helpers on their own numbers, the code generation for every
@@ -111,7 +111,7 @@ describe("comp.audit registration", () => {
     ]);
   });
 
-  it("has exactly the 14 rules of the planning notes §1.2.1, each with its own function", () => {
+  it("has exactly the 14 audit rules, each with its own function", () => {
     expect(AUDIT_RULE_IDS).toHaveLength(14);
     expect(new Set(AUDIT_RULE_IDS).size).toBe(14);
     for (const r of AUDIT_RULES) {

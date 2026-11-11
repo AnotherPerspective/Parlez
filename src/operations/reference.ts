@@ -1,4 +1,4 @@
-// Parlez! M5.1 and M5.2 (nomi provvisori): measuring a reference image and
+// Parlez! M5.1 and M5.2: measuring a reference image and
 // checking a render against it. Both run on the Node side — they only read
 // PNG files, never After Effects — so they work in read-only mode and need
 // no project. Images for the model (an enlarged crop, a difference map)
@@ -174,7 +174,7 @@ registerOp({
   category: "reference",
   readOnly: true,
   description:
-    "Passaporto della reference (nome provvisorio): measure a reference PNG instead of eyeballing it. " +
+    "Passaporto della reference: measure a reference PNG instead of eyeballing it. " +
     "Always returns the size; on request: the color at points (`punti`), the median color of areas " +
     "(`swatch`), the color stops along a segment (`gradienti`), the corner radius of a flat rounded " +
     "rectangle (`raggi`, estimated from areas — check `affidabile`/`note`), the cap height of text and " +
@@ -423,7 +423,7 @@ registerOp({
   category: "frame",
   readOnly: true,
   description:
-    "Controllo del fotogramma (nome provvisorio): compare a rendered PNG with a reference PNG. Both are " +
+    "Controllo del fotogramma: compare a rendered PNG with a reference PNG. Both are " +
     "brought to the same size and cut into a grid (default 24×24); each cell's mean color is compared " +
     "with ΔE2000. Returns mean and max ΔE, how many cells are over `sogliaCella` (default 10), the worst " +
     "cells with their position in the rendered file, and a verdict: passes when at most `maxCelleFuori` " +

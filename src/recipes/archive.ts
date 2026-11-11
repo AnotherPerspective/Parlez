@@ -1,7 +1,7 @@
 // Reading an archive (the archive format spec) to resolve a recipe's `$ref`s.
 //
 // Only the folder the caller names is read — by the `archivio` parameter or
-// AE_MCP_ARCHIVE_DIR (provisional name) — and only through its archivio.json
+// AE_MCP_ARCHIVE_DIR — and only through its archivio.json
 // index: bozze/ and storico/ are never listed there, and a card that is not
 // `approved` never resolves, so a draft of the grinding step cannot leak into
 // a build. There is no default folder: without an archive every reference

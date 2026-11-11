@@ -380,12 +380,12 @@ export const NEVER_TICKED_MS = 2_500;
  * for, instead of falling back to push (or reporting it gone). After Effects
  * can stop running scheduled tasks for a few seconds while it is busy —
  * redrawing after a resize, reloading fonts — without having quit.
- * (Nome provvisorio della costante; valore da rivedere dopo le prove.)
+ *
  */
 export const AGENT_GRACE_MS = 20_000;
 
 /**
- * `AE_MCP_PULL_ONLY=1` (nome provvisorio): never use the push path. With no
+ * `AE_MCP_PULL_ONLY=1`: never use the push path. With no
  * live agent a call waits for one until its own timeout, then fails with
  * NO_INSTANCE. For machines where `AfterFX.exe -r` does not deliver scripts
  * (seen on AE 26.5 / Windows, 2026-10-25), where a push only burns the
@@ -429,7 +429,7 @@ export function resolvePullOnlyDefault(setting: PullOnlySetting, agentInstalled:
 /**
  * Set in the environment of processes we start that load Scripts/Startup but
  * must not run the resident agent (aerender). jsx/agent.jsx reads it with
- * $.getenv. (Nome provvisorio.)
+ * $.getenv.
  */
 export const AGENT_DISABLE_ENV = "AE_MCP_AGENT_DISABLE";
 

@@ -1,5 +1,4 @@
-// Guide orientation across After Effects versions (Parlez! fix for AE 26.5 —
-// file name provisional).
+// Guide orientation across After Effects versions (Parlez! fix for AE 26.5).
 //
 // Up to 26.4 a guide's orientationType was a bare integer: 0 = horizontal,
 // 1 = vertical, and addGuide() took the same integers. Adobe's scripting

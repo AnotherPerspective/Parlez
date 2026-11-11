@@ -1,5 +1,5 @@
 // Offline guard for the copyright notices the MIT License obliges us to keep
-// (spec: the notices test spec). Reads THIRD_PARTY_NOTICES.md and
+// Reads THIRD_PARTY_NOTICES.md and
 // LICENSE from the repository root; never touches After Effects or the network.
 // Messages are in Italian on purpose: the owner reads them.
 

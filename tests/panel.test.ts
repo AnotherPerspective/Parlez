@@ -535,7 +535,7 @@ function credit(panel: Ctl): Ctl {
 }
 
 describe("the signature", () => {
-  it("is text, very light grey, never a button (Anthony, 2026-10-28)", () => {
+  it("is text, very light grey, never a button", () => {
     const panel = openPanel();
     const sig = credit(panel);
     expect(sig.type).toBe("statictext");

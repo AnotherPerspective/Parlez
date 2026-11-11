@@ -1,8 +1,8 @@
 name: Release
 
-# Manual only (Parlez!): nothing is published by pushing a tag. Anthony starts
-# a release from the Actions tab ("Run workflow", choosing the tag v<version>
-# as the ref) only after deciding to publish — see docs/distribuzione.md.
+# Manual only (Parlez!): nothing is published by pushing a tag. The maintainer
+# starts a release from the Actions tab ("Run workflow", choosing the tag
+# v<version> as the ref) only after deciding to publish.
 on:
   workflow_dispatch:
 

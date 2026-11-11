@@ -1,7 +1,6 @@
-// Frame check against a reference (M5.2, nome provvisorio): both images are
+// Frame check against a reference (M5.2): both images are
 // brought to one size, cut into a grid, and each cell's mean color is
-// compared with CIEDE2000. Idea from a public description of a
-// frame check with ΔE thresholds; the method and code are ours.
+// compared with CIEDE2000.
 //
 // Cell means, not single pixels: a 1-px misregistration or a different
 // antialiasing should not fail a frame, a wrong color or a misplaced block

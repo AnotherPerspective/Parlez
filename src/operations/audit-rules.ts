@@ -1,4 +1,4 @@
-// The ExtendScript side of comp.audit (provisional name): one shared core and
+// The ExtendScript side of comp.audit: one shared core and
 // one function per rule. Kept apart from the registration in audit.ts so the
 // tests can load exactly this code into Node, with fake layers, and check every
 // threshold and every rule without After Effects.
@@ -17,7 +17,7 @@
 export type AuditSeverity = "errore" | "avviso" | "nota";
 
 export interface AuditRuleDef {
-  /** Identifier reported in each finding and accepted by the `regole` parameter (provisional). */
+  /** Identifier reported in each finding and accepted by the `regole` parameter. */
   id: string;
   gravita: AuditSeverity;
   /** Name of the ES3 function below that implements the rule. */

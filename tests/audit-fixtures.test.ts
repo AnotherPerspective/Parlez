@@ -1,4 +1,4 @@
-// The two test projects for comp.audit (provisional names):
+// The two test projects for comp.audit:
 //   tests/fixtures/progetto-prova.json — clean, must give 0 findings;
 //   tests/fixtures/errori-3.json       — the same project with exactly 3
 //                                        planted errors.

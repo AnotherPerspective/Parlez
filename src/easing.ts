@@ -1,8 +1,7 @@
-// Named easing curves → After Effects temporal ease (Parlez! M6.3 — file
-// name and curve names provisional).
+// Named easing curves → After Effects temporal ease (Parlez! M6.3).
 //
 // A curve describes ONE segment between two keys as a normalized
-// cubic-bezier (x1, y1, x2, y2): the same shape CSS, Figma and most motion
+// cubic-bezier (x1, y1, x2, y2): the same shape CSS and most motion
 // tools use. After Effects does not store a bezier per segment; it stores a
 // KeyframeEase { speed, influence } on the OUT side of the first key and the
 // IN side of the second. The two descriptions meet exactly for a 1-D value:
@@ -111,8 +110,7 @@ function penner(name: string, bezier: Bezier, maxError: number): NamedEase {
 }
 
 /**
- * The table. Names are provisional (Anthony decides). The recipe format
- * (the recipe format spec §8.2) used Italian working names; they map as:
+ * The table. The recipe format used Italian working names; they map as:
  * dolce = easy-ease, standard = material-standard,
  * decelera = material-emphasized-decelerate, accelera = material-emphasized-accelerate.
  */

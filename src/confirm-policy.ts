@@ -1,5 +1,5 @@
 // Confirmation gate for operations that delete, overwrite or rename
-// (Parlez! M3.2 — file name provisional).
+// (Parlez! M3.2).
 //
 // Project rule: never delete, overwrite or rename without the user's consent.
 // Same contract as the appConfig gate in registry.ts, extended:

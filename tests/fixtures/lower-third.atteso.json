@@ -1,5 +1,5 @@
 {
-  "note": "Scritto a mano da the recipe format spec §12.2 e §13 (non generato dal programma): lower third con title 'Mario Rossi', subtitle 'Direttrice della fotografia', archivio Lanterna Blu, framesDir /tmp/parlez-test. Differenze volute dalla specifica: niente replace: true in keyframe.apply (chiederebbe la conferma, e i livelli sono nuovi); le letture di verifica stanno in coda allo stesso batch.run.",
+  "note": "Scritto a mano (non generato dal programma): lower third con title 'Mario Rossi', subtitle 'Direttrice della fotografia', archivio Lanterna Blu, framesDir /tmp/parlez-test. Differenze volute dalla specifica: niente replace: true in keyframe.apply (chiederebbe la conferma, e i livelli sono nuovi); le letture di verifica stanno in coda allo stesso batch.run.",
   "operation": "batch.run",
   "args": {
     "stopOnError": true,

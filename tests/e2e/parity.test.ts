@@ -816,8 +816,8 @@ describe("e2e: egp / viewer / project / shape", () => {
     expect(got.xmp.length).toBe(got.chars);
     // On AE 26.5 the suite's fresh, never-saved fixture has no packet yet
     // (second run: xmpType "undefined"). Nothing to write back then: skip the
-    // write half rather than invent a packet or save the fixture (see
-    // docs/fix-kumo-265-rapporto.md). The read half above still ran.
+    // write half rather than invent a packet or save the fixture. The read
+    // half above still ran.
     if (got.chars === 0) {
       expect(got.note, "an empty packet must come with an explanation").toContain("salvalo");
       return ctx.skip("the test project has no XMP packet yet (never saved): set_xmp half skipped");

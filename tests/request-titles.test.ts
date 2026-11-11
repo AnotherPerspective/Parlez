@@ -33,7 +33,7 @@ const NON_OPERATION_LABELS = new Set([
 ]);
 
 describe("the table", () => {
-  it("translates the examples Anthony gave", () => {
+  it("translates the reference examples", () => {
     expect(titleFor("layer.create_text")).toBe("crea livello di testo");
     expect(titleFor("render.frame")).toBe("renderizza fotogramma");
     expect(titleFor("render_frame")).toBe("renderizza fotogramma");

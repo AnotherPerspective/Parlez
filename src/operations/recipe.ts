@@ -1,4 +1,4 @@
-// Parlez! recipes (provisional names): recipe.list, recipe.plan, recipe.run.
+// Parlez! recipes: recipe.list, recipe.plan, recipe.run.
 //
 // Node-side operations. A recipe is data (recipes/*.json, format in
 // src/recipes/types.ts); the executor resolves it offline and builds ONE

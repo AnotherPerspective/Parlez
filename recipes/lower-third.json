@@ -6,7 +6,7 @@
   "status": "draft",
   "title": "Lower third con barra",
   "summary": "Barra che si apre da sinistra, titolo e sottotitolo che entrano sfalsati; uscita in ordine inverso.",
-  "note": "Specifica: the recipe format spec §12. Bozza: da approvare con Anthony dopo la prima prova in After Effects.",
+  "note": "Ricetta di esempio: barra inferiore con titolo e sottotitolo.",
   "header": {
     "confidentiality": "libero",
     "toClaude": { "numbers": true, "descriptions": true, "images": true },

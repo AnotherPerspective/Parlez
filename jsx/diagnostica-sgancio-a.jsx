@@ -1,4 +1,4 @@
-// Parlez! - diagnostica dello sgancio, variante A (nome provvisorio).
+// Parlez! - diagnostica dello sgancio, variante A.
 //
 // The smallest dockable panel there is: the root (the Panel After Effects
 // hands over, or a palette window when run as a script), a preferred and a

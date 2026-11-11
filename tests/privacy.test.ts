@@ -1,4 +1,4 @@
-// Privacy mode (nome provvisorio): what leaves this server towards the model.
+// Privacy mode: what leaves this server towards the model.
 // Every rule is exercised both ways — it fires where it should and leaves
 // everything else alone — and the switch turned off must not change a byte.
 

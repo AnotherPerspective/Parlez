@@ -2,8 +2,8 @@
 // the recipe format spec §12 is built with the Lanterna Blu example archive, its
 // acceptance checks pass, and ONE project.undo removes all of it.
 //
-// NOT RUN by the session that wrote it: it needs After Effects and Anthony's
-// ok. SESSION-MUTATING: it closes the project open in After Effects and
+// NOT RUN by the session that wrote it: it needs After Effects and the
+// maintainer's ok. SESSION-MUTATING: it closes the project open in After Effects and
 // restores it afterwards, so it requires AE_MCP_E2E=1 (same gate as
 // checkpoint.test.ts). The frames it renders go to its own scratch folder.
 

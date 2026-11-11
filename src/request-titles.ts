@@ -4,8 +4,7 @@
 // title along in the request (`title`), and the agent shows and logs it.
 // Names missing from the table show as they are.
 //
-// A fixed table, not generated: these are words the user reads. (Testi
-// provvisori: Anthony può cambiarli.)
+// A fixed table, not generated: these are words the user reads.
 
 const TITLES: Record<string, string> = {
   // Static tools (their request labels).

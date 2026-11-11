@@ -1,4 +1,4 @@
-// comp.audit (provisional name) on a real After Effects: import each test
+// comp.audit on a real After Effects: import each test
 // project with ae_project_import_json, run the audit, and check it finds the
 // planted errors and nothing else — the acceptance test of M4.3. Also checks
 // that the audit leaves the project exactly as it found it.
@@ -7,7 +7,7 @@
 // in fresh projects, and restores the original afterwards (dirty or unsaved
 // projects are Save-As'd first — see harness.backupAndOpenTestProject).
 // Requires AE_MCP_E2E=1 on top of AE being reachable. Not run yet: written in
-// M4b, to be run on After Effects 2026 / Windows with Anthony's ok.
+// M4b, to be run on After Effects 2026 / Windows with the maintainer's ok.
 
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";

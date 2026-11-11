@@ -1,6 +1,6 @@
-# Modalità riservata _(nome provvisorio)_
+# Modalità riservata
 
-_(nome del file provvisorio)_ · 25/10/2026 · attività M3.5 di `the planning notes`.
+25/10/2026.
 
 ## A cosa serve
 
@@ -30,7 +30,7 @@ La **modalità riservata** è un filtro che si mette in mezzo: prima che una ris
 
 ## Come si accende
 
-Si accende con le **variabili d'ambiente** _(nomi provvisori)_, nello stesso punto dove si configurano le altre opzioni del programma. Le decidi tu dal file di configurazione: **Claude non le può cambiare** con le sue richieste.
+Si accende con le **variabili d'ambiente**, nello stesso punto dove si configurano le altre opzioni del programma. Le decidi tu dal file di configurazione: **Claude non le può cambiare** con le sue richieste.
 
 | Variabile                     | Valore                            | Effetto                                                                           |
 | ----------------------------- | --------------------------------- | --------------------------------------------------------------------------------- |
@@ -87,7 +87,7 @@ Se in un lavoro ti serve che Claude legga, per esempio, i testi dei livelli, agg
 - **I nomi che non sono nella lista escono.** Nomi di composizioni, livelli, effetti, font e cartelle del progetto arrivano a Claude come prima, salvo le parole della lista.
 - **La struttura resta**: numero di livelli, effetti usati, durate, dimensioni, tempi dei keyframe, colori. Non sono segreti di per sé, ma raccontano il lavoro.
 - **Non copre quello che scrivi tu in chat**, né quello che Claude ha già letto prima che tu accendessi l'opzione.
-- **Non cambia il regime del servizio Claude.** Quello che Claude riceve è trattato secondo il piano che usi (vedi `the planning notes` §8.0). L'opzione riduce cosa esce; per i lavori sotto NDA con materiali non pubblici resta la regola del piano Team o API.
+- **Non cambia il regime del servizio Claude.** Quello che Claude riceve è trattato secondo il piano che usi. L'opzione riduce cosa esce; per i lavori sotto NDA con materiali non pubblici resta la regola del piano Team o API.
 
 **Qualche scomodità da sapere:**
 

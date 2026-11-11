@@ -338,7 +338,7 @@ export function buildPlan(r: Resolved, opts: PlanOptions): Plan {
   };
 }
 
-/** The readable summary Anthony approves instead of the JSON (the recipe format spec §11). */
+/** The readable summary the user approves instead of the JSON. */
 function summarize(r: Resolved, tracks: ResolvedTrack[]): string[] {
   const typeWord: Record<string, string> = { null: "null", shape: "forma", text: "testo" };
   const lines = [

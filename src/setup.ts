@@ -1,4 +1,4 @@
-// `parlez setup` and `parlez doctor` (nomi provvisori): the one command a
+// `parlez setup` and `parlez doctor`: the one command a
 // motion designer runs after installing the package, and the check that
 // tells them what is still missing.
 //
@@ -306,7 +306,7 @@ export function claudeConfig(machine: SetupEnvironment = {}): ClaudeConfig {
 /** The notices, shipped in the package (package.json "files") and in the zip. */
 export const NOTICES_FILENAME = "AVVERTENZE.md";
 
-/** The record of the acceptance, in Parlez!'s data folder (nome provvisorio). */
+/** The record of the acceptance, in Parlez!'s data folder. */
 export const ACCEPTANCE_FILENAME = "avvertenze-accettate.json";
 
 /**

@@ -35,7 +35,7 @@ import "./checkpoint.js";
 import "./audit.js";
 import "./reference.js";
 import "./motion.js";
-// Parlez! M6.3: named curves, stagger, expression templates (nome del file provvisorio).
+// Parlez! M6.3: named curves, stagger, expression templates.
 import "./animation-helpers.js";
 import "./aerender.js";
 import "./recipe.js";

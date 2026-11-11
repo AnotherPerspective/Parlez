@@ -17,9 +17,6 @@
 // step leaves a usable project open: the current state is checkpointed first,
 // the chosen checkpoint is copied next to the project BEFORE anything is
 // closed, and only then is the project closed and the copy renamed over it.
-//
-// Names (`checkpoint.*`, the folder, the environment variable, the
-// before-restore label) are provisional — Anthony decides the final ones.
 
 import { randomUUID } from "node:crypto";
 import { constants as fsConstants, promises as fs } from "node:fs";
@@ -30,11 +27,11 @@ import { rejectedOutputPath } from "../config.js";
 import { jsxFail, jsxVal, registerOp } from "../registry.js";
 import type { AeTransport } from "../transport/AeTransport.js";
 
-/** Environment variable that moves the checkpoint folder (nome provvisorio). */
+/** Environment variable that moves the checkpoint folder. */
 export const CHECKPOINT_DIR_ENV = "AE_MCP_CHECKPOINT_DIR";
-/** Default folder, created next to the project (nome provvisorio). */
+/** Default folder, created next to the project. */
 export const DEFAULT_CHECKPOINT_SUBDIR = "_parlez-checkpoints";
-/** Label of the checkpoint restore takes of the state it is about to replace (nome provvisorio). */
+/** Label of the checkpoint restore takes of the state it is about to replace. */
 export const BEFORE_RESTORE_LABEL = "prima-del-ripristino";
 
 const MAX_LABEL_LENGTH = 60;

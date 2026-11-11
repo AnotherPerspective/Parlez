@@ -1,10 +1,9 @@
-// Parlez! M5.3 (nome provvisorio): comp.audit_motion — "does anything
+// Parlez! M5.3: comp.audit_motion — "does anything
 // actually move?". One read-only call samples position, scale, opacity and
 // rotation of every layer at N times, descending into precomps on their own
 // time (layer.sourceTime), and the Node side turns the samples into a plain
 // report: travel, scale change, fades, rotation, layers that never move.
-// Idea from a public description of a sampled motion check; the
-// code is ours, on kumo's helpers (AE.readValue, AE.hasKeys).
+// Built on kumo's helpers (AE.readValue, AE.hasKeys).
 
 import { jsxFail, jsxVal, registerOp } from "../registry.js";
 
@@ -264,7 +263,7 @@ registerOp({
   category: "comp",
   readOnly: true,
   description:
-    "Controllo del movimento (nome provvisorio): sample position, scale, opacity and rotation of every layer " +
+    "Controllo del movimento: sample position, scale, opacity and rotation of every layer " +
     "at N evenly spaced times (default 10, first to last frame), descending into precomps on their own time " +
     "(`profondita`, default 2). Per layer: travel and net displacement in px, scale change, opacity range " +
     "and fades in/out (from/to 0), rotation change, and a state — animato, fermo, 'animato tra i campioni' " +

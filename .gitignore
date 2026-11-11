@@ -7,6 +7,7 @@ coverage/
 .vscode/
 .idea/
 .claude
+CLAUDE.local.md
 
 # Secrets. Nothing here today — the entry exists so the first .env someone
 # creates cannot be committed by accident.
@@ -21,8 +22,8 @@ coverage/
 # JSON, dispatcher log, test-time project backups) — never committed.
 runtime/
 
-# Parlez!: private material and client projects never enter the repository
-# (the planning notes §3). Test fixtures are the only .aep files allowed.
+# Parlez!: private material and client projects never enter the repository.
+# Test fixtures are the only .aep files allowed.
 *-private*/
 archivio-privato/
 prove/

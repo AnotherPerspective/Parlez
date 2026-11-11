@@ -1,4 +1,4 @@
-// Menu-command policy for `command.execute` (Parlez! M3.3 — file name provisional).
+// Menu-command policy for `command.execute` (Parlez! M3.3).
 //
 // `command.execute` runs ANY After Effects menu command by numeric id, so a
 // plain "confirm: true" on it would be a blind gate: the user would be asked

@@ -141,7 +141,7 @@ describe("validator messages", () => {
         variant(
           (r) => (
             (r.status = "approved"),
-            (r.header.approval = { by: "Anthony", date: "10/11/2026" })
+            (r.header.approval = { by: "esempio", date: "10/11/2026" })
           ),
         ),
       ),

@@ -1,4 +1,4 @@
-// Parlez! - diagnostica dello sgancio, variante B (nome provvisorio).
+// Parlez! - diagnostica dello sgancio, variante B.
 //
 // Identical to variant A (diagnostica-sgancio-a.jsx) but for one thing: the
 // texts sit in a child group with alignment ["fill", "fill"] and no size of

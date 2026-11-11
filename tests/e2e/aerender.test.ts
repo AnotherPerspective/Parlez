@@ -7,7 +7,7 @@
 // SESSION-MUTATING: closes the project currently open in After Effects and
 // restores it afterwards (see harness.backupAndOpenTestProject), and runs
 // aerender. Requires AE_MCP_E2E=1 on top of AE being reachable. Written in
-// M6b, NOT run yet: to be run on After Effects 2026 / Windows with Anthony's ok.
+// M6b, NOT run yet: to be run on After Effects 2026 / Windows with the maintainer's ok.
 
 import { existsSync, promises as fs } from "node:fs";
 import * as path from "node:path";

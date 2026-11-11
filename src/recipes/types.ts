@@ -1,4 +1,4 @@
-// Parlez! recipes (provisional name) — the data format of the recipe format spec.
+// Parlez! recipes — the data format of the files in recipes/.
 //
 // A recipe is DATA, never code: it describes a reusable motion-graphics piece
 // (layers, styles, timing, curves) and the executor turns it into ONE
@@ -174,7 +174,7 @@ export const MIN_AE_VERSION = "24.0";
 
 /**
  * Capabilities a recipe may declare in `requires.capabilities`, with the
- * version that introduced each (the planning notes §7). At run time they are
+ * version that introduced each. At run time they are
  * checked by existence, never by version number; the version here only lets
  * the validator catch a `requires.ae` lower than what the declared features need.
  */

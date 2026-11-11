@@ -2,7 +2,7 @@
 //
 // Two folders, nothing else: the recipes shipped with Parlez! (recipes/ at the
 // package root) and, optionally, a user folder named by AE_MCP_RECIPES_DIR
-// (provisional name). A recipe is addressed by its id or its file name, never
+//. A recipe is addressed by its id or its file name, never
 // by an arbitrary path — the tool reads only these two folders.
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";

@@ -78,8 +78,7 @@
     var UNDO_COMMAND = 16;
     var TITLE_CHARS = 30;
     // The signature at the bottom right opens this page in the user's own
-    // browser when clicked (nome provvisorio dell'indirizzo, da confermare con
-    // Anthony). That is the user opening a page, not this program going on
+    // browser when clicked. That is the user opening a page, not this program going on
     // the internet: nothing here connects anywhere, the click hands the
     // address to the operating system, as a link in any document would.
     var SITE_URL = "https://www.anotherperspectivepictures.com";
@@ -604,8 +603,8 @@
         foot.alignChildren = ["right", "bottom"];
         foot.margins = 0;
         foot.minimumSize = [200, 22];
-        // Text, not a button (Anthony, 2026-10-28: anything that looks like a
-        // button there is wrong): very light grey like the panel's text,
+        // Text, not a button (anything that looks like a button there is
+        // wrong): very light grey like the panel's text,
         // pure white under the mouse, and a press opens SITE_URL. Mouse
         // events on a statictext may not reach a script in After Effects (on
         // groups they do not); then it simply stays text, with the address in

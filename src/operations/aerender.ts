@@ -1,4 +1,4 @@
-// Background renders with aerender (Parlez! M6.4 — names provisional).
+// Background renders with aerender (Parlez! M6.4).
 //
 // render.start renders inside After Effects and blocks it until the render
 // ends. These operations hand the job to aerender, Adobe's command-line

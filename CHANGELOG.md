@@ -9,7 +9,7 @@ Il formato segue [Keep a Changelog](https://keepachangelog.com/it-IT/1.1.0/) e i
 ### Aggiunto
 
 - **Avvertenze** (`AVVERTENZE.md`, bozza da far leggere a un legale): in italiano e in inglese dicono che Parlez! è gratuito, sperimentale e open source (MIT), fornito così com'è e usato a proprio rischio, e dove vanno i dati letti dai progetti. Entrano nel pacchetto npm. Integrano la licenza MIT, non la sostituiscono.
-- **Accettazione in `parlez setup`**: la prima volta, prima di installare qualsiasi cosa, `setup` mostra un riassunto delle avvertenze e chiede di scrivere `accetto` (`I accept` con `--lang en`). Con qualsiasi altra risposta, o senza un terminale, si ferma senza installare. Data, ora e versione dell'accettazione restano in `avvertenze-accettate.json` (nome provvisorio) nella cartella dei dati di Parlez! (`%APPDATA%\Parlez`, sul Mac `~/Library/Application Support/Parlez`), e non viene più chiesta finché il file c'è. `--accept` accetta senza domanda, per chi installa da uno script; `--dry-run` non chiede e non scrive. `parlez doctor` mostra se e quando le avvertenze sono state accettate.
+- **Accettazione in `parlez setup`**: la prima volta, prima di installare qualsiasi cosa, `setup` mostra un riassunto delle avvertenze e chiede di scrivere `accetto` (`I accept` con `--lang en`). Con qualsiasi altra risposta, o senza un terminale, si ferma senza installare. Data, ora e versione dell'accettazione restano in `avvertenze-accettate.json` nella cartella dei dati di Parlez! (`%APPDATA%\Parlez`, sul Mac `~/Library/Application Support/Parlez`), e non viene più chiesta finché il file c'è. `--accept` accetta senza domanda, per chi installa da uno script; `--dry-run` non chiede e non scrive. `parlez doctor` mostra se e quando le avvertenze sono state accettate.
 
 ### Cambiato
 
@@ -38,7 +38,7 @@ Prima versione di Parlez!. Parte da mcp-aftereffects 0.3.2 di kumo.productions (
 - **Aiuti di animazione**: 41 curve con nome (`keyframe.list_eases`, `keyframe.apply_ease`), sfalsamento dei livelli (`layer.stagger`) e 22 modelli di espressione (`expression.list_templates`, `expression.apply_template`).
 - **Render in sottofondo con aerender** (`aerender.info`, `aerender.start`, `aerender.status`, `aerender.cancel`): After Effects resta libero mentre il render va avanti. Scritto e provato offline, non ancora riuscito da Parlez! su un After Effects vero.
 - **Ricette** (`recipe.list`, `recipe.plan`, `recipe.run`): un pezzo grafico descritto in un file di dati diventa una sola chiamata, annullabile con un solo Ctrl+Z. Due ricette incluse: un lower third e un titolo in dissolvenza.
-- **Collegamento solo tramite lo script di avvio** (`AE_MCP_PULL_ONLY=1`, nome provvisorio): per i computer dove il collegamento diretto `AfterFX.exe -r` non consegna i comandi, come il PC su cui Parlez! è stato provato.
+- **Collegamento solo tramite lo script di avvio** (`AE_MCP_PULL_ONLY=1`): per i computer dove il collegamento diretto `AfterFX.exe -r` non consegna i comandi, come il PC su cui Parlez! è stato provato.
 
 ### Cambiato
 

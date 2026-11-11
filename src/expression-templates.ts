@@ -1,4 +1,4 @@
-// Expression templates (Parlez! M6.3 — file name provisional).
+// Expression templates (Parlez! M6.3).
 //
 // The 22 templates below are taken from ishu86/after-effects-mcp,
 // src/presets/expressions/index.ts:

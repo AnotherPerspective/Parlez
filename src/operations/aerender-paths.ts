@@ -11,7 +11,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-/** Environment variable naming aerender directly (nome provvisorio). */
+/** Environment variable naming aerender directly. */
 export const AERENDER_ENV = "AE_MCP_AERENDER";
 
 /**
@@ -55,7 +55,7 @@ export function aerenderCandidates(afterFx: string, platform: NodeJS.Platform): 
 // console program; losing the engine only when it has no console is the most
 // likely explanation (not verified yet). Hence "attached" by default.
 
-/** Environment variable choosing the launch strategy (nome provvisorio). */
+/** Environment variable choosing the launch strategy. */
 export const AERENDER_LAUNCH_ENV = "AE_MCP_AERENDER_LAUNCH";
 
 /**

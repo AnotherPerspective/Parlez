@@ -1,5 +1,5 @@
-// Animation helpers missing in kumo (Parlez! M6.3 — file and operation
-// names provisional): named curves, staggering, expression templates.
+// Animation helpers missing in kumo (Parlez! M6.3): named curves,
+// staggering, expression templates.
 
 import {
   type Bezier,

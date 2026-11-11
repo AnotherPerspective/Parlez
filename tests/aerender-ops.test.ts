@@ -1,4 +1,4 @@
-// Background renders with aerender (aerender.* — names provisional), offline.
+// Background renders with aerender (aerender.*), offline.
 // A fake aerender (tests/fixtures/fake-aerender.mjs, a Node script) is
 // injected in place of the real one, the way kumo injects `spawn` into its
 // transport, and a fake transport answers the one question asked of After
