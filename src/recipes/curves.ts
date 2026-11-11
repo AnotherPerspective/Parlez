@@ -1,4 +1,4 @@
-// Named curves → After Effects speed/influence (the recipe format spec §8.2–8.3).
+// Named curves → After Effects speed/influence (recipe format §8.2–8.3).
 //
 // TODO M6a: the parlez-m6a-aiuti branch adds dedicated animation helpers
 // (named curves in keyframe.apply, stagger). Until that lands the executor

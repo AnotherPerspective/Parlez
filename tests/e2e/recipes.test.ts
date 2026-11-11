@@ -1,5 +1,5 @@
 // Recipes on a real After Effects (M6.1 "fatto quando"): the lower third of
-// the recipe format spec §12 is built with the Lanterna Blu example archive, its
+// the recipe format §12 is built with the Lanterna Blu example archive, its
 // acceptance checks pass, and ONE project.undo removes all of it.
 //
 // NOT RUN by the session that wrote it: it needs After Effects and the

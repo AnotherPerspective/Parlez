@@ -1,5 +1,5 @@
 // Generator: from a resolved recipe to ONE batch.run of existing kumo
-// operations (the recipe format spec §11–§13). The construction comes first, then
+// operations (recipe format §11–§13). The construction comes first, then
 // the read-only verification steps in the same batch — one call, one undo
 // group, and the proof comes back with the build.
 //
@@ -132,7 +132,7 @@ function framesFile(framesDir: string, recipeId: string, frame: number): string 
   return `${dir}/${recipeId}-${String(frame).padStart(3, "0")}f.png`;
 }
 
-/** The line written in the comp comment and said in chat (the archive format spec §8.3). */
+/** The line written in the comp comment and said in chat (archive format §8.3). */
 export function cardsComment(recipe: { id: string; version: number }, used: UsedCard[]): string {
   const sorted = [...used].sort((a, b) => a.id.localeCompare(b.id));
   const styles = sorted.filter((c) => c.kind === "style").map((c) => `${c.id} v${c.version}`);

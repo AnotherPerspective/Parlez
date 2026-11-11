@@ -1,5 +1,5 @@
 // Resolver: from a validated recipe + the caller's args + an archive to plain
-// numbers (the recipe format spec §4–§8). Nothing here talks to After Effects: the
+// numbers (recipe format §4–§8). Nothing here talks to After Effects: the
 // result is a pure function of its inputs, which is what lets the tests check
 // a whole lower third offline.
 //
@@ -35,7 +35,7 @@ import {
   timeToFrames,
 } from "./units.js";
 
-/** capHeight used when neither the archive nor the caller gives one (§9.1 of the archive format spec). */
+/** capHeight used when neither the archive nor the caller gives one (archive format §9.1). */
 export const DEFAULT_CAP_HEIGHT = 0.72;
 
 export interface SafeRect {
@@ -56,7 +56,7 @@ interface FormatDef {
 
 /**
  * Fallback formats, used only when the archive's style card has no entry for
- * the format asked (the recipe format spec §6). The 9:16 and 4:5 margins leave
+ * the format asked (recipe format §6). The 9:16 and 4:5 margins leave
  * room for social-app overlays: a starting point to tune, not a standard.
  */
 export const FALLBACK_FORMATS: Readonly<Record<string, FormatDef>> = {

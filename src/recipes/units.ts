@@ -1,4 +1,4 @@
-// Units of the recipe format (the recipe format spec §3): times, lengths, colors.
+// Units of the recipe format (recipe format §3): times, lengths, colors.
 //
 // Inside the executor every time is a WHOLE number of frames and every length
 // is in pixels. Seconds appear only at the very end, when an operation is

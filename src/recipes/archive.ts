@@ -1,4 +1,4 @@
-// Reading an archive (the archive format spec) to resolve a recipe's `$ref`s.
+// Reading an archive to resolve a recipe's `$ref`s.
 //
 // Only the folder the caller names is read — by the `archivio` parameter or
 // AE_MCP_ARCHIVE_DIR — and only through its archivio.json
@@ -141,7 +141,7 @@ export type RefResult =
 
 const REF_RE = /^(style|technique|card):([^/]+)\/(.+)$/;
 
-/** True when `ref` has one of the shapes of the recipe format spec §4.2. */
+/** True when `ref` has one of the shapes of the recipe format §4.2. */
 export function isWellFormedRef(ref: string): boolean {
   const m = REF_RE.exec(ref);
   if (!m) return false;

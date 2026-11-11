@@ -38,7 +38,7 @@
     ]
   },
   "thumbnails": [],
-  "note": "Nel fixture di prova la miniatura non c'è: il campione serve solo a ricostruire l'archivio di the archive format spec §10.",
+  "note": "Nel fixture di prova la miniatura non c'è: il campione serve solo a ricostruire l'archivio di esempio.",
   "links": {
     "recipe": "r-lower-third-barra",
     "techniques": ["t-barra-apertura", "t-entrata-scorrimento", "t-uscita-accelerata"]

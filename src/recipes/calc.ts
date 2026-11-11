@@ -1,4 +1,4 @@
-// The small calculator behind "= …" values (the recipe format spec §3.3).
+// The small calculator behind "= …" values (recipe format §3.3).
 //
 // Recipes come from other people too (the repository is public), so a recipe
 // must never be able to run code: this is a closed interpreter that knows

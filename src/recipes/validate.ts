@@ -1,4 +1,4 @@
-// Recipe validator (the recipe format spec §2–§10). Every message is plain Italian
+// Recipe validator (recipe format §2–§10). Every message is plain Italian
 // and names the field, because the person reading it may be a motion designer
 // rather than a programmer. Validation never touches After Effects or the
 // archive: whether a `$ref` resolves is decided later, against the archive the

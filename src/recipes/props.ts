@@ -1,4 +1,4 @@
-// Property aliases of the recipe format → kumo property paths (the recipe format spec §7).
+// Property aliases of the recipe format → kumo property paths (recipe format §7).
 //
 // Paths use After Effects matchNames or names the recipe itself gave (a shape
 // group, a slider), never AE's display names: those change with the language

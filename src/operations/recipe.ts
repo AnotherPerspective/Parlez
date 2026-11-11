@@ -60,7 +60,7 @@ const ARGS_PARAM = {
 const ARCHIVE_PARAM = {
   name: "archivio",
   type: "string" as const,
-  description: `Archive folder (the archive format spec) the recipe takes colors, fonts and timings from. Default: ${ARCHIVE_DIR_ENV}; with neither, the recipe's own defaults are used and the report says so.`,
+  description: `Archive folder the recipe takes colors, fonts and timings from. Default: ${ARCHIVE_DIR_ENV}; with neither, the recipe's own defaults are used and the report says so.`,
   required: false,
 };
 const FRAMES_PARAM = {

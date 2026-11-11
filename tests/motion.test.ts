@@ -135,7 +135,7 @@ describe("the curve table", () => {
     });
   });
 
-  it("matches the recipe format's hand-computed rows (the recipe format spec §8.2)", () => {
+  it("matches the recipe format's hand-computed rows (recipe format §8.2)", () => {
     // dolce = easy-ease 33.3/0 · 33.3/0; standard 20/0 · 100/0;
     // decelera 5/14 · 90/0; accelera 30/0 · 20/4.25.
     const row = (n: string) => {
@@ -470,7 +470,7 @@ describe("keyframe.apply_ease: the code After Effects runs", () => {
       prop,
     );
     expect(result.ok).toBe(true);
-    // the recipe format spec §8.2 worked example: 0 → 100 in 0.48 s, m = 208.33/s.
+    // recipe format §8.2 worked example: 0 → 100 in 0.48 s, m = 208.33/s.
     expect(prop.keys[0].outEase[0].influence).toBe(5);
     expect(prop.keys[0].outEase[0].speed).toBeCloseTo(2916.67, 2);
     expect(prop.keys[1].inEase[0]).toMatchObject({ speed: 0, influence: 90 });

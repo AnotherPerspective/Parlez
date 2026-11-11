@@ -1,4 +1,4 @@
-// Recipes, offline: the lower third of the recipe format spec §12 must turn into
+// Recipes, offline: the lower third of the recipe format §12 must turn into
 // EXACTLY the batch.run of §13 (tests/fixtures/lower-third.atteso.json, written
 // by hand from the spec — not generated), every generated op must exist in
 // the registry with valid arguments, and the ExtendScript batch.run produces
@@ -73,7 +73,7 @@ function lintBatch(plan: Plan): void {
   expect(errors.map((e) => `${e.rule}: ${e.text}`)).toEqual([]);
 }
 
-describe("lower third (the recipe format spec §12–§13)", () => {
+describe("lower third (recipe format §12–§13)", () => {
   const plan = lowerThird();
 
   it("is ONE batch.run that stops on the first error", () => {
