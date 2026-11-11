@@ -15,6 +15,7 @@ import { AGENT_STUB_FILENAME, PANEL_FILENAME, pushPathName, systemTempDir } from
 import { aerenderLaunchMode, aerenderLaunchModes } from "../src/operations/aerender-paths.js";
 import { panelSource } from "../src/panel-install.js";
 import {
+  ACCEPTANCE_FILENAME,
   type SetupEnvironment,
   claudeConfig,
   prefsFileFor,
@@ -192,6 +193,7 @@ function fakeMac(extra: Partial<SetupEnvironment> = {}) {
     instancesDir,
     lang: "it",
     confirm: async () => false,
+    askLine: async () => "accetto",
     ...extra,
   };
   return { env, home, apps, profileRoot, instancesDir };
@@ -244,6 +246,13 @@ describe("parlez setup and doctor on a Mac", () => {
     expect(text).toContain("osascript");
     expect(text).not.toContain("AfterFX.exe");
     expect(text).not.toContain("DA FARE");
+    // the notices record sits where the panel keeps its history on a Mac
+    expect(
+      await fs.readFile(
+        path.join(m.home, "Library", "Application Support", "Parlez", ACCEPTANCE_FILENAME),
+        "utf8",
+      ),
+    ).toContain('"accepted": true');
   });
 
   it("names the Mac menu Adobe documents when the checkbox is off", async () => {

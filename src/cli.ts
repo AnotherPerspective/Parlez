@@ -23,7 +23,9 @@ export const USAGE = `parlez — Parlez! for Adobe® After Effects® (MCP server
   parlez                    start the MCP server on stdio (what Claude runs)
   parlez setup              set up everything for the After Effects found on this computer: the
                             startup script, the Parlez! panel, a check of the scripting checkbox,
-                            and the lines to paste into Claude Code / Claude Desktop
+                            and the lines to paste into Claude Code / Claude Desktop. The first
+                            time it shows the notices (AVVERTENZE.md) and installs only after
+                            you type "accetto" ("I accept" with --lang en)
   parlez doctor             check all of that without changing anything
   parlez install-agent      install only the resident agent (startup script) into After Effects'
                             user-level Scripts/Startup folder(s). Restart After Effects afterwards.
@@ -41,7 +43,10 @@ Options for setup and doctor:
   --version <major.minor>   only that After Effects preferences folder (e.g. 26.5)
   --all                     setup: every supported After Effects found, without asking
   --lang it|en              language of the messages; default: it (Italian)
-  --dry-run                 setup: report what would change without writing
+  --dry-run                 setup: report what would change without writing (and without asking
+                            to accept the notices)
+  --accept                  setup: accept the notices without being asked, for installs run from
+                            a script; recorded like a typed answer
 
 Options for install-/uninstall-/…-status of the agent and the panel:
   --version <major.minor>   only that After Effects version folder (e.g. 26.3); default: all present
@@ -61,6 +66,8 @@ interface ParsedArgs {
   /** Only set when given, so callers comparing parsed shapes see no new keys. */
   lang?: "it" | "en";
   all?: boolean;
+  /** Only set when given, like `all`. */
+  accept?: boolean;
   dryRun: boolean;
   unknown: string[];
 }
@@ -76,6 +83,7 @@ export function parseCliArgs(argv: string[]): ParsedArgs {
     else if (arg === "--lang" && (rest[i + 1] === "it" || rest[i + 1] === "en")) {
       parsed.lang = rest[++i] as "it" | "en";
     } else if (arg === "--all") parsed.all = true;
+    else if (arg === "--accept") parsed.accept = true;
     else parsed.unknown.push(arg);
   }
   return parsed;
@@ -102,9 +110,11 @@ export async function runCli(
         return 0;
 
       case "setup":
-        return await runSetup({ version: args.version, all: args.all, dryRun: args.dryRun }, out, {
-          lang: detectLang(args.lang),
-        });
+        return await runSetup(
+          { version: args.version, all: args.all, dryRun: args.dryRun, accept: args.accept },
+          out,
+          { lang: detectLang(args.lang) },
+        );
 
       case "doctor":
         return await runDoctor({ version: args.version }, out, { lang: detectLang(args.lang) });

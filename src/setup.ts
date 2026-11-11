@@ -8,15 +8,22 @@
 // and Access Network" checkbox from After Effects' prefs file, print the
 // configuration for Claude Code and Claude Desktop, then run the doctor.
 //
+// Before all of that, the first time only, setup shows a summary of the
+// notices (AVVERTENZE.md: free, experimental, as is, at your own risk) and
+// waits for the word "accetto" / "I accept"; the answer is recorded in
+// Parlez!'s own data folder, the one the panel keeps its history in.
+//
 // It writes ONLY inside After Effects' user-level profile folders, through
-// installAgent / installPanel. The Claude configuration is printed, never
-// written: those files belong to other programs. The doctor writes nothing.
+// installAgent / installPanel, plus that one record file. The Claude
+// configuration is printed, never written: those files belong to other
+// programs. The doctor writes nothing.
 //
 // Language: Italian unless --lang en. Not the system language on purpose:
 // the printed menu paths must match After Effects' own language, and on the
 // PC Parlez! was tested on Windows reports English (en-150) while After
 // Effects runs in Italian. A fixed default plus one flag is predictable.
 
+import { createHash } from "node:crypto";
 import { promises as fs, readFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -59,6 +66,8 @@ export interface SetupEnvironment {
   lang?: Lang;
   /** Asks a yes/no question. Default: on a terminal, ask; otherwise answer no. */
   confirm?: (question: string) => Promise<boolean>;
+  /** Asks for a typed answer. Default: on a terminal, ask; otherwise null (nobody to ask). */
+  askLine?: (question: string) => Promise<string | null>;
 }
 
 export interface SetupOptions {
@@ -67,6 +76,8 @@ export interface SetupOptions {
   /** Every supported After Effects found, without asking. */
   all?: boolean;
   dryRun?: boolean;
+  /** --accept: the notices are accepted without the prompt, for scripted installs. */
+  accept?: boolean;
 }
 
 export function detectLang(flag?: string): Lang {
@@ -290,6 +301,252 @@ export function claudeConfig(machine: SetupEnvironment = {}): ClaudeConfig {
   return { command, args, claudeCode, desktopJson, desktopConfigPath };
 }
 
+// --- The notices (avvertenze) ----------------------------------------------------
+
+/** The notices, shipped in the package (package.json "files") and in the zip. */
+export const NOTICES_FILENAME = "AVVERTENZE.md";
+
+/** The record of the acceptance, in Parlez!'s data folder (nome provvisorio). */
+export const ACCEPTANCE_FILENAME = "avvertenze-accettate.json";
+
+/**
+ * Parlez!'s own data folder: the one the panel writes its history into
+ * (Folder.userData + "/Parlez" in jsx/agent.jsx), so a user who goes looking
+ * finds everything Parlez! keeps in one place. Folder.userData is %APPDATA% on
+ * Windows and ~/Library/Application Support on macOS.
+ */
+export function parlezDataDir(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = os.homedir(),
+): string {
+  if (platform === "win32") {
+    return path.join(env.APPDATA ?? path.join(home, "AppData", "Roaming"), "Parlez");
+  }
+  if (platform === "darwin") return path.join(home, "Library", "Application Support", "Parlez");
+  return path.join(env.XDG_CONFIG_HOME ?? path.join(home, ".config"), "Parlez");
+}
+
+function acceptancePath(machine: SetupEnvironment): string {
+  return path.join(
+    parlezDataDir(
+      machine.platform ?? process.platform,
+      machine.env ?? process.env,
+      machine.home ?? os.homedir(),
+    ),
+    ACCEPTANCE_FILENAME,
+  );
+}
+
+/**
+ * The summary setup shows, the same lines as the «In breve» / «In short» list
+ * of AVVERTENZE.md. Used only when the file cannot be read; a test keeps the
+ * two identical, so changing one without the other fails `npm test`.
+ */
+export const BUILTIN_NOTICES_SUMMARY: Record<Lang, readonly string[]> = {
+  it: [
+    "Parlez! è gratuito, sperimentale e ancora in sviluppo.",
+    "È open source, con licenza MIT (il testo è nel file LICENSE).",
+    "Può leggere e modificare i tuoi progetti After Effects.",
+    "Quello che legge (nomi, testi, percorsi, fotogrammi) arriva al servizio di IA che hai scelto.",
+    "È fornito così com'è, senza garanzie.",
+    "Lo usi a tuo rischio: progetti modificati o persi, tempo, dati inviati a terzi sono a tuo carico.",
+    "Another Perspective Pictures SRL e gli autori non rispondono di danni, nei limiti della legge.",
+    "Vale anche per le versioni future, «beta» o no.",
+    "Lavora su copie e fai punti di ripristino. Per lavori sotto NDA controlla le regole del tuo piano di IA.",
+  ],
+  en: [
+    "Parlez! is free, experimental and still in development.",
+    "It is open source, under the MIT License (the text is in the LICENSE file).",
+    "It can read and change your After Effects projects.",
+    "What it reads (names, text, file paths, frames) goes to the AI service you chose.",
+    "It is provided as is, without any warranty.",
+    "You use it at your own risk: changed or lost projects, time, data sent to third parties are on you.",
+    "Another Perspective Pictures SRL and the authors are not liable for damages, as far as the law allows.",
+    'This also applies to future versions, "beta" or not.',
+    "Work on copies and make restore points. For work under NDA, check the rules of your AI plan.",
+  ],
+};
+
+export interface NoticesSummary {
+  lines: string[];
+  source: "AVVERTENZE.md" | "built-in";
+  /** SHA-256 of what the user was asked to accept: the whole file, or the built-in lines. */
+  sha256: string;
+}
+
+/**
+ * The summary for `lang`, read from the list between <!-- riassunto-it -->
+ * and <!-- /riassunto-it --> (or -en) in AVVERTENZE.md: comments, so the
+ * markers do not show on GitHub. Falls back to the built-in copy.
+ */
+export function noticesSummary(lang: Lang, packageRoot: string = PACKAGE_ROOT): NoticesSummary {
+  try {
+    const text = readFileSync(path.join(packageRoot, NOTICES_FILENAME), "utf8");
+    const block = new RegExp(
+      `<!-- riassunto-${lang} -->([\\s\\S]*?)<!-- /riassunto-${lang} -->`,
+    ).exec(text)?.[1];
+    const lines = (block ?? "")
+      .split(/\r?\n/)
+      .map((l) => /^\s*-\s+(.+?)\s*$/.exec(l)?.[1])
+      .filter((l): l is string => l !== undefined);
+    if (lines.length > 0) {
+      return { lines, source: "AVVERTENZE.md", sha256: sha256(text) };
+    }
+  } catch {
+    /* not in the package (an old or trimmed copy): the built-in summary */
+  }
+  const lines = [...BUILTIN_NOTICES_SUMMARY[lang]];
+  return { lines, source: "built-in", sha256: sha256(lines.join("\n")) };
+}
+
+function sha256(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+/**
+ * "accetto" or "I accept", in either language, whatever the case, with
+ * quotes or a final full stop around it. Nothing looser: "s" or "yes" is the
+ * answer to a different kind of question.
+ */
+export function isAcceptance(answer: string): boolean {
+  const word = answer
+    .trim()
+    .toLowerCase()
+    .replace(/^["'«“]+|["'»”.!]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return word === "accetto" || word === "i accept";
+}
+
+export interface AcceptanceRecord {
+  accepted: true;
+  /** UTC, ISO 8601. */
+  acceptedAt: string;
+  /** The same moment on this computer's clock, "2026-11-11 14:30". */
+  localTime: string;
+  packageVersion: string;
+  /** "risposta" (typed at the prompt) or "--accept". */
+  method: "risposta" | "--accept";
+  lang: Lang;
+  noticesSource: NoticesSummary["source"];
+  noticesSha256: string;
+}
+
+function localTimeOf(ms: number): string {
+  const d = new Date(ms);
+  const two = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ` +
+    `${two(d.getHours())}:${two(d.getMinutes())}`
+  );
+}
+
+/**
+ * What the record says: null when there is none. The file existing is what
+ * counts (setup does not ask again); a file that cannot be parsed still
+ * counts, with nothing to show about it.
+ */
+async function readAcceptance(
+  machine: SetupEnvironment,
+): Promise<{ path: string; exists: boolean; record: Partial<AcceptanceRecord> | null }> {
+  const file = acceptancePath(machine);
+  let text: string;
+  try {
+    text = await fs.readFile(file, "utf8");
+  } catch {
+    return { path: file, exists: false, record: null };
+  }
+  try {
+    return { path: file, exists: true, record: JSON.parse(text) as Partial<AcceptanceRecord> };
+  } catch {
+    return { path: file, exists: true, record: null };
+  }
+}
+
+async function askLineOnTerminal(question: string): Promise<string | null> {
+  if (!process.stdin.isTTY) return null;
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return await rl.question(question);
+  } finally {
+    rl.close();
+  }
+}
+
+/**
+ * The first-time question. True when setup may go on: already accepted, or
+ * accepted now (typed, or --accept). On --dry-run it neither asks nor writes.
+ */
+async function acceptNotices(
+  opts: SetupOptions,
+  machine: SetupEnvironment,
+  lang: Lang,
+  t: Messages,
+  out: (line: string) => void,
+): Promise<boolean> {
+  const current = await readAcceptance(machine);
+  if (current.exists) return true;
+  if (opts.dryRun) {
+    out(`${t.note}${t.noticesDryRun}`);
+    out("");
+    return true;
+  }
+
+  const packageRoot = machine.packageRoot ?? PACKAGE_ROOT;
+  const summary = noticesSummary(lang, packageRoot);
+  out(`— ${t.noticesTitle} —`);
+  for (const l of summary.lines) out(`  · ${l}`);
+  out(
+    t.noticesFull(
+      summary.source === "AVVERTENZE.md" ? path.join(packageRoot, NOTICES_FILENAME) : null,
+    ),
+  );
+  out("");
+
+  let method: AcceptanceRecord["method"];
+  if (opts.accept) {
+    out(t.acceptedByFlag);
+    method = "--accept";
+  } else {
+    const answer = await (machine.askLine ?? askLineOnTerminal)(t.acceptPrompt);
+    if (answer === null) {
+      out(t.noTerminal);
+      return false;
+    }
+    if (!isAcceptance(answer)) {
+      out(t.refused);
+      return false;
+    }
+    method = "risposta";
+  }
+
+  const now = machine.now ?? Date.now();
+  const record: AcceptanceRecord = {
+    accepted: true,
+    acceptedAt: new Date(now).toISOString(),
+    localTime: localTimeOf(now),
+    packageVersion: packageVersion(),
+    method,
+    lang,
+    noticesSource: summary.source,
+    noticesSha256: summary.sha256,
+  };
+  try {
+    await fs.mkdir(path.dirname(current.path), { recursive: true });
+    await fs.writeFile(current.path, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+    out(`${t.ok}${t.acceptedSaved(current.path)}`);
+  } catch (err) {
+    // Accepted all the same: only the memory of it is missing, so the next
+    // setup asks again. Not a reason to stop the install.
+    out(
+      `${t.note}${t.acceptedNotSaved(current.path, err instanceof Error ? err.message : String(err))}`,
+    );
+  }
+  out("");
+  return true;
+}
+
 // --- Messages --------------------------------------------------------------------
 
 /**
@@ -398,6 +655,34 @@ const TEXT = {
       `cassetta (la cartella dove Claude e After Effects si scambiano le richieste, con i log): ${dir}`,
     allGood: "Tutto pronto.",
     someTodo: "C'è ancora qualcosa da fare (righe DA FARE qui sopra).",
+    noticesTitle: "Avvertenze, da leggere prima di installare",
+    noticesFull: (file: string | null) =>
+      (file
+        ? `Il testo completo è in ${file}.`
+        : "Il testo completo è nel file AVVERTENZE.md, nello zip di Parlez! e su github.com/AnotherPerspective/Parlez.") +
+      " Installando o usando Parlez! accetti queste condizioni.",
+    acceptPrompt:
+      "Per accettare scrivi accetto e premi Invio (qualsiasi altra risposta ferma l'installazione): ",
+    acceptedByFlag: "Avvertenze accettate con --accept.",
+    refused:
+      "Non ho installato niente: per installare Parlez! serve accettare le avvertenze. " +
+      "Se cambi idea, rilancia parlez setup e scrivi accetto.",
+    noTerminal:
+      "Non ho installato niente: non c'è un terminale dove chiederti di accettare le avvertenze. " +
+      "Rilancia parlez setup in un terminale, oppure, se installi da uno script, aggiungi --accept " +
+      "(vale come accettazione).",
+    acceptedSaved: (file: string) =>
+      `avvertenze accettate. Lo segno qui, così non te lo chiedo più: ${file}`,
+    acceptedNotSaved: (file: string, why: string) =>
+      `avvertenze accettate, ma non riesco a segnarlo (${file}: ${why}): la prossima volta te lo richiedo.`,
+    noticesDryRun:
+      "Prova a vuoto (--dry-run): non ti chiedo di accettare le avvertenze e non salvo niente. " +
+      "Te lo chiederò all'installazione vera.",
+    noticesAccepted: (when: string, version: string) =>
+      `avvertenze accettate il ${when} (Parlez! ${version})`,
+    noticesAcceptedUnreadable: (file: string) =>
+      `avvertenze accettate (il file c'è ma non riesco a leggere la data: ${file})`,
+    noticesMissing: "avvertenze non ancora accettate: lancia parlez setup",
   },
   en: {
     ok: "OK      ",
@@ -485,6 +770,34 @@ const TEXT = {
       `mailbox (the folder where Claude and After Effects exchange requests, with the logs): ${dir}`,
     allGood: "All set.",
     someTodo: "Something is still left to do (the TO DO lines above).",
+    noticesTitle: "Notices, to read before installing",
+    noticesFull: (file: string | null) =>
+      (file
+        ? `The full text is in ${file}.`
+        : "The full text is in AVVERTENZE.md, in the Parlez! zip and on github.com/AnotherPerspective/Parlez.") +
+      " By installing or using Parlez! you accept these terms.",
+    acceptPrompt:
+      "To accept, type I accept and press Enter (any other answer stops the installation): ",
+    acceptedByFlag: "Notices accepted with --accept.",
+    refused:
+      "Nothing installed: installing Parlez! requires accepting the notices. " +
+      "If you change your mind, run parlez setup again and type I accept.",
+    noTerminal:
+      "Nothing installed: there is no terminal to ask you to accept the notices. " +
+      "Run parlez setup in a terminal or, when installing from a script, add --accept " +
+      "(it counts as accepting them).",
+    acceptedSaved: (file: string) =>
+      `notices accepted. Noted here, so you will not be asked again: ${file}`,
+    acceptedNotSaved: (file: string, why: string) =>
+      `notices accepted, but this could not be noted (${file}: ${why}): you will be asked again next time.`,
+    noticesDryRun:
+      "Dry run (--dry-run): you are not asked to accept the notices and nothing is saved. " +
+      "That happens on the real install.",
+    noticesAccepted: (when: string, version: string) =>
+      `notices accepted on ${when} (Parlez! ${version})`,
+    noticesAcceptedUnreadable: (file: string) =>
+      `notices accepted (the file is there but its date cannot be read: ${file})`,
+    noticesMissing: "notices not accepted yet: run parlez setup",
   },
 } as const;
 
@@ -594,9 +907,13 @@ export async function runSetup(
   out: (line: string) => void,
   machine: SetupEnvironment = {},
 ): Promise<number> {
-  const t = TEXT[machine.lang ?? detectLang()];
+  const lang = machine.lang ?? detectLang();
+  const t = TEXT[lang];
   out(t.setupTitle(packageVersion()));
   out("");
+
+  // First, before looking for After Effects or asking anything else.
+  if (!(await acceptNotices(opts, machine, lang, t, out))) return 2;
 
   const targets = await chooseTargets(opts, machine, t, out, machine.confirm ?? askOnTerminal);
   if (targets.versions.length === 0) return targets.failure ?? 1;
@@ -665,6 +982,15 @@ async function runDoctorChecks(
     Number(nodeVersion.split(".")[0]) >= MIN_NODE_MAJOR,
     t.node(nodeVersion, Number(nodeVersion.split(".")[0]) >= MIN_NODE_MAJOR),
   );
+
+  const acceptance = await readAcceptance(machine);
+  if (!acceptance.exists) line(false, t.noticesMissing);
+  else if (acceptance.record?.localTime) {
+    line(
+      true,
+      t.noticesAccepted(acceptance.record.localTime, acceptance.record.packageVersion ?? "?"),
+    );
+  } else line(true, t.noticesAcceptedUnreadable(acceptance.path));
 
   const root = profileRootOf(machine);
   const platform = machine.platform ?? process.platform;

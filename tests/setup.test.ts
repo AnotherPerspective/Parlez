@@ -14,16 +14,22 @@ import { anyAgentInstalled, stubSource } from "../src/agent-install.js";
 import { parseCliArgs } from "../src/cli.js";
 import {
   AGENT_STUB_FILENAME,
+  PACKAGE_ROOT,
   PANEL_FILENAME,
   pullOnlySetting,
   resolvePullOnlyDefault,
 } from "../src/config.js";
 import { panelSource } from "../src/panel-install.js";
 import {
+  ACCEPTANCE_FILENAME,
+  BUILTIN_NOTICES_SUMMARY,
   type SetupEnvironment,
   claudeConfig,
   detectLang,
   findAfterEffects,
+  isAcceptance,
+  noticesSummary,
+  parlezDataDir,
   prefsFileFor,
   readScriptingPref,
   runDoctor,
@@ -62,6 +68,8 @@ function fakeWindows(extra: Partial<SetupEnvironment> = {}): FakeMachine {
       execPath: path.join(tmp, "nodejs", "node.exe"),
       instancesDir,
       lang: "it",
+      // The notices are accepted at the prompt unless a test says otherwise.
+      askLine: async () => "accetto",
       ...extra,
     },
     profileRoot: path.join(appData, "Adobe", "After Effects"),
@@ -329,7 +337,12 @@ describe("parlez setup", () => {
     expect(questions).toHaveLength(1);
     expect(questions[0]).toContain("2025");
     expect(c.text()).toContain("--version");
-    expect(await snapshot(tmp)).toEqual(before);
+    // Only the record of the accepted notices (asked first) is new.
+    const after = await snapshot(tmp);
+    const record = path.join("AppData", "Roaming", "Parlez", ACCEPTANCE_FILENAME);
+    expect(Object.keys(after)).toContain(record);
+    delete after[record];
+    expect(after).toEqual(before);
   });
 
   it("installs into every supported After Effects on yes, or with --all", async () => {
@@ -504,7 +517,184 @@ describe("the default connection", () => {
   });
 });
 
+function agentFile(m: FakeMachine): string {
+  return path.join(m.profileRoot, "26.5", "Scripts", "Startup", AGENT_STUB_FILENAME);
+}
+
+describe("the notices (avvertenze)", () => {
+  async function machine(extra: Partial<SetupEnvironment> = {}): Promise<FakeMachine> {
+    const m = fakeWindows({ now: Date.UTC(2026, 10, 11, 13, 30), ...extra });
+    await addWindowsApp(m, 2026);
+    await addProfile(m, "26.5", "1");
+    return m;
+  }
+  const acceptanceFile = () => path.join(tmp, "AppData", "Roaming", "Parlez", ACCEPTANCE_FILENAME);
+
+  it("keeps the record where the panel keeps its history (%APPDATA%\\Parlez on Windows)", () => {
+    const appData = path.join("C:", "Users", "me", "AppData", "Roaming");
+    expect(parlezDataDir("win32", { APPDATA: appData }, "/unused")).toBe(
+      path.join(appData, "Parlez"),
+    );
+    expect(parlezDataDir("darwin", {}, "/Users/me")).toBe(
+      path.join("/Users/me", "Library", "Application Support", "Parlez"),
+    );
+  });
+
+  it("asks the first time, and with 'accetto' installs and records date, time and version", async () => {
+    const questions: string[] = [];
+    const m = await machine({
+      askLine: async (q) => {
+        questions.push(q);
+        return "  Accetto ";
+      },
+    });
+    const c = collect();
+    expect(await runSetup({}, c.out, m.env)).toBe(0);
+
+    expect(questions).toHaveLength(1);
+    expect(questions[0]).toContain("accetto");
+    const text = c.text();
+    // the summary comes before anything is installed
+    expect(text.indexOf("gratuito, sperimentale")).toBeGreaterThan(-1);
+    expect(text.indexOf("gratuito, sperimentale")).toBeLessThan(text.indexOf(AGENT_STUB_FILENAME));
+    expect(text).toContain("così com'è");
+    expect(text).toContain("AVVERTENZE.md");
+    expect(await exists(agentFile(m))).toBe(true);
+
+    const record = JSON.parse(await fs.readFile(acceptanceFile(), "utf8"));
+    expect(record.acceptedAt).toBe("2026-11-11T13:30:00.000Z");
+    expect(record.localTime).toMatch(/^2026-11-1\d \d\d:\d\d$/);
+    expect(record.packageVersion).toMatch(/^\d+\.\d+\.\d+/);
+    expect(record.method).toBe("risposta");
+    expect(record.lang).toBe("it");
+  });
+
+  it("stops without installing anything on any other answer, and says why", async () => {
+    for (const answer of ["no", "", "s", "accetto?? forse", null]) {
+      rmSync(tmp, { recursive: true, force: true });
+      tmp = mkdtempSync(path.join(os.tmpdir(), "parlez-setup-"));
+      const m = await machine({ askLine: async () => answer });
+      const before = await snapshot(tmp);
+      const c = collect();
+      expect(await runSetup({}, c.out, m.env)).toBe(2);
+      expect(await snapshot(tmp)).toEqual(before);
+      expect(c.text()).toContain("Non ho installato niente");
+      expect(c.text()).not.toContain("claude mcp add");
+      if (answer === null) expect(c.text()).toContain("--accept");
+    }
+  });
+
+  it("does not ask again once the record exists", async () => {
+    const m = await machine();
+    await runSetup({}, () => {}, m.env);
+    let asked = 0;
+    const c = collect();
+    const code = await runSetup({}, c.out, {
+      ...m.env,
+      askLine: async () => {
+        asked++;
+        return "no";
+      },
+    });
+    expect(code).toBe(0);
+    expect(asked).toBe(0);
+    expect(c.text()).not.toContain("gratuito, sperimentale");
+  });
+
+  it("takes --accept as the answer, for scripted installs, and records it", async () => {
+    const m = await machine({
+      askLine: async () => {
+        throw new Error("must not ask");
+      },
+    });
+    const c = collect();
+    expect(await runSetup({ accept: true }, c.out, m.env)).toBe(0);
+    expect(c.text()).toContain("gratuito, sperimentale");
+    expect(c.text()).toContain("--accept");
+    expect(await exists(agentFile(m))).toBe(true);
+    const record = JSON.parse(await fs.readFile(acceptanceFile(), "utf8"));
+    expect(record.method).toBe("--accept");
+  });
+
+  it("neither asks nor writes on --dry-run", async () => {
+    const m = await machine({
+      askLine: async () => {
+        throw new Error("must not ask");
+      },
+    });
+    const before = await snapshot(tmp);
+    const c = collect();
+    await runSetup({ dryRun: true, accept: true }, c.out, m.env);
+    expect(await snapshot(tmp)).toEqual(before);
+    expect(await exists(acceptanceFile())).toBe(false);
+    expect(c.text()).toContain("--dry-run");
+  });
+
+  it("asks for 'I accept' in English, and takes either word in either language", async () => {
+    const questions: string[] = [];
+    const m = await machine({
+      lang: "en",
+      askLine: async (q) => {
+        questions.push(q);
+        return "I accept";
+      },
+    });
+    const c = collect();
+    expect(await runSetup({}, c.out, m.env)).toBe(0);
+    expect(questions[0]).toContain("I accept");
+    expect(c.text()).toContain("free, experimental");
+    expect(isAcceptance("accetto")).toBe(true);
+    expect(isAcceptance("I ACCEPT.")).toBe(true);
+    expect(isAcceptance("«accetto»")).toBe(true);
+    expect(isAcceptance("yes")).toBe(false);
+    expect(isAcceptance("non accetto")).toBe(false);
+  });
+
+  it("doctor says whether and when the notices were accepted", async () => {
+    const m = await machine();
+    const before = collect();
+    await runDoctor({}, before.out, m.env);
+    expect(before.text()).toMatch(/DA FARE.*avvertenze non ancora accettate/i);
+
+    await runSetup({}, () => {}, m.env);
+    const record = JSON.parse(await fs.readFile(acceptanceFile(), "utf8"));
+    const after = collect();
+    expect(await runDoctor({}, after.out, m.env)).toBe(0);
+    expect(after.text()).toMatch(/OK.*avvertenze accettate/i);
+    expect(after.text()).toContain(record.localTime);
+    expect(after.text()).toContain(record.packageVersion);
+  });
+
+  it("reads the summary from AVVERTENZE.md, and the built-in copy says the same", () => {
+    for (const lang of ["it", "en"] as const) {
+      const fromFile = noticesSummary(lang, PACKAGE_ROOT);
+      expect(fromFile.source).toBe("AVVERTENZE.md");
+      expect(fromFile.lines.length).toBeGreaterThanOrEqual(8);
+      expect(fromFile.lines.length).toBeLessThanOrEqual(10);
+      expect(fromFile.lines).toEqual(BUILTIN_NOTICES_SUMMARY[lang]);
+      // without the file, the built-in copy
+      const fallback = noticesSummary(lang, path.join(tmp, "nowhere"));
+      expect(fallback.source).toBe("built-in");
+      expect(fallback.lines).toEqual(BUILTIN_NOTICES_SUMMARY[lang]);
+    }
+  });
+
+  it("ships AVVERTENZE.md in the npm package", async () => {
+    const pkg = JSON.parse(await fs.readFile(path.join(PACKAGE_ROOT, "package.json"), "utf8"));
+    expect(pkg.files).toContain("AVVERTENZE.md");
+  });
+});
+
 describe("cli flags", () => {
+  it("parses --accept only when given", () => {
+    expect(parseCliArgs(["setup", "--accept"])).toEqual({
+      command: "setup",
+      accept: true,
+      dryRun: false,
+      unknown: [],
+    });
+  });
+
   it("parses --lang and --all only when given", () => {
     expect(parseCliArgs(["setup", "--lang", "en", "--all"])).toEqual({
       command: "setup",

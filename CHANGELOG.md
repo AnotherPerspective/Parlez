@@ -6,6 +6,11 @@ Il formato segue [Keep a Changelog](https://keepachangelog.com/it-IT/1.1.0/) e i
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Avvertenze** (`AVVERTENZE.md`, bozza da far leggere a un legale): in italiano e in inglese dicono che Parlez! è gratuito, sperimentale e open source (MIT), fornito così com'è e usato a proprio rischio, e dove vanno i dati letti dai progetti. Entrano nel pacchetto npm. Integrano la licenza MIT, non la sostituiscono.
+- **Accettazione in `parlez setup`**: la prima volta, prima di installare qualsiasi cosa, `setup` mostra un riassunto delle avvertenze e chiede di scrivere `accetto` (`I accept` con `--lang en`). Con qualsiasi altra risposta, o senza un terminale, si ferma senza installare. Data, ora e versione dell'accettazione restano in `avvertenze-accettate.json` (nome provvisorio) nella cartella dei dati di Parlez! (`%APPDATA%\Parlez`, sul Mac `~/Library/Application Support/Parlez`), e non viene più chiesta finché il file c'è. `--accept` accetta senza domanda, per chi installa da uno script; `--dry-run` non chiede e non scrive. `parlez doctor` mostra se e quando le avvertenze sono state accettate.
+
 ## [0.1.0] - 2026-10-26
 
 Prima versione di Parlez!. Parte da mcp-aftereffects 0.3.2 di kumo.productions (licenza MIT) e aggiunge quello che segue. Provata solo su After Effects 2026 (26.5) / Windows 10; Mac, After Effects 2024 e 2025 sono scritti per funzionare ma non ancora provati.

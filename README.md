@@ -11,6 +11,8 @@ Parlez! fa lavorare **Claude dentro After Effects**. Scrivi a Claude cosa vuoi, 
 
 > [!IMPORTANT]
 > **Stato delle prove.** Parlez! è **provato su After Effects 2026 (26.5) / Windows 10**. Il Mac, After Effects 2024 e After Effects 2025 sono **scritti per funzionare ma non ancora provati**. Il render in sottofondo (aerender) non è ancora riuscito dal programma. È una versione di prova (0.1): usala prima su una copia di un progetto, non sul lavoro vero.
+>
+> Prima di usarlo leggi le **[avvertenze](AVVERTENZE.md)**: Parlez! è gratuito e sperimentale, è fornito così com'è e lo usi a tuo rischio.
 
 ## Cosa serve
 
@@ -38,7 +40,9 @@ npm install -g parlez
 parlez setup
 ```
 
-Trova After Effects, installa lo **script di avvio** (il piccolo programma che resta dentro After Effects e riceve le richieste di Claude) e il **pannello Parlez!**, controlla la casella degli script e alla fine ti stampa il comando del punto 3. Scrive solo nelle cartelle di After Effects del tuo utente. Se hai più versioni di After Effects ti chiede in quali installare (oppure `parlez setup --version 26.5`). Messaggi in inglese: `parlez setup --lang en`.
+La prima volta ti mostra in breve le **[avvertenze](AVVERTENZE.md)** e installa solo dopo che hai scritto `accetto`; con qualsiasi altra risposta si ferma senza installare niente. Lo ricorda in `%APPDATA%\Parlez\avvertenze-accettate.json` (sul Mac `~/Library/Application Support/Parlez/`), accanto allo storico del pannello, e non te lo chiede più. Chi installa da uno script può aggiungere `--accept`, che vale come accettazione.
+
+Poi trova After Effects, installa lo **script di avvio** (il piccolo programma che resta dentro After Effects e riceve le richieste di Claude) e il **pannello Parlez!**, controlla la casella degli script e alla fine ti stampa il comando del punto 3. Scrive solo nelle cartelle di After Effects del tuo utente. Se hai più versioni di After Effects ti chiede in quali installare (oppure `parlez setup --version 26.5`). Messaggi in inglese: `parlez setup --lang en`.
 
 **3. Collega Parlez! a Claude**
 
@@ -62,7 +66,7 @@ Sul Mac, con lo script di avvio installato, macOS non deve chiedere il permesso 
 parlez doctor
 ```
 
-Controlla Node, lo script di avvio, il pannello, la casella degli script e se c'è un After Effects acceso con lo script di avvio attivo. **Non cambia niente.** Ogni riga «DA FARE» dice cosa manca.
+Controlla Node, se e quando hai accettato le avvertenze, lo script di avvio, il pannello, la casella degli script e se c'è un After Effects acceso con lo script di avvio attivo. **Non cambia niente.** Ogni riga «DA FARE» dice cosa manca.
 
 ## Il pannello ON/OFF
 
@@ -96,7 +100,7 @@ Dentro After Effects, **Finestra → Parlez!** apre un pannello con un grande in
 ## Se qualcosa non va
 
 - **Claude va in timeout**: controlla che After Effects sia aperto, che il pannello sia su ON, che la casella degli script sia accesa e che non ci sia una finestra di dialogo aperta (a volte resta nascosta dietro la finestra principale). Poi `parlez doctor`.
-- **«Claude è in pausa»**: il pannello è su OFF. Accendilo.
+- **«Claude è in pausa»**: il pannello è su OFF. Portalo su ON.
 - **Dopo un aggiornamento di After Effects** (per esempio da 26.5 a 26.6) rilancia `parlez setup`: ogni versione ha la sua cartella.
 - **Dopo un aggiornamento di Parlez!** rilancia `parlez setup` per aggiornare il pannello.
 
@@ -122,6 +126,8 @@ Free and open source (MIT). It grows out of [mcp-aftereffects](https://github.co
 
 > [!IMPORTANT]
 > **Testing status.** Parlez! is **tested on After Effects 2026 (26.5) / Windows 10**. macOS, After Effects 2024 and After Effects 2025 are **written to work but not tested yet**. Background rendering (aerender) has not yet succeeded from the program. This is a preview (0.1): try it on a copy of a project first, not on real work.
+>
+> Before using it, read the **[notices](AVVERTENZE.md#english)**: Parlez! is free and experimental, provided as is, and you use it at your own risk.
 
 ## Requirements
 
@@ -138,13 +144,15 @@ parlez setup --lang en
 
 Until Parlez! is on npm, install the file you received instead: `npm install -g ./parlez-0.1.0.tgz`. Installing downloads the libraries Parlez! needs once; after that the program never connects to the internet.
 
-`parlez setup` finds After Effects, installs the **startup script** (a small agent that stays inside After Effects and receives Claude's requests) and the **Parlez! panel**, checks the scripting checkbox, and prints the third command: the `claude mcp add …` line for Claude Code, or the block for Claude Desktop with where to paste it. It writes only into your user's After Effects folders. With several After Effects versions it asks which ones (or use `--version 26.5`).
+The first time, `parlez setup` shows a short version of the **[notices](AVVERTENZE.md#english)** and installs only after you type `I accept`; any other answer stops it without installing anything. It remembers this in `%APPDATA%\Parlez\avvertenze-accettate.json` (on macOS `~/Library/Application Support/Parlez/`), next to the panel's history, and does not ask again. Scripted installs can add `--accept`, which counts as accepting.
+
+Then it finds After Effects, installs the **startup script** (a small agent that stays inside After Effects and receives Claude's requests) and the **Parlez! panel**, checks the scripting checkbox, and prints the third command: the `claude mcp add …` line for Claude Code, or the block for Claude Desktop with where to paste it. It writes only into your user's After Effects folders. With several After Effects versions it asks which ones (or use `--version 26.5`).
 
 Then **restart After Effects**, open **Window → Parlez!** and switch it on.
 
 **One thing to do by hand in After Effects:** Edit → Preferences → Scripting & Expressions → turn on **"Allow Scripts to Write Files and Access Network"**, then close the dialog with OK. On macOS: After Effects → Settings → Scripting & Expressions (as Adobe documents it). With the startup script installed, macOS should not ask to let your terminal or Claude Desktop control After Effects (Automation): only the direct connection needs it. If it asks anyway, allow it.
 
-`parlez doctor --lang en` checks all of the above **without changing anything**; every "TO DO" line says what is missing.
+`parlez doctor --lang en` checks all of the above, including whether and when the notices were accepted, **without changing anything**; every "TO DO" line says what is missing.
 
 ## The ON/OFF panel
 
