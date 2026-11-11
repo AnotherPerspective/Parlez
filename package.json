@@ -1,6 +1,6 @@
 {
   "name": "parlez",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Parlez! for Adobe® After Effects®: lets Claude work inside After Effects 2024–2026 through MCP, with confirmations, checkpoints, a pause switch and no internet access.",
   "keywords": [
     "adobe",

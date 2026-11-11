@@ -4,12 +4,22 @@ Tutte le modifiche importanti di Parlez! per Adobe® After Effects® sono scritt
 
 Il formato segue [Keep a Changelog](https://keepachangelog.com/it-IT/1.1.0/) e i numeri di versione seguono il [Semantic Versioning](https://semver.org/lang/it/). La storia di mcp-aftereffects di kumo.productions, da cui Parlez! deriva, è in [`docs/CHANGELOG-kumo.md`](docs/CHANGELOG-kumo.md).
 
-## [Unreleased]
+## [0.1.1] - 2026-11-11
 
 ### Aggiunto
 
 - **Avvertenze** (`AVVERTENZE.md`, bozza da far leggere a un legale): in italiano e in inglese dicono che Parlez! è gratuito, sperimentale e open source (MIT), fornito così com'è e usato a proprio rischio, e dove vanno i dati letti dai progetti. Entrano nel pacchetto npm. Integrano la licenza MIT, non la sostituiscono.
 - **Accettazione in `parlez setup`**: la prima volta, prima di installare qualsiasi cosa, `setup` mostra un riassunto delle avvertenze e chiede di scrivere `accetto` (`I accept` con `--lang en`). Con qualsiasi altra risposta, o senza un terminale, si ferma senza installare. Data, ora e versione dell'accettazione restano in `avvertenze-accettate.json` (nome provvisorio) nella cartella dei dati di Parlez! (`%APPDATA%\Parlez`, sul Mac `~/Library/Application Support/Parlez`), e non viene più chiesta finché il file c'è. `--accept` accetta senza domanda, per chi installa da uno script; `--dry-run` non chiede e non scrive. `parlez doctor` mostra se e quando le avvertenze sono state accettate.
+
+### Cambiato
+
+- **Codice pubblico.** Il codice sorgente è pubblico su [github.com/AnotherPerspective/Parlez](https://github.com/AnotherPerspective/Parlez) (licenza MIT); lo zip della beta si scarica da [AnotherPerspective/Parlez-download](https://github.com/AnotherPerspective/Parlez-download). Tutti i link nel pacchetto, nel README e nel registro MCP puntano lì.
+- README e avvertenze mettono l'inglese prima e l'italiano dopo.
+
+### Corretto
+
+- **Metadati XMP del progetto**: `project.get_xmp` restituisce di nuovo il testo XMP intero, invece di una lista di valori vuoti.
+- **Fotogrammi nei progetti a 32 bit senza gestione colore**: i fotogrammi che Claude vede (`ae_render_frame`, `render.frame` e i controlli delle ricette) non escono più dieci volte più scuri. 8 e 16 bit non cambiano.
 
 ## [0.1.0] - 2026-10-26
 
@@ -43,4 +53,5 @@ Prima versione di Parlez!. Parte da mcp-aftereffects 0.3.2 di kumo.productions (
 - Le guide create su After Effects 26.5 hanno di nuovo l'orientamento giusto.
 - La lettura dei metadati XMP del progetto è più robusta e dice che tipo di valore riceve.
 
+[0.1.1]: https://github.com/AnotherPerspective/Parlez-download/releases/tag/v0.1.1-beta
 [0.1.0]: https://github.com/AnotherPerspective/Parlez-download/releases/tag/v0.1.0-beta

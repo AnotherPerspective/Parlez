@@ -29,7 +29,7 @@ npm install -g parlez
 parlez setup --lang en
 ```
 
-Until Parlez! is on npm, install the file you received instead: `npm install -g ./parlez-0.1.0.tgz`. Installing downloads the libraries Parlez! needs once; after that the program never connects to the internet.
+Until Parlez! is on npm, install the file you received instead: `npm install -g ./parlez-0.1.1.tgz`. Installing downloads the libraries Parlez! needs once; after that the program never connects to the internet.
 
 The first time, `parlez setup` shows a short version of the **[notices](AVVERTENZE.md#english)** and installs only after you type `I accept`; any other answer stops it without installing anything. It remembers this in `%APPDATA%\Parlez\avvertenze-accettate.json` (on macOS `~/Library/Application Support/Parlez/`), next to the panel's history, and does not ask again. Scripted installs can add `--accept`, which counts as accepting.
 
@@ -94,7 +94,7 @@ Il terminale su Windows è **PowerShell** (cercalo nel menu Start); sul Mac è *
 npm install -g parlez
 ```
 
-> Finché Parlez! non è pubblicato su npm, al posto di questo comando usa il file che hai ricevuto: `npm install -g ./parlez-0.1.0.tgz` (lanciato dalla cartella dove si trova il file). L'installazione scarica una volta le librerie di cui Parlez! ha bisogno; dopo, il programma non si collega più a internet.
+> Finché Parlez! non è pubblicato su npm, al posto di questo comando usa il file che hai ricevuto: `npm install -g ./parlez-0.1.1.tgz` (lanciato dalla cartella dove si trova il file). L'installazione scarica una volta le librerie di cui Parlez! ha bisogno; dopo, il programma non si collega più a internet.
 
 **2. Prepara After Effects**
 
