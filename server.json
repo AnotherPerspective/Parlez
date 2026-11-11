@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.AnotherPerspective/Parlez",
+  "name": "io.github.anotherperspective/parlez",
   "description": "Parlez! for Adobe® After Effects®: lets Claude work inside After Effects, safely and offline.",
   "repository": {
     "url": "https://github.com/AnotherPerspective/Parlez",

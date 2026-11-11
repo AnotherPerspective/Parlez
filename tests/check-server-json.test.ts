@@ -25,7 +25,7 @@ describe("check-server-json", () => {
     expect(pkg.name).toBe("parlez");
     expect(pkg.bin.parlez).toBe("dist/index.js");
     expect(srv.packages[0].identifier).toBe("parlez");
-    expect(srv.name).toBe("io.github.AnotherPerspective/Parlez");
+    expect(srv.name).toBe("io.github.anotherperspective/parlez");
     expect(srv.repository.url).toBe("https://github.com/AnotherPerspective/Parlez");
   });
 });

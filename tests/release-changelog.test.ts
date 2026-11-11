@@ -24,7 +24,7 @@ const RELEASED = `## [0.1.0] - 2026-08-09
 
 - The first one.
 
-[0.1.0]: https://github.com/AnotherPerspective/Parlez/releases/tag/v0.1.0
+[0.1.0]: https://github.com/AnotherPerspective/Parlez-download/releases/tag/v0.1.0
 `;
 
 const UNRELEASED = `## [Unreleased]
@@ -75,7 +75,7 @@ describe("release-changelog", () => {
       .filter((line) => line.startsWith("["));
     expect(defs).toEqual([
       "[0.2.0]: https://github.com/AnotherPerspective/Parlez/releases/tag/v0.2.0",
-      "[0.1.0]: https://github.com/AnotherPerspective/Parlez/releases/tag/v0.1.0",
+      "[0.1.0]: https://github.com/AnotherPerspective/Parlez-download/releases/tag/v0.1.0",
     ]);
   });
 

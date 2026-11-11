@@ -94,5 +94,5 @@
   "engines": {
     "node": ">=24.0.0"
   },
-  "mcpName": "io.github.AnotherPerspective/Parlez"
+  "mcpName": "io.github.anotherperspective/parlez"
 }
