@@ -1,59 +1,11 @@
-<a id="italiano"></a>
-
-# Parlez! per Adobe® After Effects® — Avvertenze
-
-> **Bozza dell'11/11/2026**, da far leggere a un legale prima di considerarla definitiva.
-> _Draft of 11 November 2026, to be reviewed by a lawyer before it is considered final._
-
-**Italiano** · [English](#english)
-
-## In breve
-
-<!-- riassunto-it -->
-
-- Parlez! è gratuito, sperimentale e ancora in sviluppo.
-- È open source, con licenza MIT (il testo è nel file LICENSE).
-- Può leggere e modificare i tuoi progetti After Effects.
-- Quello che legge (nomi, testi, percorsi, fotogrammi) arriva al servizio di IA che hai scelto.
-- È fornito così com'è, senza garanzie.
-- Lo usi a tuo rischio: progetti modificati o persi, tempo, dati inviati a terzi sono a tuo carico.
-- Another Perspective Pictures SRL e gli autori non rispondono di danni, nei limiti della legge.
-- Vale anche per le versioni future, «beta» o no.
-- Lavora su copie e fai punti di ripristino. Per lavori sotto NDA controlla le regole del tuo piano di IA.
-
-<!-- /riassunto-it -->
-
-## Per esteso
-
-**Cos'è.** Parlez! collega After Effects a un assistente di intelligenza artificiale (IA) che scegli tu, per esempio Claude. Quando è acceso, l'assistente può leggere il progetto aperto e modificarlo: creare e cambiare livelli, composizioni, keyframe ed effetti, salvare file. Per capire il progetto gli manda nomi, testi, percorsi dei file e fotogrammi.
-
-**Gratuito, sperimentale, open source.** Parlez! è gratuito ed è ancora in sviluppo: può contenere errori, cambiare, o smettere di funzionare dopo un aggiornamento di After Effects o del servizio di IA. È open source, con licenza MIT: il testo è nel file [LICENSE](LICENSE). Queste avvertenze non tolgono niente alla licenza MIT: la completano.
-
-**Così com'è.** Lo ricevi così com'è, senza garanzie: nessuna promessa che funzioni, che vada bene per il tuo lavoro o che non faccia errori.
-
-**A tuo rischio.** Usarlo è una tua scelta, e le conseguenze sono a tuo carico: progetti modificati, rovinati o persi, ore di lavoro, consegne in ritardo, dati mandati al servizio di IA.
-
-**Responsabilità.** Another Perspective Pictures SRL e gli autori di Parlez!, compresi quelli dei componenti di terzi, non rispondono di danni causati dall'uso di Parlez! o dal suo mancato funzionamento, nei limiti consentiti dalla legge.
-
-**I tuoi dati.** Parlez! da solo non si collega a internet. Ma quello che legge dal progetto arriva all'assistente di IA che usi, e da lì al servizio che lo fa funzionare (per Claude, Anthropic), con le regole del tuo piano. Per lavori sotto NDA o riservati controlla prima quelle regole. La modalità riservata di Parlez! nasconde nomi e percorsi, ma non sostituisce il tuo controllo.
-
-**Per professionisti.** Parlez! è pensato per professionisti della grafica e del video, abituati a lavorare su copie e a tenere salvataggi.
-
-**Con prudenza.** Lavora su una copia del progetto, mai sull'unico originale di un cliente. Fai un punto di ripristino prima di un lavoro rischioso, salva spesso, e tieni il pannello su OFF quando non ti serve.
-
-**Versioni future.** Queste avvertenze valgono per questa versione e per le prossime, anche quando Parlez! non sarà più «beta», finché non ne pubblichiamo di nuove.
-
-**Segnalazioni.** Problemi e suggerimenti a anthonyfesce@anotherperspectivepictures.com. Li leggiamo volentieri, ma scrivere non ci obbliga a rispondere, correggere o dare assistenza.
-
-**Accettazione.** Installando o usando Parlez! accetti queste condizioni. `parlez setup` te lo chiede una volta, prima di installare.
-
----
-
 <a id="english"></a>
 
 # Parlez! for Adobe® After Effects® — Notices
 
-[Italiano](#italiano) · **English**
+> **Draft of 11 November 2026**, to be reviewed by a lawyer before it is considered final.
+> _Bozza dell'11/11/2026, da far leggere a un legale prima di considerarla definitiva._
+
+**English** · [Italiano](#italiano)
 
 ## In short
 
@@ -94,3 +46,51 @@
 **Reports.** Problems and suggestions to anthonyfesce@anotherperspectivepictures.com. We are glad to read them, but writing to us does not oblige us to answer, fix anything or provide support.
 
 **Acceptance.** By installing or using Parlez! you accept these terms. `parlez setup` asks you once, before installing.
+
+---
+
+<a id="italiano"></a>
+
+# Parlez! per Adobe® After Effects® — Avvertenze
+
+[English](#english) · **Italiano**
+
+## In breve
+
+<!-- riassunto-it -->
+
+- Parlez! è gratuito, sperimentale e ancora in sviluppo.
+- È open source, con licenza MIT (il testo è nel file LICENSE).
+- Può leggere e modificare i tuoi progetti After Effects.
+- Quello che legge (nomi, testi, percorsi, fotogrammi) arriva al servizio di IA che hai scelto.
+- È fornito così com'è, senza garanzie.
+- Lo usi a tuo rischio: progetti modificati o persi, tempo, dati inviati a terzi sono a tuo carico.
+- Another Perspective Pictures SRL e gli autori non rispondono di danni, nei limiti della legge.
+- Vale anche per le versioni future, «beta» o no.
+- Lavora su copie e fai punti di ripristino. Per lavori sotto NDA controlla le regole del tuo piano di IA.
+
+<!-- /riassunto-it -->
+
+## Per esteso
+
+**Cos'è.** Parlez! collega After Effects a un assistente di intelligenza artificiale (IA) che scegli tu, per esempio Claude. Quando è acceso, l'assistente può leggere il progetto aperto e modificarlo: creare e cambiare livelli, composizioni, keyframe ed effetti, salvare file. Per capire il progetto gli manda nomi, testi, percorsi dei file e fotogrammi.
+
+**Gratuito, sperimentale, open source.** Parlez! è gratuito ed è ancora in sviluppo: può contenere errori, cambiare, o smettere di funzionare dopo un aggiornamento di After Effects o del servizio di IA. È open source, con licenza MIT: il testo è nel file [LICENSE](LICENSE). Queste avvertenze non tolgono niente alla licenza MIT: la completano.
+
+**Così com'è.** Lo ricevi così com'è, senza garanzie: nessuna promessa che funzioni, che vada bene per il tuo lavoro o che non faccia errori.
+
+**A tuo rischio.** Usarlo è una tua scelta, e le conseguenze sono a tuo carico: progetti modificati, rovinati o persi, ore di lavoro, consegne in ritardo, dati mandati al servizio di IA.
+
+**Responsabilità.** Another Perspective Pictures SRL e gli autori di Parlez!, compresi quelli dei componenti di terzi, non rispondono di danni causati dall'uso di Parlez! o dal suo mancato funzionamento, nei limiti consentiti dalla legge.
+
+**I tuoi dati.** Parlez! da solo non si collega a internet. Ma quello che legge dal progetto arriva all'assistente di IA che usi, e da lì al servizio che lo fa funzionare (per Claude, Anthropic), con le regole del tuo piano. Per lavori sotto NDA o riservati controlla prima quelle regole. La modalità riservata di Parlez! nasconde nomi e percorsi, ma non sostituisce il tuo controllo.
+
+**Per professionisti.** Parlez! è pensato per professionisti della grafica e del video, abituati a lavorare su copie e a tenere salvataggi.
+
+**Con prudenza.** Lavora su una copia del progetto, mai sull'unico originale di un cliente. Fai un punto di ripristino prima di un lavoro rischioso, salva spesso, e tieni il pannello su OFF quando non ti serve.
+
+**Versioni future.** Queste avvertenze valgono per questa versione e per le prossime, anche quando Parlez! non sarà più «beta», finché non ne pubblichiamo di nuove.
+
+**Segnalazioni.** Problemi e suggerimenti a anthonyfesce@anotherperspectivepictures.com. Li leggiamo volentieri, ma scrivere non ci obbliga a rispondere, correggere o dare assistenza.
+
+**Accettazione.** Installando o usando Parlez! accetti queste condizioni. `parlez setup` te lo chiede una volta, prima di installare.
