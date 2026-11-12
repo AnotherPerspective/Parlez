@@ -1,16 +1,16 @@
-# Parlez! sul Mac — guida per il tester
+# Parlez! sul Mac — guida passo per passo
 
-Grazie per la prova! Parlez! fa lavorare Claude dentro After Effects. Su Windows funziona; **sul Mac non l'ha ancora provato nessuno di noi**: sei il primo. Questa guida ti porta passo per passo. Ogni passo dice:
+Grazie per la prova! Parlez! fa lavorare Claude dentro After Effects. Su Windows funziona; **sul Mac non l'abbiamo ancora provato**: sei tra i primi. Questa guida ti porta passo per passo. Ogni passo dice:
 
 - **Comando**: cosa scrivere nel Terminale (copialo e incollalo così com'è, poi premi Invio);
 - **Cosa devi vedere** se va tutto bene;
-- **Se non va**: cosa copiare e mandare ad Anthony. Fermati lì e scrivigli: non serve andare avanti a tentativi.
+- **Se non va**: cosa copiare e mandarci (all'indirizzo **anthonyfesce@anotherperspectivepictures.com**). Fermati lì e scrivici: non serve andare avanti a tentativi.
 
 Ci vogliono circa 30–40 minuti.
 
 ## Prima di cominciare
 
-- Ti serve: un Mac con **After Effects 2024, 2025 o 2026** già aperto almeno una volta, **Claude Code** oppure **Claude Desktop**, e il file **`parlez-0.1.0.tgz`** che ti ha mandato Anthony (mettilo nella cartella Download).
+- Ti serve: un Mac con **After Effects 2024, 2025 o 2026** già aperto almeno una volta, **Claude Code** oppure **Claude Desktop**, e lo **zip scaricato dal sito** (dentro c'è il file `parlez-0.1.1.tgz`). Scompatta lo zip con doppio clic: ottieni una cartella con dentro `parlez-0.1.1.tgz`. In questa guida si suppone che sia in **Download**; se l'hai messo altrove, cambia i percorsi.
 - Lavora su una **copia** di un progetto, mai sul lavoro di un cliente.
 - Il **Terminale** è in Applicazioni → Utility → Terminale. Ogni comando qui sotto va incollato lì.
 - Quando un percorso contiene spazi o `!` (per esempio `Parlez!.jsx`) è scritto tra apici singoli `'…'`: lasciali, servono.
@@ -57,17 +57,17 @@ source ~/.zprofile
 
 **Se non va**: manda il messaggio di errore.
 
-## 3. Controllare il file ricevuto (facoltativo ma consigliato)
+## 3. Controllare il file scaricato (facoltativo ma consigliato)
 
 **Comando**
 
 ```bash
-shasum -a 256 ~/Downloads/parlez-0.1.0.tgz
+shasum -a 256 ~/Downloads/parlez-0.1.1.tgz
 ```
 
-**Cosa devi vedere**: una lunga sequenza di lettere e numeri. Deve essere **uguale** a quella che ti ha mandato Anthony.
+**Cosa devi vedere**: una lunga sequenza di lettere e numeri. Deve essere **uguale** a quella scritta nel `README.md` della pagina di download (sezione «Scarica»).
 
-**Se non va**: se è diversa, non andare avanti e diglielo.
+**Se non va**: se è diversa, non andare avanti e scrivici.
 
 ## 4. Installare Parlez!
 
@@ -78,7 +78,7 @@ cd ~/Downloads
 ```
 
 ```bash
-npm install -g ./parlez-0.1.0.tgz
+npm install -g ./parlez-0.1.1.tgz
 ```
 
 ```bash
@@ -337,7 +337,7 @@ cd ~/Desktop && zip -r parlez-log.zip "$TMPDIR/mcp-aftereffects" ~/Library/Logs/
 
 ## Modulo di segnalazione
 
-Copialo in una email ad Anthony e rispondi sotto ogni domanda.
+Copialo in una email a **anthonyfesce@anotherperspectivepictures.com** e rispondi sotto ogni domanda.
 
 ```text
 1. Computer e versioni: modello del Mac e versione di macOS (menu Mela → Informazioni su

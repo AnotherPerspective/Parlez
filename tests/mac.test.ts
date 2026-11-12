@@ -3,7 +3,7 @@
 // Mac's folders — /Applications, ~/Library/Preferences, the mailbox — are temp
 // directories laid out the way macOS lays them out. What only a real Mac can
 // show (After Effects reading those folders, the permissions macOS asks for)
-// is in docs/mac-checklist.md.
+// is in CHECKLIST-MAC.md.
 
 import { mkdtempSync, promises as fs, rmSync } from "node:fs";
 import * as os from "node:os";

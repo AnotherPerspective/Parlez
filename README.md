@@ -16,6 +16,21 @@ Free and open source (MIT). It grows out of [mcp-aftereffects](https://github.co
 >
 > Before using it, read the **[notices](AVVERTENZE.md#english)**: Parlez! is free and experimental, provided as is, and you use it at your own risk.
 
+## Download
+
+**[⬇ Download Parlez! beta (zip file)](https://github.com/AnotherPerspective/Parlez/releases/latest/download/Parlez-beta.zip)** — always the latest beta. Every version is on the [Releases](https://github.com/AnotherPerspective/Parlez/releases) page.
+
+The zip holds the package `parlez-0.1.1.tgz`, the two step-by-step guides ([Windows](CHECKLIST-WINDOWS.md) and [Mac](CHECKLIST-MAC.md), in Italian) and a `LEGGIMI.txt` file.
+
+**Checking the file (optional).** To make sure the package was not changed on the way, compare the fingerprint of `parlez-0.1.1.tgz` with this one:
+
+```text
+20924bdbf6d5fa63324c10644d3c59c8d920c8484bde41a73c2aef956239b70f
+```
+
+- Windows (PowerShell): `certutil -hashfile parlez-0.1.1.tgz SHA256`
+- Mac (Terminal): `shasum -a 256 parlez-0.1.1.tgz`
+
 ## Requirements
 
 - **After Effects 2024, 2025 or 2026**, on Windows or macOS
@@ -29,7 +44,7 @@ npm install -g parlez
 parlez setup --lang en
 ```
 
-Until Parlez! is on npm, install the file you received instead: `npm install -g ./parlez-0.1.1.tgz`. Installing downloads the libraries Parlez! needs once; after that the program never connects to the internet.
+Until Parlez! is on npm, use the package from the [zip above](#download) instead, from the unzipped folder: `npm install -g ./parlez-0.1.1.tgz`. Installing downloads the libraries Parlez! needs once; after that the program never connects to the internet.
 
 The first time, `parlez setup` shows a short version of the **[notices](AVVERTENZE.md#english)** and installs only after you type `I accept`; any other answer stops it without installing anything. It remembers this in `%APPDATA%\Parlez\avvertenze-accettate.json` (on macOS `~/Library/Application Support/Parlez/`), next to the panel's history, and does not ask again. Scripted installs can add `--accept`, which counts as accepting.
 
@@ -76,6 +91,23 @@ Parlez! fa lavorare **Claude dentro After Effects**. Scrivi a Claude cosa vuoi, 
 >
 > Prima di usarlo leggi le **[avvertenze](AVVERTENZE.md#italiano)**: Parlez! è gratuito e sperimentale, è fornito così com'è e lo usi a tuo rischio.
 
+## Scarica
+
+**[⬇ Scarica Parlez! beta (file zip)](https://github.com/AnotherPerspective/Parlez/releases/latest/download/Parlez-beta.zip)**: è sempre l'ultima beta. Tutte le versioni sono nella pagina [Releases](https://github.com/AnotherPerspective/Parlez/releases).
+
+Dentro lo zip trovi il pacchetto `parlez-0.1.1.tgz`, le due guide passo passo ([Windows](CHECKLIST-WINDOWS.md) e [Mac](CHECKLIST-MAC.md)) e un file `LEGGIMI.txt`.
+
+**Controllo del file (facoltativo).** Se vuoi essere sicuro che il pacchetto non sia stato cambiato, confronta l'impronta di `parlez-0.1.1.tgz` con questa:
+
+```text
+20924bdbf6d5fa63324c10644d3c59c8d920c8484bde41a73c2aef956239b70f
+```
+
+- Windows (PowerShell): `certutil -hashfile parlez-0.1.1.tgz SHA256`
+- Mac (Terminale): `shasum -a 256 parlez-0.1.1.tgz`
+
+Le due sequenze di lettere e numeri devono essere uguali.
+
 ## Cosa serve
 
 | Cosa                                  | Note                                                                                                                                                            |
@@ -94,7 +126,7 @@ Il terminale su Windows è **PowerShell** (cercalo nel menu Start); sul Mac è *
 npm install -g parlez
 ```
 
-> Finché Parlez! non è pubblicato su npm, al posto di questo comando usa il file che hai ricevuto: `npm install -g ./parlez-0.1.1.tgz` (lanciato dalla cartella dove si trova il file). L'installazione scarica una volta le librerie di cui Parlez! ha bisogno; dopo, il programma non si collega più a internet.
+> Finché Parlez! non è pubblicato su npm, al posto di questo comando usa il pacchetto dello [zip qui sopra](#scarica), dalla cartella scompattata: `npm install -g ./parlez-0.1.1.tgz`. L'installazione scarica una volta le librerie di cui Parlez! ha bisogno; dopo, il programma non si collega più a internet.
 
 **2. Prepara After Effects**
 
@@ -120,7 +152,7 @@ Poi **riavvia After Effects**, apri il pannello da **Finestra → Parlez!** e ac
 
 In **Modifica → Preferenze → Script ed espressioni** accendi **«Consenti agli script di scrivere file e accedere alla rete»** e chiudi la finestra con OK. Nessun programma può accenderla al posto tuo. `parlez setup` ti dice se è già accesa. Sul Mac la casella sta in **After Effects → Impostazioni → Script ed espressioni** (così la indica Adobe: «After Effects > Settings > Scripting & Expressions»).
 
-Sul Mac, con lo script di avvio installato, macOS non deve chiedere il permesso di **controllare After Effects** (Automazione): serve solo al collegamento diretto, che Parlez! in quel caso non usa. Se compare comunque, rispondi Consenti. Guida passo per passo per il Mac: [docs/mac-checklist.md](docs/mac-checklist.md).
+Sul Mac, con lo script di avvio installato, macOS non deve chiedere il permesso di **controllare After Effects** (Automazione): serve solo al collegamento diretto, che Parlez! in quel caso non usa. Se compare comunque, rispondi Consenti. Guida passo per passo per il Mac: [CHECKLIST-MAC.md](CHECKLIST-MAC.md).
 
 ### Controllare che sia tutto a posto
 
