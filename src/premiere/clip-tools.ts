@@ -34,13 +34,21 @@ const CLIP_EDIT_CODE = `
         var newEnd = (typeof c.end === "number") ? c.end : e.end;
         if (newEnd <= newStart) return { ok: false, error: "La clip " + c.nodeId + " finirebbe prima di cominciare." };
         if (typeof c.moveTo === "number") {
+            // Premiere 26.3.2: a clip moved with move() across or onto another
+            // clip on its track leaves the track out of order, and a clip then
+            // renders black or hangs the export. Only moves through empty
+            // space are safe, so anything else is refused, confirm or not.
             var len = newEnd - newStart;
-            var other = PR.overlapping(seq, e, c.moveTo, c.moveTo + len);
-            if (other !== null && p.confirm !== true) {
+            var from = Math.min(e.start, c.moveTo);
+            var to = Math.max(e.end, c.moveTo + len);
+            var other = PR.overlapping(seq, e, from, to);
+            if (other !== null) {
                 return {
                     ok: false,
-                    error: "Spostata a " + c.moveTo + " s la clip finirebbe sopra " + other +
-                        ": serve confirm: true, e solo se l'utente l'ha chiesto."
+                    error: "Spostare la clip a " + c.moveTo + " s la farebbe passare sopra " + other +
+                        ": in Premiere 26.3.2 uno spostamento cosi' rovina la traccia (clip nere o esportazione bloccata)." +
+                        " Si possono spostare clip solo dentro uno spazio vuoto. Per cambiare l'ordine: togli la clip" +
+                        " (pr_clip_remove) e rimettila dove serve (pr_timeline_add)."
                 };
             }
         }
@@ -95,9 +103,10 @@ export const prClipEditTool = defineTool({
   description:
     "Change clips already on a Premiere Pro timeline (track item nodeIds from pr_sequence_info): `start` / " +
     "`end` trim where the clip begins and ends on the timeline (seconds); `moveTo` moves it so it begins " +
-    "there; `enabled` switches it off or on. The clip's audio (same source, same position) is trimmed and " +
-    "moved with it, so they stay in sync. Moving onto other clips needs confirm: true, only if the user " +
-    "asked. A restore point is taken first; pr_undo_last puts everything back.",
+    "there, only through empty space (Premiere 26.3.2 breaks a clip moved across or onto others: to reorder, " +
+    "remove it and put it back with pr_timeline_add); `enabled` switches it off or on. The clip's audio " +
+    "(same source, same position) is trimmed and moved with it, so they stay in sync. A restore point is " +
+    "taken first; pr_undo_last puts everything back.",
   group: "premiere",
   blockedInReadOnly: true,
   effect: "write",
@@ -122,7 +131,6 @@ export const prClipEditTool = defineTool({
       )
       .min(1)
       .max(500),
-    confirm: z.boolean().optional().describe("Required (true) to move a clip onto others."),
   },
   handler: async (args, transport) =>
     runWithCheckpoint(transport, {
@@ -130,7 +138,6 @@ export const prClipEditTool = defineTool({
       payload: {
         sequence: args.sequence ?? null,
         clips: args.clips,
-        confirm: args.confirm === true,
       },
       label: "pr_clip_edit",
     }),

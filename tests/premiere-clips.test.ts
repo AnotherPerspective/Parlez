@@ -145,15 +145,17 @@ describe("pr_clip_edit", () => {
     ]);
   });
 
-  it("moving onto another clip needs confirm, and nothing changes without it", async () => {
-    const res = await run(() =>
-      prClipEditTool.handler(
-        { sequence: "Bozza", clips: [{ nodeId: id(8), moveTo: 2 }] },
-        transport,
-      ),
-    );
-    expect(res.isError).toBe(true);
-    expect(JSON.stringify(res.structuredContent)).toContain("confirm: true");
+  it("refuses a move across or onto another clip, confirm or not (Premiere 26.3.2 breaks the track)", async () => {
+    for (const moveTo of [2, 20]) {
+      const res = await run(() =>
+        prClipEditTool.handler(
+          { sequence: "Bozza", clips: [{ nodeId: id(0), moveTo }] },
+          transport,
+        ),
+      );
+      expect(res.isError).toBe(true);
+      expect(JSON.stringify(res.structuredContent)).toContain("pr_timeline_add");
+    }
     expect(v1().map((x) => x[1])).toEqual([0, 4, 8]);
   });
 
