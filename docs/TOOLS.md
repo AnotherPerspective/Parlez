@@ -4,7 +4,7 @@ Generated from `src/tools/**` via `npm run docs:tools` — do not edit by hand. 
 
 `ae_do`'s operation registry (`layer.*`, `keyframe.*`, …) is discoverable at runtime via `ae_catalog` and is **not** listed in this file.
 
-34 tools across 5 groups.
+37 tools across 5 groups.
 
 ## Inspect
 
@@ -73,4 +73,7 @@ Adobe® Premiere Pro® through the Parlez! panel (read-only for now).
 | `pr_tracks`             | Switch Premiere Pro tracks of a sequence (default the active one): `muted`, `locked`, `targeted`, for video (V1 = index 1) or audio tracks.                                                                                                                                                                                                                                                         |
 | `pr_transition`         | Add a transition at the start (default) or end of clips on a Premiere Pro timeline (track item nodeIds from pr_sequence_info): video clips get Cross Dissolve, audio clips Constant Power, unless `name` says another Premiere transition.                                                                                                                                                          |
 | `pr_audio_level`        | Set the volume of clips on a Premiere Pro timeline, in dB (0 = unchanged, -6 = half as loud).                                                                                                                                                                                                                                                                                                       |
+| `pr_export_interchange` | Export a Premiere Pro sequence (default the active one) for another program: `xml` (Final Cut Pro XML, read by DaVinci Resolve and Final Cut), `aaf` or `omf` (for the sound mix, audio embedded, 48 kHz / 16 bit).                                                                                                                                                                                 |
+| `pr_auto_reframe`       | Make a reframed copy of a Premiere Pro sequence (default the active one) for another aspect ratio - 9:16 for stories and reels, 1:1, 4:5 - with Premiere's Auto Reframe, which follows the action.                                                                                                                                                                                                  |
+| `pr_captions`           | Add captions to a Premiere Pro sequence (default the active one) from a subtitle file (.srt, full path), starting at `start` seconds (default 0).                                                                                                                                                                                                                                                   |
 | `pr_undo_last`          | Take back Claude's last change in Premiere Pro - the whole request, all its steps - the way the panel's Annulla button does.                                                                                                                                                                                                                                                                        |

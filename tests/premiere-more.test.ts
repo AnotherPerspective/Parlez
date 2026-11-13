@@ -19,6 +19,11 @@ import {
   prTracksTool,
   prTransitionTool,
 } from "../src/premiere/more-tools.js";
+import {
+  prAutoReframeTool,
+  prCaptionsTool,
+  prExportInterchangeTool,
+} from "../src/premiere/deliver-tools.js";
 import { prSequenceCreateTool, prTimelineAddTool } from "../src/premiere/timeline-tools.js";
 import { PremiereTransport } from "../src/premiere/transport.js";
 import type { ToolResult } from "../src/tools/types.js";
@@ -245,5 +250,62 @@ describe("pr_audio_level", () => {
     await run(() => prUndoLastTool.handler({}, transport));
     expect(audio.level).toBeCloseTo(0.17782793939114, 9);
     expect(v1()).toHaveLength(2);
+  });
+});
+
+describe("pr_export_interchange", () => {
+  it("writes XML, AAF and OMF, adding the extension; will not overwrite without confirm", async () => {
+    for (const format of ["xml", "aaf", "omf"] as const) {
+      const res = await run(() =>
+        prExportInterchangeTool.handler(
+          { format, outPath: path.join(tmp, "uscite", "Bozza"), sequence: "Bozza" },
+          transport,
+        ),
+      );
+      expect(res.isError, JSON.stringify(res.structuredContent)).toBe(false);
+      expect((res.structuredContent as { file: string }).file).toMatch(
+        new RegExp(`Bozza[.]${format}$`),
+      );
+    }
+    const again = await run(() =>
+      prExportInterchangeTool.handler(
+        { format: "xml", outPath: path.join(tmp, "uscite", "Bozza.xml"), sequence: "Bozza" },
+        transport,
+      ),
+    );
+    expect(JSON.stringify(again.structuredContent)).toContain("confirm: true");
+  });
+});
+
+describe("pr_auto_reframe", () => {
+  it("makes a 9:16 copy; undo removes it and the bin Premiere made for it", async () => {
+    const res = await run(() =>
+      prAutoReframeTool.handler({ ratio: "9:16", sequence: "Bozza" }, transport),
+    );
+    expect(result(res).sequence).toMatchObject({ name: "Bozza - 9x16", width: 608, height: 1080 });
+    expect(names()).toContain("Auto Reframed Sequences");
+    await run(() => prUndoLastTool.handler({}, transport));
+    expect(project.allSequences.map((q) => q.name)).not.toContain("Bozza - 9x16");
+    expect(names()).not.toContain("Auto Reframed Sequences");
+  });
+});
+
+describe("pr_captions", () => {
+  it("needs confirm and an .srt; with them the captions go on the sequence", async () => {
+    const srt = path.join(tmp, "sub.srt");
+    writeFileSync(srt, "1\n00:00:01,000 --> 00:00:02,000\nCiao\n");
+    const refused = await run(() => prCaptionsTool.handler({ srt, sequence: "Bozza" }, transport));
+    expect(refused.isError).toBe(true);
+    expect(seq.captions).toEqual([]);
+    const wrong = await prCaptionsTool.handler(
+      { srt: path.join(tmp, "x.txt"), confirm: true },
+      transport,
+    );
+    expect(wrong.isError).toBe(true);
+    const res = await run(() =>
+      prCaptionsTool.handler({ srt, sequence: "Bozza", confirm: true }, transport),
+    );
+    expect(String(result(res).undo)).toContain("punto di ritorno");
+    expect(seq.captions).toEqual(["sub.srt"]);
   });
 });
