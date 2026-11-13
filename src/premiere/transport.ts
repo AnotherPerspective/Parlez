@@ -72,6 +72,9 @@ const PREMIERE_TITLES: Record<string, string> = {
   pr_tracks: "tracce: muto, blocco, destinazione",
   pr_transition: "aggiunge transizioni",
   pr_audio_level: "volume delle clip",
+  pr_export_interchange: "esporta XML / AAF / OMF",
+  pr_auto_reframe: "riformatta la sequenza",
+  pr_captions: "aggiunge i sottotitoli",
   pr_undo_last: "annulla l'ultima modifica di Claude",
 };
 

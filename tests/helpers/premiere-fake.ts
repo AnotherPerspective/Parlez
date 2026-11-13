@@ -239,6 +239,26 @@ export function fakeProject(projectPath = String.raw`D:\Prove\Prova.prproj`) {
     return copy;
   };
   sequence.cloner = cloneSequence;
+  // Like Premiere 26.3.2: the reframed sequence goes into an "Auto Reframed Sequences" bin.
+  const reframe = (seq: FakeSequence, name: string, w: number, h: number): FakeSequence => {
+    let bin = root.kids.find((k) => k.name === "Auto Reframed Sequences");
+    if (!bin) bin = root.createBin("Auto Reframed Sequences");
+    const item = bin.add(new FakeItem(name, { sequence: true }));
+    const made = new FakeSequence(
+      name,
+      "seq-reframe-" + String(++sequenceCounter),
+      item,
+      seq.video.length,
+      seq.audio.length,
+    );
+    made.frameSizeHorizontal = w;
+    made.frameSizeVertical = h;
+    made.mgtRoot = root;
+    made.cloner = cloneSequence;
+    sequences.push(made);
+    return made;
+  };
+  sequence.reframer = reframe;
   return {
     name: "Prova.prproj",
     path: projectPath,
@@ -266,6 +286,7 @@ export function fakeProject(projectPath = String.raw`D:\Prove\Prova.prproj`) {
       }
       seq.mgtRoot = root;
       seq.cloner = cloneSequence;
+      seq.reframer = reframe;
       sequences.push(seq);
       return seq;
     },
@@ -285,6 +306,14 @@ export function fakeProject(projectPath = String.raw`D:\Prove\Prova.prproj`) {
       target.add(new FakeItem("Comp 1"));
       target.add(new FakeItem("Comp 2"));
       return true;
+    },
+    exportAAF(_seq: FakeSequence, out: string): number {
+      writeFileSync(out, "aaf");
+      return 1;
+    },
+    exportOMF(_seq: FakeSequence, out: string): number {
+      writeFileSync(out, "omf");
+      return 1;
     },
     openSequence(id: string): boolean {
       const found = sequences.find((q) => q.sequenceID === id);
@@ -579,6 +608,21 @@ export class FakeSequence {
   cloner: ((seq: FakeSequence) => FakeSequence) | null = null;
   clone(): boolean {
     this.cloner!(this);
+    return true;
+  }
+  /** Captions added by createCaptionTrack: their source item names. */
+  readonly captions: string[] = [];
+  /** Set by fakeProject: how Auto Reframe makes its sequence. */
+  reframer: ((seq: FakeSequence, name: string, w: number, h: number) => FakeSequence) | null = null;
+  exportAsFinalCutProXML(out: string): boolean {
+    writeFileSync(out, "<xmeml/>");
+    return true;
+  }
+  autoReframeSequence(num: number, den: number, _motion: string, name: string): FakeSequence {
+    return this.reframer!(this, name, Math.round((1080 * num) / den), 1080);
+  }
+  createCaptionTrack(item: FakeItem): boolean {
+    this.captions.push(item.name);
     return true;
   }
 

@@ -42,6 +42,7 @@ import {
   prTracksTool,
   prTransitionTool,
 } from "./more-tools.js";
+import { prAutoReframeTool, prCaptionsTool, prExportInterchangeTool } from "./deliver-tools.js";
 
 const PREMIERE_INSTANCE_PARAM = z
   .string()
@@ -238,5 +239,8 @@ export const PREMIERE_TOOLS: AnyTool[] = [
   prTracksTool,
   prTransitionTool,
   prAudioLevelTool,
+  prExportInterchangeTool,
+  prAutoReframeTool,
+  prCaptionsTool,
   prUndoLastTool,
 ].map((tool) => withPremiereInstance(tool as AnyTool));
