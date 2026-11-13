@@ -325,6 +325,18 @@ export class FakeTrack {
   insertClip(source: FakeItem, time: unknown): void {
     const at = toSeconds(time);
     for (const t of this.targets()) {
+      // Like Premiere: a clip the insert point falls inside is cut in two,
+      // and the second piece is a new track item.
+      for (const it of t.items.slice()) {
+        if (it.startS < at && it.endS > at) {
+          const piece = new FakeTrackItem(t, it.projectItem, at, {
+            inS: it.inS + (at - it.startS),
+          });
+          piece.endS = it.endS;
+          it.endS = at;
+          t.items.push(piece);
+        }
+      }
       for (const it of t.items) {
         if (it.startS >= at) {
           it.startS += FAKE_CLIP_SECONDS;

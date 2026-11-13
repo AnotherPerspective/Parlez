@@ -105,7 +105,18 @@ const TIMELINE_ADD_CODE = `
                     " In alternativa: mode insert (sposta avanti il resto), oppure senza tempo (in coda)."
             };
         }
+        // Inserting inside a clip cuts it in two (seen on Premiere 26.3.2); undo
+        // takes the new clip out but cannot join the two pieces again.
+        var inside = (c.mode === "insert" && typeof c.time === "number") ? PR.clipAcross(seq, tn, c.time) : null;
+        if (inside !== null && p.confirm !== true) {
+            return {
+                ok: false,
+                error: "Inserire a " + c.time + " s sulla traccia V" + tn + " taglierebbe in due la clip " + inside +
+                    ": serve confirm: true, e solo se l'utente l'ha chiesto. In alternativa scegli un tempo tra due clip."
+            };
+        }
     }
+    var splitNames = [];
     var steps = [];
     var placed = [];
     var problems = [];
@@ -140,23 +151,35 @@ const TIMELINE_ADD_CODE = `
             problems.push(String(c.nodeId) + ": " + (lastError || "Premiere non ha messo la clip in timeline"));
             continue;
         }
+        // What starts where the clip went is ours; anything else new is a piece
+        // of a clip Premiere cut to make room, and it stays on undo.
         var ids = [];
-        for (var a = 0; a < added.length; a++) {
-            ids.push(added[a].nodeId);
-            placed.push(PR.placed(added[a]));
+        var startAt = null;
+        var a;
+        for (a = 0; a < added.length; a++) {
+            if (typeof added[a].start === "number" && (startAt === null || added[a].start < startAt)) startAt = added[a].start;
+        }
+        for (a = 0; a < added.length; a++) {
+            if (typeof added[a].start === "number" && Math.abs(added[a].start - startAt) < 0.1) {
+                ids.push(added[a].nodeId);
+                placed.push(PR.placed(added[a]));
+            } else {
+                splitNames.push(PR.safe(function () { return String(added[a].item.name); }, "?"));
+            }
         }
         steps.push({ kind: "trackitems.added", sequenceID: sid, nodeIds: ids, ripple: c.mode === "insert" });
     }
     PR.pushUndo("pr_timeline_add", steps);
     var undo = null;
     if (steps.length > 0) {
-        undo = covered
-            ? "pr_undo_last toglie le clip messe; quello che hanno coperto torna solo dal punto di ritorno"
+        undo = (covered || splitNames.length > 0)
+            ? "pr_undo_last toglie le clip messe; quello che hanno coperto o tagliato torna com'era solo dal punto di ritorno"
             : "pr_undo_last (o il bottone Annulla del pannello) toglie tutte le clip messe";
     }
     return {
         sequence: PR.safe(function () { return String(seq.name); }, null),
         placed: placed,
+        split: splitNames,
         problems: problems,
         undo: undo
     };

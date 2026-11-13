@@ -518,3 +518,44 @@ describe("pr_timeline_add", () => {
     expect(project.sequence.video[0]!.items).toHaveLength(1);
   });
 });
+
+describe("pr_timeline_add inside a clip (Premiere cuts it in two)", () => {
+  it("needs confirm: true, and nothing changes without it", async () => {
+    const agent = startAgent();
+    const res = await withPanel(agent, true, false, () =>
+      prTimelineAddTool.handler(
+        { clips: [{ nodeId: "n-drone", time: 2, mode: "insert" }] },
+        transport,
+      ),
+    );
+    expect(res.isError).toBe(true);
+    expect(JSON.stringify(res.structuredContent)).toContain("taglierebbe in due");
+    expect(project.sequence.video[0]!.items.map((i) => [i.nodeId, i.startS, i.endS])).toEqual([
+      ["t-1", 0, 4],
+    ]);
+  });
+
+  it("with confirm, the cut piece is reported and undo takes out only the inserted clip", async () => {
+    const agent = startAgent();
+    const res = await withPanel(agent, true, false, () =>
+      prTimelineAddTool.handler(
+        { clips: [{ nodeId: "n-drone", time: 2, mode: "insert" }], confirm: true },
+        transport,
+      ),
+    );
+    const r = result(res);
+    expect(r.split).toEqual(["Intervista.mov"]);
+    expect((r.placed as Array<{ name: string }>).map((p) => p.name)).toEqual(["Drone.mp4"]);
+    expect(String(r.undo)).toContain("punto di ritorno");
+
+    await withPanel(agent, true, false, () => prUndoLastTool.handler({}, transport));
+    // The inserted clip is gone and the gap closed; the cut stays (two pieces, same source).
+    const v1 = project.sequence.video[0]!.items.map((i) => [i.name, i.startS, i.endS]).sort(
+      (a, b) => Number(a[1]) - Number(b[1]),
+    );
+    expect(v1).toEqual([
+      ["Intervista.mov", 0, 2],
+      ["Intervista.mov", 2, 4],
+    ]);
+  });
+});

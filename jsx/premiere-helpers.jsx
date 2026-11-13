@@ -637,3 +637,16 @@ PR.placed = function (e) {
         end: e.end
     };
 };
+
+/** Name of the clip on video track n that `time` falls strictly inside, or null. */
+PR.clipAcross = function (seq, n, time) {
+    var all = PR.timelineItems(seq);
+    for (var i = 0; i < all.length; i++) {
+        var e = all[i];
+        if (e.kind !== "video" || e.track !== n) continue;
+        if (typeof e.start === "number" && typeof e.end === "number" && time > e.start + 0.05 && time < e.end - 0.05) {
+            return PR.safe(function () { return String(e.item.name); }, "?");
+        }
+    }
+    return null;
+};
