@@ -16,6 +16,7 @@ import {
   prBinsTool,
   prMarkersTool,
   prRenameItemsTool,
+  prSaveProjectTool,
   prUndoLastTool,
 } from "../src/premiere/edit-tools.js";
 import { prSequenceCreateTool, prTimelineAddTool } from "../src/premiere/timeline-tools.js";
@@ -557,5 +558,22 @@ describe("pr_timeline_add inside a clip (Premiere cuts it in two)", () => {
       ["Intervista.mov", 0, 2],
       ["Intervista.mov", 2, 4],
     ]);
+  });
+});
+
+describe("pr_save_project", () => {
+  it("needs confirm: true; with it, the old version goes to the restore points, then Premiere saves", async () => {
+    const agent = startAgent();
+    const refused = await withPanel(agent, true, false, () =>
+      prSaveProjectTool.handler({}, transport),
+    );
+    expect(refused.isError).toBe(true);
+    expect(project.saves).toBe(0);
+    const res = await withPanel(agent, true, false, () =>
+      prSaveProjectTool.handler({ confirm: true }, transport),
+    );
+    expect(result(res)).toMatchObject({ saved: true });
+    expect(project.saves).toBe(1);
+    expect(checkpoints()).toHaveLength(1);
   });
 });

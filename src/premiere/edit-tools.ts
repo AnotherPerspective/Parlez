@@ -403,3 +403,32 @@ export const prRenameItemsTool = defineTool({
     });
   },
 });
+
+export const prSaveProjectTool = defineTool({
+  name: "pr_save_project",
+  title: "Save the Premiere project",
+  description:
+    "Save the open Premiere Pro project over its file. Needs confirm: true, passed only when the user asked " +
+    "to save: it replaces the version on disk. The version being replaced is copied to the restore points first.",
+  group: "premiere",
+  blockedInReadOnly: true,
+  effect: "write",
+  inputShape: {
+    confirm: z
+      .boolean()
+      .optional()
+      .describe("Required (true); pass it only when the user asked to save the project."),
+  },
+  handler: async (args, transport) => {
+    if (args.confirm !== true) {
+      return errorResult(
+        "INVALID_ARGS",
+        "Salvare sovrascrive il file del progetto: serve confirm: true, e solo se l'utente ha chiesto di salvare.",
+      );
+    }
+    return runWithCheckpoint(transport, {
+      code: "app.project.save(); return { saved: true, name: PR.safe(function () { return String(app.project.name); }, null) };",
+      label: "pr_save_project",
+    });
+  },
+});

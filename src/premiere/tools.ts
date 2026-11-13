@@ -22,7 +22,13 @@ import {
   livePremiereInstances,
   resolvePremiereTarget,
 } from "./transport.js";
-import { prBinsTool, prMarkersTool, prRenameItemsTool, prUndoLastTool } from "./edit-tools.js";
+import {
+  prBinsTool,
+  prMarkersTool,
+  prRenameItemsTool,
+  prSaveProjectTool,
+  prUndoLastTool,
+} from "./edit-tools.js";
 import { prSequenceCreateTool, prTimelineAddTool } from "./timeline-tools.js";
 import { prClipEditTool, prClipRemoveTool, prRazorTool } from "./clip-tools.js";
 import { prProjectCheckTool } from "./check-tools.js";
@@ -217,5 +223,6 @@ export const PREMIERE_TOOLS: AnyTool[] = [
   prRazorTool,
   prMogrtAddTool,
   prExportTool,
+  prSaveProjectTool,
   prUndoLastTool,
 ].map((tool) => withPremiereInstance(tool as AnyTool));

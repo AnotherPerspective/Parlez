@@ -4,7 +4,7 @@ Generated from `src/tools/**` via `npm run docs:tools` — do not edit by hand. 
 
 `ae_do`'s operation registry (`layer.*`, `keyframe.*`, …) is discoverable at runtime via `ae_catalog` and is **not** listed in this file.
 
-27 tools across 5 groups.
+28 tools across 5 groups.
 
 ## Inspect
 
@@ -66,4 +66,5 @@ Adobe® Premiere Pro® through the Parlez! panel (read-only for now).
 | `pr_razor`           | Cut (razor) every clip that crosses `time` (seconds) on the ACTIVE Premiere Pro sequence, video and audio together.                                                                                                                                                                                                                                      |
 | `pr_mogrt_add`       | Put a Motion Graphics template (.mogrt file) on a Premiere Pro sequence at `time` (seconds) on video track `track` (1 = V1).                                                                                                                                                                                                                             |
 | `pr_export`          | Export a Premiere Pro sequence (default the active one) to a file, rendered inside Premiere with a preset (.epr; default Premiere's H.264 "Match Source - High bitrate").                                                                                                                                                                                |
+| `pr_save_project`    | Save the open Premiere Pro project over its file.                                                                                                                                                                                                                                                                                                        |
 | `pr_undo_last`       | Take back Claude's last change in Premiere Pro - the whole request, all its steps - the way the panel's Annulla button does.                                                                                                                                                                                                                             |

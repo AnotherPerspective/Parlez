@@ -31,6 +31,7 @@ const EXPECTED_TOOLS = [
   "pr_project_info",
   "pr_razor",
   "pr_rename_items",
+  "pr_save_project",
   "pr_sequence_create",
   "pr_sequence_info",
   "pr_timeline_add",

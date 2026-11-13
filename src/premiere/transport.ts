@@ -65,6 +65,7 @@ const PREMIERE_TITLES: Record<string, string> = {
   pr_mogrt_add: "mette un titolo .mogrt",
   pr_frame: "guarda un fotogramma",
   pr_export: "esporta la sequenza",
+  pr_save_project: "salva il progetto",
   pr_undo_last: "annulla l'ultima modifica di Claude",
 };
 

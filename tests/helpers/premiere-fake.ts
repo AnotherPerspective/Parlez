@@ -215,6 +215,10 @@ export function fakeProject(projectPath = String.raw`D:\Prove\Prova.prproj`) {
       return coll(sequences, "numSequences");
     },
     activeSequence: sequence as FakeSequence | null,
+    saves: 0,
+    save(): void {
+      this.saves++;
+    },
     /** Lays the clips one after the other on V1, linked audio on A1 (3 + 3 tracks). */
     createNewSequenceFromClips(name: string, items: FakeItem[], target: FakeItem): FakeSequence {
       const item = target.add(new FakeItem(name, { sequence: true }));
