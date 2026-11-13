@@ -23,7 +23,7 @@ export const PREMIERE_PANEL_SRC = path.join(PACKAGE_ROOT, "premiere", "panel");
 /** The ON/OFF pictures, shared with the After Effects panel. */
 export const PREMIERE_PANEL_IMAGES_SRC = path.join(PACKAGE_ROOT, "jsx", "panel-images");
 
-/** CEP extension bundle id; also the folder name under CEP/extensions. (nome provvisorio) */
+/** CEP extension bundle id; also the folder name under CEP/extensions. */
 export const CEP_BUNDLE_ID = "com.anotherperspective.parlez";
 
 /** The host stub the installer writes into the installed panel. */
