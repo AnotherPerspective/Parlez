@@ -43,6 +43,7 @@
     readOnly: document.getElementById("read-only"),
     rows: document.getElementById("rows"),
     mailbox: document.getElementById("mailbox"),
+    undo: document.getElementById("undo"),
     notice: document.getElementById("notice"),
     counts: document.getElementById("counts"),
     credit: document.getElementById("credit"),
@@ -139,6 +140,10 @@
         ? OUTCOME_MARK[e.outcome]
         : String(e.outcome);
       var tail = e.outcome === "ok" || e.outcome === "error" ? "  " + seconds(e.ms) : "";
+      if (e.undone === true) {
+        mark = "annullata";
+        tail = "";
+      }
       lines.push(clock(e.t) + "  " + shorten(what, TITLE_CHARS) + "  " + mark + tail);
     }
     return lines;
@@ -240,6 +245,18 @@
       },
       agent !== null,
     );
+    var undoable = false;
+    var recent = agent !== null ? agent.recent || [] : [];
+    for (var i = 0; i < recent.length; i++)
+      if (recent[i] && recent[i].undoable === true) undoable = true;
+    put(
+      "undo",
+      function (v) {
+        el.undo.disabled = !v;
+        if (!v) disarmUndo();
+      },
+      undoable,
+    );
   }
 
   function say(message) {
@@ -318,6 +335,41 @@
   el.readOnly.addEventListener("change", function () {
     say(writeFlag(KEY_READ_ONLY, el.readOnly.checked) ? "" : "Non riesco a salvare la scelta.");
     refresh();
+  });
+  // Annulla: two clicks, the first arms it. A confirm() dialog is not
+  // reliable inside a CEP panel, and an undo the user did not mean is
+  // exactly what this button must not do.
+  var undoArmedUntil = 0;
+  var UNDO_ARM_MS = 4000;
+  function disarmUndo() {
+    undoArmedUntil = 0;
+    el.undo.textContent = "Annulla";
+  }
+  el.undo.addEventListener("click", function () {
+    if (!cep) return;
+    if (Date.now() > undoArmedUntil) {
+      undoArmedUntil = Date.now() + UNDO_ARM_MS;
+      el.undo.textContent = "Conferma?";
+      say("Clicca di nuovo per annullare l'ultima modifica di Claude (tutta la richiesta).");
+      window.setTimeout(function () {
+        if (Date.now() > undoArmedUntil) disarmUndo();
+      }, UNDO_ARM_MS + 50);
+      return;
+    }
+    disarmUndo();
+    cep.evalScript("PARLEZ_PR.undoLast()", function (r) {
+      var res = null;
+      try {
+        res = JSON.parse(r);
+      } catch {
+        res = null;
+      }
+      if (res === null) say("Annullamento non riuscito.");
+      else if (res.ok !== true) say(String(res.error || "Annullamento non riuscito."));
+      else if (res.failed && res.failed.length > 0) {
+        say("Annullato in parte: " + res.failed.length + " passi non sono tornati indietro.");
+      } else say("Annullata l'ultima modifica di Claude.");
+    });
   });
   el.mailbox.addEventListener("click", function () {
     if (!cep) return;

@@ -40,7 +40,8 @@
 #include "premiere-helpers.jsx"
 
 (function premiereAgentEntry() {
-    var AGENT_VERSION = 1;
+    // 2: undo journal (undoable entries in the history, undoLast for the panel).
+    var AGENT_VERSION = 2;
     var RECENT_MAX = 8;
     var LABEL_MAX = 60;
     var TITLE_MAX = 120;
@@ -202,10 +203,29 @@
         }
     }
 
-    function record(summary, ms) {
+    function undoCount() {
+        try {
+            return PR.undoCount();
+        } catch (eCount) {
+            return 0;
+        }
+    }
+
+    /** The newest change still undoable is now taken back: say so in the history. */
+    function markUndone() {
+        for (var i = state.recent.length - 1; i >= 0; i--) {
+            if (state.recent[i].undoable === true) {
+                state.recent[i].undoable = false;
+                state.recent[i].undone = true;
+                return;
+            }
+        }
+    }
+
+    function record(summary, ms, undoable) {
         var outcome = (summary && typeof summary.outcome === "string") ? summary.outcome : "error";
         var label = (summary && typeof summary.label === "string") ? shorten(summary.label, LABEL_MAX) : "?";
-        var entry = { t: now(), label: label, outcome: outcome, ms: ms, undoable: false };
+        var entry = { t: now(), label: label, outcome: outcome, ms: ms, undoable: undoable === true };
         if (summary && typeof summary.title === "string") entry.title = shorten(summary.title, TITLE_MAX);
         state.recent.push(entry);
         while (state.recent.length > RECENT_MAX) state.recent.shift();
@@ -279,13 +299,17 @@
                 state.busySince = now();
                 writeHeartbeat(dir);
                 var started = now();
+                var undoBefore = undoCount();
                 var summary = null;
                 try {
                     summary = AE_MCP.serveRequest(request, dir, dir + "/agent.log");
                 } catch (eServe) {
                     state.lastError = "serve: " + describeError(eServe);
                 }
-                record(summary, now() - started);
+                var undoAfter = undoCount();
+                // pr_undo_last took a change back through this request.
+                if (undoAfter < undoBefore) markUndone();
+                record(summary, now() - started, undoAfter > undoBefore);
                 state.busy = false;
                 state.busySince = null;
                 state.pending = countPending(dir);
@@ -314,10 +338,30 @@
         }
     }
 
+    /**
+     * The panel's Annulla button: take back Claude's last change (PR.undoLast)
+     * and say so in the history. Returns JSON text; never throws.
+     */
+    function undoLast() {
+        var started = now();
+        var result;
+        try {
+            result = PR.undoLast();
+        } catch (eUndo) {
+            result = { ok: false, error: describeError(eUndo) };
+        }
+        if (result.ok === true) markUndone();
+        record({ outcome: result.ok === true ? "ok" : "error", label: "pr_undo_last",
+            title: "annulla l'ultima modifica di Claude" }, now() - started, false);
+        return JSON.stringify(result);
+    }
+
     $.global.PARLEZ_PR = {
         version: AGENT_VERSION,
         state: state,
         tick: tick,
-        openMailbox: openMailbox
+        openMailbox: openMailbox,
+        undoLast: undoLast,
+        undoCount: undoCount
     };
 })();

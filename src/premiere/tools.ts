@@ -20,7 +20,9 @@ import {
   isPremierePaused,
   isPremiereReadOnly,
   livePremiereInstances,
+  resolvePremiereTarget,
 } from "./transport.js";
+import { prMarkersTool, prUndoLastTool } from "./edit-tools.js";
 
 const PREMIERE_INSTANCE_PARAM = z
   .string()
@@ -35,13 +37,17 @@ function bindPremiere(transport: AeTransport, instance: unknown): AeTransport {
   if (!named) return transport;
   return {
     execute: (req) => transport.execute({ instance: named, ...req }),
+    // The restore point needs to know which project the call will touch.
+    describeTarget: () => resolvePremiereTarget(named, PREMIERE_INSTANCES_DIR),
     ...(transport.close ? { close: () => transport.close!() } : {}),
   };
 }
 
 const RULES = [
   "Premiere Pro è comandato attraverso il pannello Parlez! (Finestra › Estensioni): se è chiuso o su OFF, Claude è fermo.",
-  "Per ora gli strumenti pr_* leggono soltanto: progetto (pr_project_info) e sequenze (pr_sequence_info).",
+  "Leggere: pr_project_info (progetto), pr_sequence_info (sequenze, tracce, clip, marker).",
+  "Ctrl+Z di Premiere NON annulla le modifiche di Claude: per tornare indietro usa pr_undo_last, che annulla tutta l'ultima richiesta. Prima di ogni modifica Parlez! copia il progetto salvato in _parlez-checkpoints.",
+  "Cancellare qualcosa richiede confirm: true, da passare solo se l'utente l'ha chiesto.",
   "I tempi sono in secondi; `fps` dice quanti fotogrammi al secondo ha la sequenza.",
   "Non rinominare, spostare o cancellare niente senza il permesso esplicito dell'utente.",
 ];
@@ -190,6 +196,10 @@ function withPremiereInstance(tool: AnyTool): AnyTool {
 }
 
 /** Every Premiere tool, in registration order. */
-export const PREMIERE_TOOLS: AnyTool[] = [prContextTool, prProjectInfoTool, prSequenceInfoTool].map(
-  (tool) => withPremiereInstance(tool as AnyTool),
-);
+export const PREMIERE_TOOLS: AnyTool[] = [
+  prContextTool,
+  prProjectInfoTool,
+  prSequenceInfoTool,
+  prMarkersTool,
+  prUndoLastTool,
+].map((tool) => withPremiereInstance(tool as AnyTool));

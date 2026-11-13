@@ -267,3 +267,161 @@ PR.markers = function (collection, max) {
     }
     return out;
 };
+
+// --- Undo: every change Claude makes knows how to take itself back --------
+// Premiere's scripting has no undo groups, and Ctrl+Z does not take back
+// what a script changed (verified on Premiere 26.3.2 with a sequence
+// marker). So every operation that changes the project records, step by
+// step, how to put things back, and PR.undoLast() replays one whole request
+// in reverse - the rule "one request, one undo" kept by Parlez! itself. The
+// stack lives in $.global, so it survives the panel being reopened and is
+// shared by the pr_undo_last tool and the panel's Annulla button.
+
+PR.UNDO_MAX = 30;
+
+PR.undoStack = function () {
+    if (!$.global.PARLEZ_PR_UNDO || typeof $.global.PARLEZ_PR_UNDO.length !== "number") {
+        $.global.PARLEZ_PR_UNDO = [];
+    }
+    return $.global.PARLEZ_PR_UNDO;
+};
+
+PR.undoCount = function () {
+    return PR.undoStack().length;
+};
+
+/** Record one request's steps (each { kind, ... }); nothing when no step was taken. */
+PR.pushUndo = function (label, steps) {
+    if (!steps || steps.length === 0) return;
+    var stack = PR.undoStack();
+    stack.push({ t: new Date().getTime(), label: String(label), steps: steps });
+    while (stack.length > PR.UNDO_MAX) stack.shift();
+};
+
+PR.sequenceById = function (id) {
+    var all = PR.allSequences();
+    for (var i = 0; i < all.length; i++) {
+        if (PR.safe(function () { return String(all[i].sequenceID); }, null) === String(id)) return all[i];
+    }
+    return null;
+};
+
+PR.markerByGuid = function (seq, guid) {
+    var markers = PR.safe(function () { return seq.markers; }, null);
+    var count = PR.safe(function () { return markers.numMarkers; }, 0);
+    var m = PR.safe(function () { return markers.getFirstMarker(); }, null);
+    var guard = 0;
+    while (m && guard < count + 1) {
+        guard++;
+        var cur = m;
+        if (PR.safe(function () { return String(cur.guid); }, null) === String(guid)) return cur;
+        m = PR.safe(function () { return markers.getNextMarker(cur); }, null);
+    }
+    return null;
+};
+
+/** Marker fields Parlez! sets and restores. Times in seconds. */
+PR.markerState = function (m) {
+    var s = {
+        name: PR.safe(function () { return String(m.name); }, ""),
+        comment: PR.safe(function () { return String(m.comments); }, ""),
+        start: PR.seconds(PR.safe(function () { return m.start; }, null)),
+        end: PR.seconds(PR.safe(function () { return m.end; }, null))
+    };
+    var color = PR.safe(function () { return m.getColorByIndex(); }, null);
+    if (typeof color === "number") s.color = color;
+    return s;
+};
+
+/**
+ * Set a Time-valued member (marker start/end, clip in/out...) to `seconds`.
+ * Premiere accepts a number of seconds on most builds; when the value does
+ * not stick, a Time object is tried. Returns true when it reads back right.
+ */
+PR.setSeconds = function (obj, prop, seconds) {
+    function sticks() {
+        var v = PR.seconds(PR.safe(function () { return obj[prop]; }, null));
+        return typeof v === "number" && Math.abs(v - seconds) < 0.0005;
+    }
+    try { obj[prop] = seconds; } catch (eNum) { /* try a Time below */ }
+    if (sticks()) return true;
+    try {
+        var t = new Time();
+        t.seconds = seconds;
+        obj[prop] = t;
+    } catch (eTime) { /* no Time constructor here */ }
+    return sticks();
+};
+
+/** Apply `state` ({ name?, comment?, start?, end?, color? }) to a marker. */
+PR.setMarker = function (m, state) {
+    if (typeof state.name === "string") m.name = state.name;
+    if (typeof state.comment === "string") m.comments = state.comment;
+    var curEnd = PR.seconds(PR.safe(function () { return m.end; }, null));
+    // Moving later: the end goes first, so start never passes end on the way.
+    if (typeof state.end === "number" && typeof state.start === "number" &&
+            typeof curEnd === "number" && state.start > curEnd) {
+        PR.setSeconds(m, "end", state.end);
+        PR.setSeconds(m, "start", state.start);
+    } else {
+        if (typeof state.start === "number") PR.setSeconds(m, "start", state.start);
+        if (typeof state.end === "number") PR.setSeconds(m, "end", state.end);
+    }
+    if (typeof state.color === "number") {
+        try { m.setColorByIndex(state.color); } catch (eColor) { /* older Premiere: no marker colours */ }
+    }
+};
+
+/** Take back one recorded step. Returns null when done, else why not. */
+PR.undoStep = function (step) {
+    var seq;
+    var m;
+    if (step.kind === "marker.created") {
+        seq = PR.sequenceById(step.sequenceID);
+        if (!seq) return "sequenza non trovata";
+        m = PR.markerByGuid(seq, step.guid);
+        if (!m) return "marker gi\u00e0 tolto";
+        seq.markers.deleteMarker(m);
+        return null;
+    }
+    if (step.kind === "marker.changed") {
+        seq = PR.sequenceById(step.sequenceID);
+        if (!seq) return "sequenza non trovata";
+        m = PR.markerByGuid(seq, step.guid);
+        if (!m) return "marker non trovato";
+        PR.setMarker(m, step.before);
+        return null;
+    }
+    if (step.kind === "marker.removed") {
+        seq = PR.sequenceById(step.sequenceID);
+        if (!seq) return "sequenza non trovata";
+        m = seq.markers.createMarker(step.before.start);
+        PR.setMarker(m, step.before);
+        return null;
+    }
+    return "passo sconosciuto: " + String(step.kind);
+};
+
+/**
+ * Take back Claude's last change, all of its steps, newest first. Returns
+ * { ok, label, undone, failed } or { ok: false, error } when there is
+ * nothing to take back.
+ */
+PR.undoLast = function () {
+    var stack = PR.undoStack();
+    if (stack.length === 0) return { ok: false, error: "Non c'\u00e8 nessuna modifica di Claude da annullare." };
+    var record = stack.pop();
+    var undone = 0;
+    var failed = [];
+    for (var i = record.steps.length - 1; i >= 0; i--) {
+        var why;
+        try {
+            why = PR.undoStep(record.steps[i]);
+        } catch (e) {
+            why = PR.errText(e);
+        }
+        if (why === null) undone++;
+        else failed.push({ kind: String(record.steps[i].kind), why: why });
+    }
+    return { ok: true, label: record.label, undone: undone, failed: failed };
+};

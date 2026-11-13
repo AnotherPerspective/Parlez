@@ -49,6 +49,20 @@ import {
   PR_READ_ONLY_MESSAGE,
 } from "./config.js";
 
+/** Plain-Italian names of Premiere requests, for the panel's history. */
+const PREMIERE_TITLES: Record<string, string> = {
+  pr_project_info: "guarda il progetto",
+  pr_sequence_info: "guarda la sequenza",
+  pr_markers: "marker della sequenza",
+  pr_undo_last: "annulla l'ultima modifica di Claude",
+};
+
+function premiereTitle(label: string, steps?: string[]): string {
+  return Object.prototype.hasOwnProperty.call(PREMIERE_TITLES, label)
+    ? PREMIERE_TITLES[label]!
+    : describeRequest(label, steps);
+}
+
 /** Env var naming the default Premiere instance (an id or the open project's name). */
 export const PREMIERE_INSTANCE_ENV = "PARLEZ_PREMIERE_INSTANCE";
 
@@ -261,7 +275,7 @@ export class PremiereTransport implements AeTransport {
       undoGroup: false,
       suppressDialogs: false,
       mutates: req.mutates !== false,
-      title: describeRequest(label, req.steps),
+      title: premiereTitle(label, req.steps),
     };
 
     const dir = instance.dir;

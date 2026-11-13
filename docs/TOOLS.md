@@ -4,7 +4,7 @@ Generated from `src/tools/**` via `npm run docs:tools` — do not edit by hand. 
 
 `ae_do`'s operation registry (`layer.*`, `keyframe.*`, …) is discoverable at runtime via `ae_catalog` and is **not** listed in this file.
 
-14 tools across 5 groups.
+16 tools across 5 groups.
 
 ## Inspect
 
@@ -54,3 +54,5 @@ Adobe® Premiere Pro® through the Parlez! panel (read-only for now).
 | `pr_context`       | Premiere Pro: is it connected, which project is open, are the panel's switches on (ON/OFF, Sola lettura), and the rules for working in Premiere.                                                                                                                               |
 | `pr_project_info`  | Premiere Pro project overview: name and file, every bin and item (clips, sequences, bins) with the bin it sits in, which media are offline, and every sequence with size, fps and duration.                                                                                    |
 | `pr_sequence_info` | One Premiere Pro sequence in detail: settings (size, fps, duration), playhead and in/out points, every video and audio track with its clips (name, start/end on the timeline, in/out in the source, source item), and the sequence markers (name, comment, start/end, colour). |
+| `pr_markers`       | Add, change or remove markers on a Premiere Pro sequence (default: the active one), in one request.                                                                                                                                                                            |
+| `pr_undo_last`     | Take back Claude's last change in Premiere Pro - the whole request, all its steps - the way the panel's Annulla button does.                                                                                                                                                   |
