@@ -25,6 +25,7 @@ import {
 import { prBinsTool, prMarkersTool, prRenameItemsTool, prUndoLastTool } from "./edit-tools.js";
 import { prSequenceCreateTool, prTimelineAddTool } from "./timeline-tools.js";
 import { prClipEditTool, prClipRemoveTool, prRazorTool } from "./clip-tools.js";
+import { prProjectCheckTool } from "./check-tools.js";
 
 const PREMIERE_INSTANCE_PARAM = z
   .string()
@@ -202,6 +203,7 @@ export const PREMIERE_TOOLS: AnyTool[] = [
   prContextTool,
   prProjectInfoTool,
   prSequenceInfoTool,
+  prProjectCheckTool,
   prMarkersTool,
   prBinsTool,
   prRenameItemsTool,

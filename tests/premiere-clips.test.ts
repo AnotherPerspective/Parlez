@@ -9,6 +9,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { prProjectCheckTool } from "../src/premiere/check-tools.js";
 import { prClipEditTool, prClipRemoveTool, prRazorTool } from "../src/premiere/clip-tools.js";
 import { PREMIERE_AGENT_JSX } from "../src/premiere/config.js";
 import { prUndoLastTool } from "../src/premiere/edit-tools.js";
@@ -220,5 +221,31 @@ describe("pr_razor", () => {
       [8, 12],
     ]);
     expect(a1()).toHaveLength(4);
+  });
+});
+
+describe("pr_project_check", () => {
+  it("finds offline media, gaps and clips switched off, changing nothing", async () => {
+    await run(() =>
+      prClipEditTool.handler(
+        {
+          sequence: "Bozza",
+          clips: [
+            { nodeId: id(8), moveTo: 15 },
+            { nodeId: id(0), enabled: false },
+          ],
+        },
+        transport,
+      ),
+    );
+    const before = JSON.stringify(v1());
+    const res = await run(() => prProjectCheckTool.handler({ sequence: "Bozza" }, transport));
+    const r = result(res);
+    expect(r.offline).toEqual([{ name: "Drone.mp4", bin: "Girato", nodeId: "n-drone" }]);
+    expect(r.unused).toEqual([]);
+    const tl = (r.timelines as Array<{ gaps: unknown[]; switchedOff: unknown[] }>)[0]!;
+    expect(tl.gaps).toEqual([{ track: "V1", from: 8, to: 15, seconds: 7 }]);
+    expect(tl.switchedOff).toHaveLength(1);
+    expect(JSON.stringify(v1())).toBe(before);
   });
 });
