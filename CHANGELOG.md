@@ -4,6 +4,19 @@ Tutte le modifiche importanti di Parlez! per Adobe® After Effects® sono scritt
 
 Il formato segue [Keep a Changelog](https://keepachangelog.com/it-IT/1.1.0/) e i numeri di versione seguono il [Semantic Versioning](https://semver.org/lang/it/). La storia di mcp-aftereffects di kumo.productions, da cui Parlez! deriva, è in [`docs/CHANGELOG-kumo.md`](docs/CHANGELOG-kumo.md).
 
+## [0.1.2] - 2026-11-13
+
+### Aggiunto
+
+- **Parlez! per Adobe® Premiere Pro®** (prima versione, provata solo su Premiere Pro 2026 / Windows). Lo stesso programma `parlez` fa lavorare Claude anche dentro Premiere, con le stesse regole di After Effects: interruttore ON/OFF, «Sola lettura», conferma prima di cancellare o sovrascrivere, niente rete.
+  - **Pannello Parlez!** per Premiere (Finestra › Estensioni (versione precedente) › Parlez!), con lo stesso aspetto di quello di After Effects. È anche il collegamento: se il pannello è chiuso o su OFF, Claude è fermo. `parlez setup` lo installa nella cartella CEP dell'utente, senza permessi da amministratore; `parlez doctor` lo controlla. Nuovi comandi: `install-premiere-panel`, `uninstall-premiere-panel`, `premiere-status`.
+  - **17 strumenti `pr_*`**: leggere progetto e sequenze (`pr_context`, `pr_project_info`, `pr_sequence_info`), controllare il progetto (`pr_project_check`), vedere un fotogramma (`pr_frame`), marker (`pr_markers`), bin (`pr_bins`), nomi ed etichette (`pr_rename_items`), sequenza dalle clip (`pr_sequence_create`), clip in timeline (`pr_timeline_add`), rifilare e spostare (`pr_clip_edit`), togliere (`pr_clip_remove`), lametta (`pr_razor`), titoli .mogrt (`pr_mogrt_add`), esportazione (`pr_export`), salvataggio su richiesta (`pr_save_project`).
+  - **Annulla di Parlez!**: in Premiere Ctrl+Z non annulla le modifiche fatte da script, quindi ogni modifica registra come si disfa; `pr_undo_last`, o il bottone «Annulla» del pannello, disfa tutta l'ultima richiesta. Prima di ogni modifica il progetto salvato viene copiato in `_parlez-checkpoints`, accanto al progetto.
+
+### Cambiato
+
+- After Effects funziona come prima: il suo collegamento e i suoi strumenti non sono cambiati.
+
 ## [0.1.1] - 2026-11-11
 
 ### Aggiunto
@@ -53,5 +66,6 @@ Prima versione di Parlez!. Parte da mcp-aftereffects 0.3.2 di kumo.productions (
 - Le guide create su After Effects 26.5 hanno di nuovo l'orientamento giusto.
 - La lettura dei metadati XMP del progetto è più robusta e dice che tipo di valore riceve.
 
+[0.1.2]: https://github.com/AnotherPerspective/Parlez-download/releases/tag/v0.1.2-beta
 [0.1.1]: https://github.com/AnotherPerspective/Parlez-download/releases/tag/v0.1.1-beta
 [0.1.0]: https://github.com/AnotherPerspective/Parlez-download/releases/tag/v0.1.0-beta
