@@ -479,6 +479,40 @@ PR.undoStep = function (step) {
         }
         return back > 0 ? null : "clip non trovate";
     }
+    if (step.kind === "track.state") {
+        seq = PR.sequenceById(step.sequenceID);
+        if (!seq) return "sequenza non trovata";
+        var tk = PR.trackAt(seq, step.trackKind, step.track);
+        if (!tk) return "traccia non trovata";
+        PR.setTrackState(tk, step.prop, step.before);
+        return null;
+    }
+    if (step.kind === "transition.added") {
+        seq = PR.sequenceById(step.sequenceID);
+        if (!seq) return "sequenza non trovata";
+        var tt = PR.trackAt(seq, step.trackKind, step.track);
+        if (!tt) return "traccia non trovata";
+        var trs = tt.transitions;
+        var nt = PR.safe(function () { return trs.numItems; }, 0);
+        for (var ti = 0; ti < nt; ti++) {
+            var trn = trs[ti];
+            if (Math.abs(PR.seconds(trn.start) - step.start) < 0.05) {
+                trn.remove(false, false);
+                return null;
+            }
+        }
+        return "transizione gi\u00e0 tolta";
+    }
+    if (step.kind === "audio.level") {
+        seq = PR.sequenceById(step.sequenceID);
+        if (!seq) return "sequenza non trovata";
+        var al = PR.trackItemByNodeId(seq, step.nodeId);
+        if (!al) return "clip non trovata";
+        var lv = PR.volumeLevel(al.item);
+        if (lv === null) return "volume non trovato";
+        lv.setValue(step.before, true);
+        return null;
+    }
     if (step.kind === "project.items.created") {
         return PR.deleteProjectItems(step.nodeIds);
     }
@@ -827,4 +861,100 @@ PR.setTextParam = function (prop, text) {
     } else {
         prop.setValue(text, true);
     }
+};
+
+// --- Tracks, transitions, volume ------------------------------------------
+
+/** Video or audio track n (1-based), or null. */
+PR.trackAt = function (seq, kind, n) {
+    var coll = (kind === "audio") ? seq.audioTracks : seq.videoTracks;
+    var count = PR.safe(function () { return coll.numTracks; }, 0);
+    if (n < 1 || n > count) return null;
+    return coll[n - 1];
+};
+
+/** Read "muted" / "locked" / "targeted" of a track as a boolean. */
+PR.trackState = function (track, prop) {
+    if (prop === "muted") return PR.safe(function () { return track.isMuted() === true; }, null);
+    if (prop === "locked") return PR.safe(function () { return track.isLocked() === true; }, null);
+    if (prop === "targeted") return PR.safe(function () { return track.isTargeted() === true; }, null);
+    return null;
+};
+
+PR.setTrackState = function (track, prop, on) {
+    var v = on ? 1 : 0;
+    if (prop === "muted") track.setMute(v);
+    else if (prop === "locked") track.setLocked(v);
+    else if (prop === "targeted") track.setTargeted(on === true, true);
+};
+
+/**
+ * The "Level" property of a clip's Volume component. Premiere stores it as
+ * an amplitude where 0 dB is about 0.1778: dB = 20 * log10(value) + 15
+ * (read on Premiere 26.3.2: 0.17782793939114 at 0 dB).
+ */
+PR.volumeLevel = function (item) {
+    var comps = PR.safe(function () { return item.components; }, null);
+    var n = PR.safe(function () { return comps.numItems; }, 0);
+    for (var c = 0; c < n; c++) {
+        var comp = comps[c];
+        if (PR.safe(function () { return String(comp.displayName); }, "") !== "Volume") continue;
+        var pn = PR.safe(function () { return comp.properties.numItems; }, 0);
+        for (var p = 0; p < pn; p++) {
+            var prop = comp.properties[p];
+            if (PR.safe(function () { return String(prop.displayName); }, "") === "Level") return prop;
+        }
+    }
+    return null;
+};
+
+PR.levelToDb = function (v) {
+    if (typeof v !== "number" || v <= 0) return null;
+    return PR.round(20 * Math.log(v) / Math.LN10 + 15, 2);
+};
+
+PR.dbToLevel = function (db) {
+    return Math.pow(10, (db - 15) / 20);
+};
+
+/** Start times (seconds) of the transitions on a track. */
+PR.transitionStarts = function (track) {
+    var out = [];
+    var trs = PR.safe(function () { return track.transitions; }, null);
+    var n = PR.safe(function () { return trs.numItems; }, 0);
+    for (var i = 0; i < n; i++) {
+        var s = PR.seconds(PR.safe(function () { return trs[i].start; }, null));
+        if (typeof s === "number") out.push(s);
+    }
+    return out;
+};
+
+/**
+ * The QE item for timeline entry `e` on QE track `qt`. QE lists a track's
+ * items in time order, gaps included as items of their own, so the clip is
+ * the one with the same name at the same position among the named ones;
+ * null when they disagree.
+ */
+PR.qeItemFor = function (qt, e) {
+    var mine = [];
+    var all = PR.timelineItems(PR.safe(function () { return app.project.activeSequence; }, null));
+    for (var i = 0; i < all.length; i++) {
+        if (all[i].kind === e.kind && all[i].track === e.track) mine.push(all[i]);
+    }
+    mine.sort(function (a, b) { return a.start - b.start; });
+    var index = -1;
+    for (i = 0; i < mine.length; i++) if (mine[i].nodeId === e.nodeId) index = i;
+    if (index < 0) return null;
+    var wanted = PR.safe(function () { return String(e.item.name); }, "");
+    var n = PR.safe(function () { return qt.numItems; }, 0);
+    var k = -1;
+    for (i = 0; i < n; i++) {
+        var q = qt.getItemAt(i);
+        var qn = PR.safe(function () { return String(q.name); }, "");
+        var qtype = PR.safe(function () { return String(q.type); }, "");
+        if (qn.length === 0 || qtype === "Empty") continue;
+        k++;
+        if (k === index) return (qn === wanted) ? q : null;
+    }
+    return null;
 };

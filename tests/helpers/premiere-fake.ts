@@ -139,6 +139,27 @@ export class FakeItem {
     if (this.media === null) throw new Error("no media");
     return this.media;
   }
+  /** Source in/out (seconds); null = not set. */
+  srcIn: number | null = null;
+  srcOut: number | null = null;
+  getInPoint(): { seconds: number } {
+    return { seconds: this.srcIn ?? 0 };
+  }
+  getOutPoint(): { seconds: number } {
+    return { seconds: this.srcOut ?? 10 };
+  }
+  setInPoint(seconds: number): void {
+    this.srcIn = seconds;
+  }
+  setOutPoint(seconds: number): void {
+    this.srcOut = seconds;
+  }
+  clearInPoint(): void {
+    this.srcIn = null;
+  }
+  clearOutPoint(): void {
+    this.srcOut = null;
+  }
   isOffline(): boolean {
     return this.offline;
   }
@@ -203,6 +224,21 @@ export function fakeProject(projectPath = String.raw`D:\Prove\Prova.prproj`) {
   markers.list.push(m1, m2);
   sequence.mgtRoot = root;
   const sequences: FakeSequence[] = [sequence];
+  const cloneSequence = (seq: FakeSequence): FakeSequence => {
+    const item = root.add(new FakeItem(seq.name + " Copy", { sequence: true }));
+    const copy = new FakeSequence(
+      seq.name + " Copy",
+      "seq-copy-" + String(++sequenceCounter),
+      item,
+      seq.video.length,
+      seq.audio.length,
+    );
+    copy.mgtRoot = root;
+    copy.cloner = cloneSequence;
+    sequences.push(copy);
+    return copy;
+  };
+  sequence.cloner = cloneSequence;
   return {
     name: "Prova.prproj",
     path: projectPath,
@@ -229,8 +265,31 @@ export function fakeProject(projectPath = String.raw`D:\Prove\Prova.prproj`) {
         at += FAKE_CLIP_SECONDS;
       }
       seq.mgtRoot = root;
+      seq.cloner = cloneSequence;
       sequences.push(seq);
       return seq;
+    },
+    imported: [] as string[],
+    importFiles(paths: string[], _suppress: boolean, target: FakeItem): boolean {
+      for (const p of paths) {
+        this.imported.push(p);
+        target.add(new FakeItem(p.split(/[\\/]/).pop()!, { media: p }));
+      }
+      return true;
+    },
+    importAEComps(_aep: string, names: string[], target: FakeItem): boolean {
+      for (const n of names) target.add(new FakeItem(n));
+      return true;
+    },
+    importAllAEComps(_aep: string, target: FakeItem): boolean {
+      target.add(new FakeItem("Comp 1"));
+      target.add(new FakeItem("Comp 2"));
+      return true;
+    },
+    openSequence(id: string): boolean {
+      const found = sequences.find((q) => q.sequenceID === id);
+      if (found) this.activeSequence = found;
+      return found !== undefined;
     },
     deleteSequence(seq: FakeSequence): void {
       sequences.splice(sequences.indexOf(seq), 1);
@@ -305,6 +364,18 @@ export class FakeTrackItem {
   getSpeed(): number {
     return 1;
   }
+  level = 0.17782793939114;
+  get components(): Record<string | number, unknown> {
+    if (!this.track.name.startsWith("A")) return coll([], "numItems");
+    const level = {
+      displayName: "Level",
+      getValue: () => this.level,
+      setValue: (v: number) => {
+        this.level = v;
+      },
+    };
+    return coll([{ displayName: "Volume", properties: coll([level], "numItems") }], "numItems");
+  }
   move(offset: unknown): void {
     const by = toSeconds(offset);
     this.startS += by;
@@ -338,14 +409,41 @@ export function fakeQe(project: { activeSequence: FakeSequence | null }, fps = 2
       }
     }
   };
+  // Like QE: a track's items in time order; addTransition centres it on the cut.
+  const qeTrack = (track: FakeTrack) => {
+    const sorted = () => [...track.items].sort((a, b) => a.startS - b.startS);
+    return {
+      razor: (tc: string) => cut(track, tc),
+      get numItems() {
+        return track.items.length;
+      },
+      getItemAt: (k: number) => {
+        const it = sorted()[k]!;
+        return {
+          name: it.name,
+          type: "Clip",
+          addTransition: (tr: { name: string }, atStart: boolean, tc: string) => {
+            const d = toSec(tc);
+            const at = atStart ? it.startS : it.endS;
+            track.transitionList.push({ name: tr.name, startS: at - d / 2, endS: at + d / 2 });
+            return true;
+          },
+        };
+      },
+    };
+  };
+  const byName = (name: string) =>
+    ["Cross Dissolve", "Dip to Black", "Constant Power"].includes(name) ? { name } : null;
   return {
     project: {
+      getVideoTransitionByName: byName,
+      getAudioTransitionByName: byName,
       getActiveSequence() {
         const seq = project.activeSequence!;
         return {
           name: seq.name,
-          getVideoTrackAt: (i: number) => ({ razor: (tc: string) => cut(seq.video[i]!, tc) }),
-          getAudioTrackAt: (i: number) => ({ razor: (tc: string) => cut(seq.audio[i]!, tc) }),
+          getVideoTrackAt: (i: number) => qeTrack(seq.video[i]!),
+          getAudioTrackAt: (i: number) => qeTrack(seq.audio[i]!),
         };
       },
     },
@@ -367,17 +465,54 @@ export class FakeTrack {
       "numItems",
     );
   }
+  muted = false;
+  locked = false;
+  targeted = false;
+  readonly transitionList: Array<{ name: string; startS: number; endS: number }> = [];
   isMuted(): boolean {
-    return false;
+    return this.muted;
   }
   isLocked(): boolean {
-    return false;
+    return this.locked;
+  }
+  isTargeted(): boolean {
+    return this.targeted;
+  }
+  setMute(v: number): void {
+    this.muted = v === 1;
+  }
+  setLocked(v: number): void {
+    this.locked = v === 1;
+  }
+  setTargeted(on: boolean): void {
+    this.targeted = on;
+  }
+  get transitions(): Record<string | number, unknown> {
+    return coll(
+      this.transitionList.map((t) => ({
+        name: t.name,
+        start: { seconds: t.startS },
+        end: { seconds: t.endS },
+        remove: () => {
+          this.transitionList.splice(this.transitionList.indexOf(t), 1);
+        },
+      })),
+      "numItems",
+    );
   }
   private targets(): FakeTrack[] {
     return this.linked ? [this, this.linked] : [this];
   }
   private lay(source: FakeItem, at: number): void {
-    for (const t of this.targets()) t.items.push(new FakeTrackItem(t, source, at));
+    for (const t of this.targets()) {
+      const item = new FakeTrackItem(t, source, at, { inS: source.srcIn ?? 0 });
+      if (source.srcIn !== null || source.srcOut !== null) {
+        const len = (source.srcOut ?? 10) - (source.srcIn ?? 0);
+        item.endS = at + len;
+        item.outS = item.inS + len;
+      }
+      t.items.push(item);
+    }
   }
   insertClip(source: FakeItem, time: unknown): void {
     const at = toSeconds(time);
@@ -440,6 +575,12 @@ export class FakeSequence {
   readonly markers = new FakeMarkers();
   /** The project root, for importMGT (set by fakeProject). */
   mgtRoot: FakeItem | null = null;
+  /** Set by fakeProject: how this sequence is cloned. */
+  cloner: ((seq: FakeSequence) => FakeSequence) | null = null;
+  clone(): boolean {
+    this.cloner!(this);
+    return true;
+  }
 
   /**
    * Like Premiere 26.3.2: lays a "Graphic" clip on video track v (0-based)

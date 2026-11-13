@@ -34,6 +34,14 @@ import { prClipEditTool, prClipRemoveTool, prRazorTool } from "./clip-tools.js";
 import { prProjectCheckTool } from "./check-tools.js";
 import { prMogrtAddTool } from "./title-tools.js";
 import { prExportTool, prFrameTool } from "./export-tools.js";
+import {
+  prAudioLevelTool,
+  prImportTool,
+  prSequenceDuplicateTool,
+  prSequenceOpenTool,
+  prTracksTool,
+  prTransitionTool,
+} from "./more-tools.js";
 
 const PREMIERE_INSTANCE_PARAM = z
   .string()
@@ -224,5 +232,11 @@ export const PREMIERE_TOOLS: AnyTool[] = [
   prMogrtAddTool,
   prExportTool,
   prSaveProjectTool,
+  prImportTool,
+  prSequenceDuplicateTool,
+  prSequenceOpenTool,
+  prTracksTool,
+  prTransitionTool,
+  prAudioLevelTool,
   prUndoLastTool,
 ].map((tool) => withPremiereInstance(tool as AnyTool));

@@ -19,12 +19,14 @@ const EXPECTED_TOOLS = [
   "ae_save_project",
   "ae_version_info",
   // Premiere Pro, read-only for now (src/premiere/tools.ts).
+  "pr_audio_level",
   "pr_bins",
   "pr_clip_edit",
   "pr_clip_remove",
   "pr_context",
   "pr_export",
   "pr_frame",
+  "pr_import",
   "pr_markers",
   "pr_mogrt_add",
   "pr_project_check",
@@ -33,8 +35,12 @@ const EXPECTED_TOOLS = [
   "pr_rename_items",
   "pr_save_project",
   "pr_sequence_create",
+  "pr_sequence_duplicate",
   "pr_sequence_info",
+  "pr_sequence_open",
   "pr_timeline_add",
+  "pr_tracks",
+  "pr_transition",
   "pr_undo_last",
 ];
 

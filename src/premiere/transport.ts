@@ -66,6 +66,12 @@ const PREMIERE_TITLES: Record<string, string> = {
   pr_frame: "guarda un fotogramma",
   pr_export: "esporta la sequenza",
   pr_save_project: "salva il progetto",
+  pr_import: "importa nel progetto",
+  pr_sequence_duplicate: "duplica la sequenza",
+  pr_sequence_open: "apre la sequenza",
+  pr_tracks: "tracce: muto, blocco, destinazione",
+  pr_transition: "aggiunge transizioni",
+  pr_audio_level: "volume delle clip",
   pr_undo_last: "annulla l'ultima modifica di Claude",
 };
 

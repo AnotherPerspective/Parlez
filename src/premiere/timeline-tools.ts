@@ -128,6 +128,17 @@ const TIMELINE_ADD_CODE = `
         var source = PR.itemByNodeId(c.nodeId).item;
         var at = (typeof c.time === "number") ? c.time : PR.trackEnd(seq, t);
         if (c.mode !== "insert" && at < PR.trackEnd(seq, t)) covered = true;
+        // A piece of the source: in/out on the project item for the placing,
+        // put back right after (an item with none reads as 0 / full length).
+        var srcIn = null;
+        var srcOut = null;
+        var usePiece = (typeof c.sourceIn === "number" || typeof c.sourceOut === "number");
+        if (usePiece) {
+            srcIn = PR.seconds(source.getInPoint());
+            srcOut = PR.seconds(source.getOutPoint());
+            if (typeof c.sourceIn === "number") source.setInPoint(c.sourceIn, 4);
+            if (typeof c.sourceOut === "number") source.setOutPoint(c.sourceOut, 4);
+        }
         var before = PR.timelineItems(seq);
         // Seconds first; some Premiere builds want a Time object instead.
         var tries = [at];
@@ -146,6 +157,12 @@ const TIMELINE_ADD_CODE = `
                 lastError = PR.errText(eAdd);
             }
             added = PR.newItems(before, PR.timelineItems(seq));
+        }
+        if (usePiece) {
+            source.clearInPoint(4);
+            source.clearOutPoint(4);
+            if (Math.abs(PR.seconds(source.getInPoint()) - srcIn) > 0.001) source.setInPoint(srcIn, 4);
+            if (Math.abs(PR.seconds(source.getOutPoint()) - srcOut) > 0.001) source.setOutPoint(srcOut, 4);
         }
         if (added.length === 0) {
             problems.push(String(c.nodeId) + ": " + (lastError || "Premiere non ha messo la clip in timeline"));
@@ -192,6 +209,7 @@ export const prTimelineAddTool = defineTool({
     "Put project clips (nodeIds from pr_project_info) on a Premiere Pro sequence's video track (1-based, " +
     "default V1; linked audio follows on its own). Without `time` a clip goes at the end of that track. " +
     'mode "overwrite" (default) lays it over what is there; "insert" pushes everything after it later. ' +
+    "sourceIn / sourceOut take only that piece of the clip (seconds into the source). " +
     "Overwriting where there are clips already needs confirm: true, only if the user asked. A restore point " +
     "is taken first; pr_undo_last removes every clip this call put down.",
   group: "premiere",
@@ -213,6 +231,16 @@ export const prTimelineAddTool = defineTool({
             .describe("Where, in seconds. Omit: at the end of the track."),
           track: z.number().int().min(1).max(99).optional().describe("Video track, 1 = V1."),
           mode: z.enum(["overwrite", "insert"]).optional(),
+          sourceIn: z
+            .number()
+            .min(0)
+            .optional()
+            .describe("Use the source from here (seconds into the clip)."),
+          sourceOut: z
+            .number()
+            .min(0)
+            .optional()
+            .describe("Use the source up to here (seconds into the clip)."),
         }),
       )
       .min(1)
