@@ -4,7 +4,7 @@ import type { ToolEffect } from "../policy.js";
 import { type AeTransport, type EvalResult, readOnlyTransport } from "../transport/AeTransport.js";
 import type { ToolResult } from "./types.js";
 
-export type ToolGroup = "inspect" | "document" | "render" | "operations";
+export type ToolGroup = "inspect" | "document" | "render" | "operations" | "premiere";
 
 // Deriving the handler's arg type through z.ZodObject (rather than mapping the
 // raw shape directly) makes `.optional()` fields optional KEYS, not

@@ -11,10 +11,13 @@ import { fileURLToPath } from "node:url";
 const repoRoot = resolve(fileURLToPath(import.meta.url), "../..");
 const outPath = join(repoRoot, "docs", "TOOLS.md");
 const distIndex = join(repoRoot, "dist", "tools", "index.js");
+const distPremiere = join(repoRoot, "dist", "premiere", "tools.js");
 
 let ALL_TOOLS;
 try {
   ({ ALL_TOOLS } = await import(new URL(`file://${distIndex}`).href));
+  const { PREMIERE_TOOLS } = await import(new URL(`file://${distPremiere}`).href);
+  ALL_TOOLS = [...ALL_TOOLS, ...PREMIERE_TOOLS];
 } catch (err) {
   console.error(`Failed to import ${distIndex}. Run \`npm run build\` first.\n\n${err.message}`);
   process.exit(1);
@@ -32,6 +35,11 @@ const GROUP_META = [
     id: "operations",
     title: "Operations",
     blurb: "Atomic operation dispatch — discover with `ae_catalog`, execute with `ae_do`.",
+  },
+  {
+    id: "premiere",
+    title: "Premiere Pro",
+    blurb: "Adobe® Premiere Pro® through the Parlez! panel (read-only for now).",
   },
 ];
 
