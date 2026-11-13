@@ -23,6 +23,8 @@ const EXPECTED_TOOLS = [
   "pr_clip_edit",
   "pr_clip_remove",
   "pr_context",
+  "pr_export",
+  "pr_frame",
   "pr_markers",
   "pr_mogrt_add",
   "pr_project_check",

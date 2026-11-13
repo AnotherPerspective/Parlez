@@ -9,6 +9,8 @@
 // time order, and start/end read as Time objects while accepting a number
 // of seconds on assignment.
 
+import { writeFileSync } from "node:fs";
+
 export const TPS = 254016000000;
 
 /** An object shaped like Premiere's collections: numItems / numTracks / numSequences and [i]. */
@@ -499,10 +501,50 @@ export class FakeSequence {
   getPlayerPosition(): { seconds: number } {
     return { seconds: 2.5 };
   }
-  getInPointAsTime(): { seconds: number } {
-    return { seconds: 0 };
+  /** In/out points as tick strings, like Premiere's Time.ticks. */
+  inTicks = "0";
+  outTicks = String(10 * TPS);
+  /** What exportAsMediaDirect was asked, for assertions. */
+  readonly exports: Array<{
+    out: string;
+    preset: string;
+    range: number;
+    inS: number;
+    outS: number;
+  }> = [];
+
+  getInPointAsTime(): { seconds: number; ticks: string } {
+    return { seconds: Number(this.inTicks) / TPS, ticks: this.inTicks };
   }
-  getOutPointAsTime(): { seconds: number } {
-    return { seconds: 10 };
+  getOutPointAsTime(): { seconds: number; ticks: string } {
+    return { seconds: Number(this.outTicks) / TPS, ticks: this.outTicks };
+  }
+  setInPoint(ticks: string): void {
+    this.inTicks = String(ticks);
+  }
+  setOutPoint(ticks: string): void {
+    this.outTicks = String(ticks);
+  }
+  /**
+   * Like Premiere 26.3.2: answers "No Error" and writes the file; a PNG
+   * preset writes an image sequence, so the frame lands in "<name>0.png".
+   */
+  exportAsMediaDirect(out: string, preset: string, range: number): string {
+    this.exports.push({
+      out,
+      preset,
+      range,
+      inS: Number(this.inTicks) / TPS,
+      outS: Number(this.outTicks) / TPS,
+    });
+    const target = /\.png$/i.test(out) ? out.replace(/\.png$/i, "0.png") : out;
+    writeFileSync(target, /\.png$/i.test(out) ? FAKE_PNG : "video");
+    return "No Error";
   }
 }
+
+/** A 1x1 PNG, enough to stand for an exported frame. */
+const FAKE_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);

@@ -15,6 +15,7 @@ import { PREMIERE_AGENT_JSX } from "../src/premiere/config.js";
 import { prUndoLastTool } from "../src/premiere/edit-tools.js";
 import { prSequenceCreateTool } from "../src/premiere/timeline-tools.js";
 import { prMogrtAddTool } from "../src/premiere/title-tools.js";
+import { prExportTool, prFrameTool } from "../src/premiere/export-tools.js";
 import { PremiereTransport } from "../src/premiere/transport.js";
 import type { ToolResult } from "../src/tools/types.js";
 import { type EsEngine, loadJsx, makeEngine } from "./helpers/extendscript-shim.js";
@@ -335,5 +336,47 @@ describe("pr_mogrt_add", () => {
       transport,
     );
     expect((missing.structuredContent as { error: { code: string } }).error.code).toBe("IO");
+  });
+});
+
+describe("pr_frame and pr_export", () => {
+  it("pr_frame renders one frame, shows it, and puts the in/out points back", async () => {
+    seq.inTicks = "123";
+    seq.outTicks = "456";
+    const res = await run(() => prFrameTool.handler({ time: 2, sequence: "Bozza" }, transport));
+    expect(res.isError, JSON.stringify(res.structuredContent)).toBe(false);
+    expect(res.content.map((c) => c.type)).toEqual(["text", "image"]);
+    const asked = seq.exports.at(-1)!;
+    expect(asked.range).toBe(1);
+    expect(asked.inS).toBe(2);
+    expect(asked.out).toMatch(/fotogramma-[0-9a-f]{8}\.png$/);
+    expect([seq.inTicks, seq.outTicks]).toEqual(["123", "456"]);
+  });
+
+  it("pr_export writes the file, and will not overwrite it without confirm", async () => {
+    const preset = path.join(tmp, "H264.epr");
+    writeFileSync(preset, "<preset/>", "utf8");
+    const out = path.join(tmp, "uscite", "Bozza.mp4");
+    const first = await run(() =>
+      prExportTool.handler({ outPath: out, preset, sequence: "Bozza", range: "inout" }, transport),
+    );
+    expect(first.isError, JSON.stringify(first.structuredContent)).toBe(false);
+    expect(seq.exports.at(-1)!.range).toBe(1);
+    const again = await run(() =>
+      prExportTool.handler({ outPath: out, preset, sequence: "Bozza" }, transport),
+    );
+    expect(JSON.stringify(again.structuredContent)).toContain("confirm: true");
+    const forced = await run(() =>
+      prExportTool.handler({ outPath: out, preset, sequence: "Bozza", confirm: true }, transport),
+    );
+    expect((forced.structuredContent as { overwritten: boolean }).overwritten).toBe(true);
+  });
+
+  it("pr_export refuses a missing preset before contacting Premiere", async () => {
+    const res = await prExportTool.handler(
+      { outPath: path.join(tmp, "x.mp4"), preset: path.join(tmp, "nope.epr") },
+      transport,
+    );
+    expect((res.structuredContent as { error: { code: string } }).error.code).toBe("IO");
   });
 });

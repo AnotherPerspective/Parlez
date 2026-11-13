@@ -63,6 +63,8 @@ const PREMIERE_TITLES: Record<string, string> = {
   pr_clip_remove: "toglie clip dalla timeline",
   pr_razor: "taglio con la lametta",
   pr_mogrt_add: "mette un titolo .mogrt",
+  pr_frame: "guarda un fotogramma",
+  pr_export: "esporta la sequenza",
   pr_undo_last: "annulla l'ultima modifica di Claude",
 };
 
