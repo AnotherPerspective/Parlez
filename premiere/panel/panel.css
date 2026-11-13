@@ -17,7 +17,8 @@ body {
   height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: "Adobe Clean", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  /* Tahoma first, like the After Effects panel (FONT_FAMILIES in jsx/panel.jsx). */
+  font-family: Tahoma, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   font-size: 11px;
   user-select: none;
 }
@@ -143,7 +144,8 @@ footer {
 
 footer a {
   color: var(--text);
-  font-size: 9px;
+  /* The After Effects panel sets the signature at 9 pt (ScriptUI points): 12 px on screen. */
+  font-size: 12px;
   text-decoration: none;
 }
 
