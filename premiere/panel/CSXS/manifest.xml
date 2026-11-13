@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Parlez! for Premiere Pro: the ON/OFF panel, which is also the agent that serves Claude's requests. -->
+<ExtensionManifest Version="7.0" ExtensionBundleId="com.anotherperspective.parlez" ExtensionBundleVersion="PARLEZ_VERSION"
+                   ExtensionBundleName="Parlez!"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ExtensionList>
+    <Extension Id="com.anotherperspective.parlez.panel" Version="PARLEZ_VERSION"/>
+  </ExtensionList>
+  <ExecutionEnvironment>
+    <HostList>
+      <Host Name="PPRO" Version="[24.0,99.9]"/>
+    </HostList>
+    <LocaleList>
+      <Locale Code="All"/>
+    </LocaleList>
+    <RequiredRuntimeList>
+      <RequiredRuntime Name="CSXS" Version="11.0"/>
+    </RequiredRuntimeList>
+  </ExecutionEnvironment>
+  <DispatchInfoList>
+    <Extension Id="com.anotherperspective.parlez.panel">
+      <DispatchInfo>
+        <Resources>
+          <MainPath>./index.html</MainPath>
+          <ScriptPath>./host/parlez-stub.jsx</ScriptPath>
+        </Resources>
+        <Lifecycle>
+          <AutoVisible>true</AutoVisible>
+        </Lifecycle>
+        <UI>
+          <Type>Panel</Type>
+          <Menu>Parlez!</Menu>
+          <Geometry>
+            <Size><Height>480</Height><Width>260</Width></Size>
+            <MinSize><Height>240</Height><Width>230</Width></MinSize>
+          </Geometry>
+        </UI>
+      </DispatchInfo>
+    </Extension>
+  </DispatchInfoList>
+</ExtensionManifest>

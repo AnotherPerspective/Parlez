@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <title>Parlez!</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <main id="panel">
+      <section class="head">
+        <button
+          id="block"
+          class="block"
+          type="button"
+          title="Accende o spegne Claude in Premiere Pro."
+        >
+          <img id="block-img" src="images/off.png" alt="OFF" />
+        </button>
+        <p id="status" class="status">Claude fermo</p>
+        <label
+          class="read-only"
+          title="Claude può guardare il progetto ma non modificarlo: le richieste che cambierebbero qualcosa vengono rifiutate."
+        >
+          <input id="read-only" type="checkbox" /> Sola lettura
+        </label>
+      </section>
+      <section class="history">
+        <h2
+          title="Le richieste più recenti di Claude in questa sessione: ora, cosa, esito, durata."
+        >
+          Ultime richieste
+        </h2>
+        <ol id="rows"></ol>
+      </section>
+      <section class="tail">
+        <div class="buttons">
+          <button
+            id="mailbox"
+            type="button"
+            title="Apre la cartella dove Claude e Premiere si scambiano le richieste."
+          >
+            Cassetta
+          </button>
+        </div>
+        <p id="notice" class="notice"></p>
+        <p id="counts" class="counts"></p>
+      </section>
+      <footer>
+        <a
+          id="credit"
+          href="#"
+          title="Another Perspective: https://www.anotherperspectivepictures.com"
+        >
+          Parlez! by Another Perspective
+        </a>
+      </footer>
+    </main>
+    <script src="panel.js"></script>
+  </body>
+</html>

@@ -40,6 +40,7 @@
   "files": [
     "dist",
     "jsx",
+    "premiere",
     "recipes",
     "fixtures",
     "LICENSE",

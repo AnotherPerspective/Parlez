@@ -20,6 +20,7 @@ import {
   resolvePullOnlyDefault,
 } from "../src/config.js";
 import { panelSource } from "../src/panel-install.js";
+import { CEP_BUNDLE_ID } from "../src/premiere/config.js";
 import {
   ACCEPTANCE_FILENAME,
   BUILTIN_NOTICES_SUMMARY,
@@ -704,5 +705,86 @@ describe("cli flags", () => {
       unknown: [],
     });
     expect(parseCliArgs(["doctor"])).toEqual({ command: "doctor", dryRun: false, unknown: [] });
+  });
+});
+
+describe("Premiere Pro in setup and doctor", () => {
+  async function addPremiere(m: FakeMachine, year: number): Promise<void> {
+    const dir = path.join(m.appsRoot, `Adobe Premiere Pro ${year}`);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, "Adobe Premiere Pro.exe"), "", "utf8");
+  }
+
+  function premiereMachine(debug: "1" | "0"): FakeMachine {
+    return fakeWindows({
+      premiereInstancesDir: path.join(tmp, "mailbox", "premiere"),
+      runCommand: async () => `    PlayerDebugMode    REG_SZ    ${debug}`,
+    });
+  }
+
+  const cepDir = () =>
+    path.join(tmp, "AppData", "Roaming", "Adobe", "CEP", "extensions", CEP_BUNDLE_ID);
+
+  it("installs the Premiere panel next to After Effects' and the doctor finds it", async () => {
+    const m = premiereMachine("1");
+    await addWindowsApp(m, 2026);
+    await addProfile(m, "26.5", "1");
+    await addPremiere(m, 2026);
+    const c = collect();
+
+    expect(await runSetup({}, c.out, m.env)).toBe(0);
+    expect(await exists(path.join(cepDir(), "CSXS", "manifest.xml"))).toBe(true);
+    const text = c.text();
+    expect(text).toContain("Premiere Pro 2026 trovato");
+    expect(text).toContain("installato il pannello Parlez! per Premiere");
+    expect(text).toContain("Riavvia Premiere Pro");
+    expect(text).toContain("Premiere Pro: pannello Parlez! installato e aggiornato");
+    expect(text).toContain("PlayerDebugMode = 1");
+    expect(text).toContain("nessun Premiere Pro collegato");
+  });
+
+  it("prints the command for CEP's debug mode when it is off, and counts it as left to do", async () => {
+    const m = premiereMachine("0");
+    await addWindowsApp(m, 2026);
+    await addProfile(m, "26.5", "1");
+    await addPremiere(m, 2026);
+    const c = collect();
+    expect(await runSetup({}, c.out, m.env)).toBe(1);
+    expect(c.text()).toContain(
+      String.raw`reg add HKCU\Software\Adobe\CSXS.12 /v PlayerDebugMode /t REG_SZ /d 1 /f`,
+    );
+  });
+
+  it("skips an unsupported Premiere and writes nothing for it", async () => {
+    const m = premiereMachine("1");
+    await addWindowsApp(m, 2026);
+    await addProfile(m, "26.5", "1");
+    await addPremiere(m, 2023);
+    const c = collect();
+    expect(await runSetup({}, c.out, m.env)).toBe(0);
+    expect(c.text()).toContain("Premiere Pro 2023 trovato ma non supportato");
+    expect(await exists(cepDir())).toBe(false);
+  });
+
+  it("without Premiere, setup says nothing about it", async () => {
+    const m = premiereMachine("1");
+    await addWindowsApp(m, 2026);
+    await addProfile(m, "26.5", "1");
+    const c = collect();
+    expect(await runSetup({}, c.out, m.env)).toBe(0);
+    expect(c.text()).not.toContain("Premiere");
+  });
+
+  it("the doctor reports a stale Premiere panel without changing it", async () => {
+    const m = premiereMachine("1");
+    await addWindowsApp(m, 2026);
+    await addProfile(m, "26.5", "1");
+    await addPremiere(m, 2026);
+    await runSetup({}, collect().out, m.env);
+    await fs.writeFile(path.join(cepDir(), "panel.js"), "// old", "utf8");
+    const c = collect();
+    expect(await runDoctor({}, c.out, m.env)).toBe(1);
+    expect(c.text()).toContain("pannello Parlez! da aggiornare");
+    expect(await fs.readFile(path.join(cepDir(), "panel.js"), "utf8")).toBe("// old");
   });
 });
