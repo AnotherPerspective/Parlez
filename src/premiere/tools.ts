@@ -22,7 +22,7 @@ import {
   livePremiereInstances,
   resolvePremiereTarget,
 } from "./transport.js";
-import { prMarkersTool, prUndoLastTool } from "./edit-tools.js";
+import { prBinsTool, prMarkersTool, prRenameItemsTool, prUndoLastTool } from "./edit-tools.js";
 
 const PREMIERE_INSTANCE_PARAM = z
   .string()
@@ -201,5 +201,7 @@ export const PREMIERE_TOOLS: AnyTool[] = [
   prProjectInfoTool,
   prSequenceInfoTool,
   prMarkersTool,
+  prBinsTool,
+  prRenameItemsTool,
   prUndoLastTool,
 ].map((tool) => withPremiereInstance(tool as AnyTool));

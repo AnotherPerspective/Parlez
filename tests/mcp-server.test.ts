@@ -19,9 +19,11 @@ const EXPECTED_TOOLS = [
   "ae_save_project",
   "ae_version_info",
   // Premiere Pro, read-only for now (src/premiere/tools.ts).
+  "pr_bins",
   "pr_context",
   "pr_markers",
   "pr_project_info",
+  "pr_rename_items",
   "pr_sequence_info",
   "pr_undo_last",
 ];

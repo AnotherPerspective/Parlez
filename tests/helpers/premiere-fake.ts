@@ -90,33 +90,101 @@ export class FakeMarkers {
   }
 }
 
-export function fakeProject(projectPath = "D:\\Prove\\Prova.prproj") {
-  const clip = {
-    name: "Intervista.mov",
-    type: 1,
-    nodeId: "n-clip",
-    isSequence: () => false,
-    getMediaPath: () => "D:\\Lavori\\Cliente Rossi\\Intervista.mov",
-    isOffline: () => false,
-    getColorLabel: () => 3,
-  };
-  const offline = {
-    name: "Drone.mp4",
-    type: 1,
-    nodeId: "n-drone",
-    isSequence: () => false,
-    getMediaPath: () => "D:/Lavori/Drone.mp4",
-    isOffline: () => true,
-    getColorLabel: () => 0,
-  };
-  const bin = {
-    name: "Girato",
-    type: 2,
-    nodeId: "n-bin",
-    isSequence: () => false,
-    children: coll([clip, offline], "numItems"),
-  };
-  const seqItem = { name: "Montaggio", type: 1, nodeId: "n-seq", isSequence: () => true };
+let nodeCounter = 0;
+
+/**
+ * A project item: clip, bin (type 2) or sequence item. Bins keep a live
+ * children collection, so createBin / moveBin / deleteBin show up in the
+ * next walk, the way Premiere's do.
+ */
+export class FakeItem {
+  name: string;
+  type: number;
+  nodeId: string;
+  parent: FakeItem | null = null;
+  readonly kids: FakeItem[] = [];
+  private label: number;
+  private media: string | null;
+  private offline: boolean;
+  private sequence: boolean;
+
+  constructor(
+    name: string,
+    opts: {
+      type?: number;
+      nodeId?: string;
+      media?: string;
+      offline?: boolean;
+      label?: number;
+      sequence?: boolean;
+    } = {},
+  ) {
+    this.name = name;
+    this.type = opts.type ?? 1;
+    this.nodeId = opts.nodeId ?? `node-${++nodeCounter}`;
+    this.media = opts.media ?? null;
+    this.offline = opts.offline ?? false;
+    this.label = opts.label ?? 0;
+    this.sequence = opts.sequence ?? false;
+  }
+  get children(): Record<string | number, unknown> {
+    return coll(this.kids, "numItems");
+  }
+  isSequence(): boolean {
+    return this.sequence;
+  }
+  getMediaPath(): string {
+    if (this.media === null) throw new Error("no media");
+    return this.media;
+  }
+  isOffline(): boolean {
+    return this.offline;
+  }
+  getColorLabel(): number {
+    return this.label;
+  }
+  setColorLabel(i: number): void {
+    this.label = i;
+  }
+  add(child: FakeItem): FakeItem {
+    child.parent = this;
+    this.kids.push(child);
+    return child;
+  }
+  createBin(name: string): FakeItem {
+    return this.add(new FakeItem(name, { type: 2 }));
+  }
+  moveBin(target: FakeItem): void {
+    if (this.parent) this.parent.kids.splice(this.parent.kids.indexOf(this), 1);
+    target.add(this);
+  }
+  deleteBin(): void {
+    if (this.type !== 2) throw new Error("not a bin");
+    if (this.parent) this.parent.kids.splice(this.parent.kids.indexOf(this), 1);
+    this.parent = null;
+  }
+  /** "Girato/Intervista.mov" - where the item sits now, for assertions. */
+  where(): string {
+    const parts: string[] = [this.name];
+    for (let up = this.parent; up && up.type !== 3; up = up.parent) parts.unshift(up.name);
+    return parts.join("/");
+  }
+}
+
+export function fakeProject(projectPath = String.raw`D:\Prove\Prova.prproj`) {
+  const root = new FakeItem("root", { type: 3, nodeId: "n-root" });
+  const bin = root.add(new FakeItem("Girato", { type: 2, nodeId: "n-bin" }));
+  const clip = bin.add(
+    new FakeItem("Intervista.mov", {
+      nodeId: "n-clip",
+      media: String.raw`D:\Lavori\Cliente Rossi\Intervista.mov`,
+      label: 3,
+    }),
+  );
+  bin.add(
+    new FakeItem("Drone.mp4", { nodeId: "n-drone", media: "D:/Lavori/Drone.mp4", offline: true }),
+  );
+  const seqItem = root.add(new FakeItem("Montaggio", { nodeId: "n-seq", sequence: true }));
   const trackItem = {
     name: "Intervista.mov",
     start: { seconds: 0 },
@@ -167,10 +235,11 @@ export function fakeProject(projectPath = "D:\\Prove\\Prova.prproj") {
   return {
     name: "Prova.prproj",
     path: projectPath,
-    rootItem: { children: coll([bin, seqItem], "numItems") },
+    rootItem: root,
     sequences: coll([sequence], "numSequences"),
     activeSequence: sequence,
-    /** For assertions: the sequence's markers. */
+    /** For assertions: the sequence's markers and the project's items. */
     markers,
+    items: { root, bin, clip, seqItem },
   };
 }

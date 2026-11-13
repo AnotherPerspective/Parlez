@@ -54,6 +54,8 @@ const PREMIERE_TITLES: Record<string, string> = {
   pr_project_info: "guarda il progetto",
   pr_sequence_info: "guarda la sequenza",
   pr_markers: "marker della sequenza",
+  pr_bins: "ordina nei bin",
+  pr_rename_items: "nomi ed etichette",
   pr_undo_last: "annulla l'ultima modifica di Claude",
 };
 

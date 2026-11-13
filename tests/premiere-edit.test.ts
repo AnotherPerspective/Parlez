@@ -12,11 +12,16 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { PREMIERE_AGENT_JSX } from "../src/premiere/config.js";
-import { prMarkersTool, prUndoLastTool } from "../src/premiere/edit-tools.js";
+import {
+  prBinsTool,
+  prMarkersTool,
+  prRenameItemsTool,
+  prUndoLastTool,
+} from "../src/premiere/edit-tools.js";
 import { PremiereTransport } from "../src/premiere/transport.js";
 import type { ToolResult } from "../src/tools/types.js";
 import { type EsEngine, loadJsx, makeEngine } from "./helpers/extendscript-shim.js";
-import { fakeProject } from "./helpers/premiere-fake.js";
+import { FakeItem, fakeProject } from "./helpers/premiere-fake.js";
 
 let tmp: string;
 let mailbox: string;
@@ -287,5 +292,115 @@ describe("the panel's Annulla button", () => {
     expect(recent.at(-2)).toMatchObject({ label: "pr_markers", undone: true });
     expect(recent.at(-1)).toMatchObject({ label: "pr_undo_last", outcome: "ok" });
     expect(agent.undoLast()).toMatchObject({ ok: false });
+  });
+});
+
+describe("pr_bins", () => {
+  it("creates nested bins and moves items in; undo moves them back and removes the new bins", async () => {
+    const agent = startAgent();
+    const { clip, seqItem, root } = project.items;
+    const res = await withPanel(agent, true, false, () =>
+      prBinsTool.handler(
+        {
+          create: ["Grafica"],
+          move: [
+            { nodeId: "n-clip", bin: "Girato/Interviste" },
+            { nodeId: "n-seq", bin: "Sequenze" },
+          ],
+        },
+        transport,
+      ),
+    );
+    const r = result(res);
+    expect(r).toMatchObject({ binsCreated: 3, missing: [], problems: [] });
+    expect(clip.where()).toBe("Girato/Interviste/Intervista.mov");
+    expect(seqItem.where()).toBe("Sequenze/Montaggio");
+    expect(root.kids.map((k) => k.name)).toEqual(["Girato", "Grafica", "Sequenze"]);
+
+    await withPanel(agent, true, false, () => prUndoLastTool.handler({}, transport));
+    expect(clip.where()).toBe("Girato/Intervista.mov");
+    expect(seqItem.where()).toBe("Montaggio");
+    expect(root.kids.map((k) => k.name).sort()).toEqual(["Girato", "Montaggio"]);
+    expect(project.items.bin.kids.map((k) => k.name)).toEqual(["Drone.mp4", "Intervista.mov"]);
+  });
+
+  it("does not move into a clip, and reports unknown nodeIds", async () => {
+    const agent = startAgent();
+    const res = await withPanel(agent, true, false, () =>
+      prBinsTool.handler(
+        {
+          move: [
+            { nodeId: "n-drone", bin: "Girato/Intervista.mov" },
+            { nodeId: "nope", bin: "X" },
+          ],
+        },
+        transport,
+      ),
+    );
+    const r = result(res);
+    expect((r.problems as string[])[0]).toContain("Girato/Intervista.mov");
+    expect(r.missing).toEqual(["nope"]);
+    expect(project.items.bin.kids.map((k) => k.name)).toEqual(["Intervista.mov", "Drone.mp4"]);
+  });
+
+  it("leaves a bin it created when undo finds something else inside", async () => {
+    const agent = startAgent();
+    await withPanel(agent, true, false, () =>
+      prBinsTool.handler({ move: [{ nodeId: "n-clip", bin: "Nuovo" }] }, transport),
+    );
+    const nuovo = project.items.root.kids.find((k) => k.name === "Nuovo")!;
+    nuovo.add(new FakeItem("Mio.mov"));
+    const undo = await withPanel(agent, true, false, () => prUndoLastTool.handler({}, transport));
+    expect(result(undo)).toMatchObject({ undone: 1 });
+    expect((result(undo).failed as Array<{ why: string }>)[0]!.why).toContain("non");
+    expect(project.items.clip.where()).toBe("Girato/Intervista.mov");
+    expect(nuovo.kids.map((k) => k.name)).toEqual(["Mio.mov"]);
+  });
+});
+
+describe("pr_rename_items", () => {
+  it("renaming needs confirm: true; labels do not", async () => {
+    const agent = startAgent();
+    const refused = await withPanel(agent, true, false, () =>
+      prRenameItemsTool.handler({ items: [{ nodeId: "n-clip", name: "Int_01" }] }, transport),
+    );
+    expect(refused.isError).toBe(true);
+    expect(project.items.clip.name).toBe("Intervista.mov");
+
+    const label = await withPanel(agent, true, false, () =>
+      prRenameItemsTool.handler({ items: [{ nodeId: "n-clip", label: 7 }] }, transport),
+    );
+    expect(result(label).changed).toEqual([{ nodeId: "n-clip", label: 7 }]);
+    expect(project.items.clip.getColorLabel()).toBe(7);
+  });
+
+  it("renames and relabels, and undo puts both back", async () => {
+    const agent = startAgent();
+    const res = await withPanel(agent, true, false, () =>
+      prRenameItemsTool.handler(
+        {
+          items: [
+            { nodeId: "n-clip", name: "INT_01", label: 5 },
+            { nodeId: "n-seq", name: "Montaggio v2" },
+          ],
+          confirm: true,
+        },
+        transport,
+      ),
+    );
+    expect(result(res).changed).toEqual([
+      { nodeId: "n-clip", from: "Intervista.mov", name: "INT_01", label: 5 },
+      { nodeId: "n-seq", from: "Montaggio", name: "Montaggio v2" },
+    ]);
+    expect([project.items.clip.name, project.items.seqItem.name]).toEqual([
+      "INT_01",
+      "Montaggio v2",
+    ]);
+    await withPanel(agent, true, false, () => prUndoLastTool.handler({}, transport));
+    expect([
+      project.items.clip.name,
+      project.items.seqItem.name,
+      project.items.clip.getColorLabel(),
+    ]).toEqual(["Intervista.mov", "Montaggio", 3]);
   });
 });

@@ -4,7 +4,7 @@ Generated from `src/tools/**` via `npm run docs:tools` — do not edit by hand. 
 
 `ae_do`'s operation registry (`layer.*`, `keyframe.*`, …) is discoverable at runtime via `ae_catalog` and is **not** listed in this file.
 
-16 tools across 5 groups.
+18 tools across 5 groups.
 
 ## Inspect
 
@@ -55,4 +55,6 @@ Adobe® Premiere Pro® through the Parlez! panel (read-only for now).
 | `pr_project_info`  | Premiere Pro project overview: name and file, every bin and item (clips, sequences, bins) with the bin it sits in, which media are offline, and every sequence with size, fps and duration.                                                                                    |
 | `pr_sequence_info` | One Premiere Pro sequence in detail: settings (size, fps, duration), playhead and in/out points, every video and audio track with its clips (name, start/end on the timeline, in/out in the source, source item), and the sequence markers (name, comment, start/end, colour). |
 | `pr_markers`       | Add, change or remove markers on a Premiere Pro sequence (default: the active one), in one request.                                                                                                                                                                            |
+| `pr_bins`          | Organise the Premiere Pro project panel: create bins (paths like "Girato/Interviste", missing levels are created) and move items (clips, sequences, bins - by nodeId from pr_project_info) into a bin, which is created when missing.                                          |
+| `pr_rename_items`  | Rename Premiere Pro project items (clips, bins, sequences - by nodeId from pr_project_info) and/or set their colour label (0-15, Premiere's label order).                                                                                                                      |
 | `pr_undo_last`     | Take back Claude's last change in Premiere Pro - the whole request, all its steps - the way the panel's Annulla button does.                                                                                                                                                   |

@@ -231,3 +231,175 @@ export const prUndoLastTool = defineTool({
       }),
     ),
 });
+
+const BINS_CODE = `
+    var p = payload;
+    var createdIds = [];
+    var moveSteps = [];
+    var moved = [];
+    var missing = [];
+    var problems = [];
+    var i;
+    for (i = 0; i < p.create.length; i++) {
+        if (PR.binByPath(p.create[i], createdIds) === null) {
+            problems.push(p.create[i] + ": sul percorso c'e' un elemento che non e' un bin");
+        }
+    }
+    for (i = 0; i < p.move.length; i++) {
+        var mv = p.move[i];
+        var found = PR.itemByNodeId(mv.nodeId);
+        if (!found) { missing.push(mv.nodeId); continue; }
+        var target = PR.binByPath(mv.bin, createdIds);
+        if (target === null) {
+            problems.push(mv.bin + ": sul percorso c'e' un elemento che non e' un bin");
+            continue;
+        }
+        if (found.parent === target) continue;
+        var from = PR.parentKey(found.parent);
+        found.item.moveBin(target);
+        moveSteps.push({ kind: "item.moved", nodeId: String(mv.nodeId), fromBin: from });
+        moved.push({ name: PR.safe(function () { return String(found.item.name); }, null), from: found.bin, to: mv.bin });
+    }
+    // Bins first: taken back last, once the items moved into them are out again.
+    var steps = [];
+    for (i = 0; i < createdIds.length; i++) steps.push({ kind: "bin.created", nodeId: createdIds[i] });
+    for (i = 0; i < moveSteps.length; i++) steps.push(moveSteps[i]);
+    PR.pushUndo("pr_bins", steps);
+    return {
+        binsCreated: createdIds.length,
+        moved: moved,
+        missing: missing,
+        problems: problems,
+        undo: steps.length > 0 ? "pr_undo_last (o il bottone Annulla del pannello) annulla tutta questa richiesta" : null
+    };
+`;
+
+export const prBinsTool = defineTool({
+  name: "pr_bins",
+  title: "Premiere bins",
+  description:
+    'Organise the Premiere Pro project panel: create bins (paths like "Girato/Interviste", missing levels are ' +
+    "created) and move items (clips, sequences, bins - by nodeId from pr_project_info) into a bin, which is " +
+    "created when missing. Nothing is renamed or deleted. A restore point is taken first; pr_undo_last moves " +
+    "everything back and removes the bins it created (if empty).",
+  group: "premiere",
+  blockedInReadOnly: true,
+  effect: "write",
+  inputShape: {
+    create: z
+      .array(z.string().min(1).max(500))
+      .max(200)
+      .optional()
+      .describe("Bin paths to create."),
+    move: z
+      .array(
+        z.object({
+          nodeId: z.string().describe("The item's nodeId, from pr_project_info."),
+          bin: z
+            .string()
+            .min(1)
+            .max(500)
+            .describe('Destination bin path, e.g. "Girato/Interviste".'),
+        }),
+      )
+      .max(2000)
+      .optional(),
+  },
+  handler: async (args, transport) => {
+    const create = args.create ?? [];
+    const move = args.move ?? [];
+    if (create.length + move.length === 0) {
+      return errorResult("INVALID_ARGS", "Niente da fare: indica create o move.");
+    }
+    return runWithCheckpoint(transport, {
+      code: BINS_CODE,
+      payload: { create, move },
+      label: "pr_bins",
+    });
+  },
+});
+
+const RENAME_CODE = `
+    var p = payload;
+    var steps = [];
+    var changed = [];
+    var missing = [];
+    for (var i = 0; i < p.items.length; i++) {
+        var it = p.items[i];
+        var found = PR.itemByNodeId(it.nodeId);
+        if (!found) { missing.push(it.nodeId); continue; }
+        var entry = { nodeId: String(it.nodeId) };
+        if (typeof it.name === "string") {
+            var before = String(found.item.name);
+            if (before !== it.name) {
+                found.item.name = it.name;
+                steps.push({ kind: "item.renamed", nodeId: String(it.nodeId), before: before });
+                entry.from = before;
+                entry.name = it.name;
+            }
+        }
+        if (typeof it.label === "number") {
+            var was = PR.safe(function () { return found.item.getColorLabel(); }, null);
+            if (was !== it.label) {
+                found.item.setColorLabel(it.label);
+                if (typeof was === "number") steps.push({ kind: "item.labeled", nodeId: String(it.nodeId), before: was });
+                entry.label = it.label;
+            }
+        }
+        changed.push(entry);
+    }
+    PR.pushUndo("pr_rename_items", steps);
+    return {
+        changed: changed,
+        missing: missing,
+        undo: steps.length > 0 ? "pr_undo_last (o il bottone Annulla del pannello) annulla tutta questa richiesta" : null
+    };
+`;
+
+export const prRenameItemsTool = defineTool({
+  name: "pr_rename_items",
+  title: "Premiere item names and labels",
+  description:
+    "Rename Premiere Pro project items (clips, bins, sequences - by nodeId from pr_project_info) and/or set " +
+    "their colour label (0-15, Premiere's label order). Renaming needs confirm: true and is done ONLY when the " +
+    "user asked for those names; colour labels need no confirm. A restore point is taken first; pr_undo_last " +
+    "puts back the old names and labels.",
+  group: "premiere",
+  blockedInReadOnly: true,
+  effect: "write",
+  inputShape: {
+    items: z
+      .array(
+        z.object({
+          nodeId: z.string(),
+          name: z.string().min(1).max(500).optional(),
+          label: z.number().int().min(0).max(15).optional(),
+        }),
+      )
+      .min(1)
+      .max(2000),
+    confirm: z
+      .boolean()
+      .optional()
+      .describe(
+        "Required (true) when any name changes; pass it only when the user asked for the renaming.",
+      ),
+  },
+  handler: async (args, transport) => {
+    const renames = args.items.filter((i) => typeof i.name === "string").length;
+    if (renames > 0 && args.confirm !== true) {
+      return errorResult(
+        "INVALID_ARGS",
+        `Rinominare ${renames} elementi cambia nomi che l'utente usa: serve confirm: true, e solo se l'utente l'ha chiesto.`,
+        {
+          hint: "Mostra all'utente i nomi vecchi e nuovi, chiedi l'ok, poi richiama con confirm: true.",
+        },
+      );
+    }
+    return runWithCheckpoint(transport, {
+      code: RENAME_CODE,
+      payload: { items: args.items },
+      label: "pr_rename_items",
+    });
+  },
+});

@@ -399,6 +399,35 @@ PR.undoStep = function (step) {
         PR.setMarker(m, step.before);
         return null;
     }
+    var found;
+    if (step.kind === "item.renamed") {
+        found = PR.itemByNodeId(step.nodeId);
+        if (!found) return "elemento non trovato";
+        found.item.name = step.before;
+        return null;
+    }
+    if (step.kind === "item.labeled") {
+        found = PR.itemByNodeId(step.nodeId);
+        if (!found) return "elemento non trovato";
+        found.item.setColorLabel(step.before);
+        return null;
+    }
+    if (step.kind === "item.moved") {
+        found = PR.itemByNodeId(step.nodeId);
+        if (!found) return "elemento non trovato";
+        var back = (step.fromBin === "ROOT") ? { item: app.project.rootItem } : PR.itemByNodeId(step.fromBin);
+        if (!back) return "bin di partenza non trovato";
+        found.item.moveBin(back.item);
+        return null;
+    }
+    if (step.kind === "bin.created") {
+        found = PR.itemByNodeId(step.nodeId);
+        if (!found) return "bin già tolto";
+        var left = PR.safe(function () { return found.item.children.numItems; }, 0);
+        if (left > 0) return "il bin creato non è vuoto: lasciato al suo posto";
+        found.item.deleteBin();
+        return null;
+    }
     return "passo sconosciuto: " + String(step.kind);
 };
 
@@ -424,4 +453,78 @@ PR.undoLast = function () {
         else failed.push({ kind: String(record.steps[i].kind), why: why });
     }
     return { ok: true, label: record.label, undone: undone, failed: failed };
+};
+
+// --- Project items: find, bins, names, labels -----------------------------
+
+/**
+ * Visit every item under the project root, depth first: fn(item, parent,
+ * binPath). fn returning true stops the walk.
+ */
+PR.walkItems = function (fn) {
+    function walk(parent, binPath) {
+        var children = PR.safe(function () { return parent.children; }, null);
+        var n = PR.safe(function () { return children.numItems; }, 0);
+        for (var i = 0; i < n; i++) {
+            var item = PR.safe(function () { return children[i]; }, null);
+            if (item === null) continue;
+            if (fn(item, parent, binPath) === true) return true;
+            if (PR.itemKind(item) === "bin") {
+                var name = PR.safe(function () { return String(item.name); }, "");
+                if (walk(item, binPath.length > 0 ? binPath + "/" + name : name) === true) return true;
+            }
+        }
+        return false;
+    }
+    walk(app.project.rootItem, "");
+};
+
+/** { item, parent, bin } for the item with this nodeId, or null. */
+PR.itemByNodeId = function (nodeId) {
+    var hit = null;
+    PR.walkItems(function (item, parent, binPath) {
+        if (PR.safe(function () { return String(item.nodeId); }, null) === String(nodeId)) {
+            hit = { item: item, parent: parent, bin: binPath };
+            return true;
+        }
+        return false;
+    });
+    return hit;
+};
+
+/** nodeId of an item's parent bin, "ROOT" for the project root. */
+PR.parentKey = function (parent) {
+    if (parent === app.project.rootItem) return "ROOT";
+    return PR.safe(function () { return String(parent.nodeId); }, "ROOT");
+};
+
+/**
+ * The bin at "A/B/C" under the root, creating what is missing. Every bin
+ * created is appended to `created` (its nodeId), so it can be taken back.
+ * Returns the bin, or null when a name on the way is a clip, not a bin.
+ */
+PR.binByPath = function (binPath, created) {
+    var parts = String(binPath).split("/");
+    var cur = app.project.rootItem;
+    for (var p = 0; p < parts.length; p++) {
+        var want = parts[p].replace(/^s+|s+$/g, "");
+        if (want.length === 0) continue;
+        var next = null;
+        var children = PR.safe(function () { return cur.children; }, null);
+        var n = PR.safe(function () { return children.numItems; }, 0);
+        for (var i = 0; i < n; i++) {
+            var c = PR.safe(function () { return children[i]; }, null);
+            if (c !== null && PR.safe(function () { return String(c.name); }, "") === want) {
+                if (PR.itemKind(c) !== "bin") return null;
+                next = c;
+                break;
+            }
+        }
+        if (next === null) {
+            next = cur.createBin(want);
+            created.push(String(next.nodeId));
+        }
+        cur = next;
+    }
+    return cur;
 };
