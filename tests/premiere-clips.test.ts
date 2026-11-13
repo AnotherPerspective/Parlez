@@ -14,10 +14,11 @@ import { prClipEditTool, prClipRemoveTool, prRazorTool } from "../src/premiere/c
 import { PREMIERE_AGENT_JSX } from "../src/premiere/config.js";
 import { prUndoLastTool } from "../src/premiere/edit-tools.js";
 import { prSequenceCreateTool } from "../src/premiere/timeline-tools.js";
+import { prMogrtAddTool } from "../src/premiere/title-tools.js";
 import { PremiereTransport } from "../src/premiere/transport.js";
 import type { ToolResult } from "../src/tools/types.js";
 import { type EsEngine, loadJsx, makeEngine } from "./helpers/extendscript-shim.js";
-import { type FakeSequence, fakeProject, fakeQe } from "./helpers/premiere-fake.js";
+import { FakeItem, type FakeSequence, fakeProject, fakeQe } from "./helpers/premiere-fake.js";
 
 let tmp: string;
 let project: ReturnType<typeof fakeProject>;
@@ -247,5 +248,92 @@ describe("pr_project_check", () => {
     expect(tl.gaps).toEqual([{ track: "V1", from: 8, to: 15, seconds: 7 }]);
     expect(tl.switchedOff).toHaveLength(1);
     expect(JSON.stringify(v1())).toBe(before);
+  });
+});
+
+describe("pr_mogrt_add", () => {
+  function template(name: string): string {
+    const file = path.join(tmp, name);
+    writeFileSync(file, "mogrt", "utf8");
+    return file;
+  }
+
+  it("places a Premiere-made title, says its text cannot be set, and undo removes it and its media", async () => {
+    const res = await run(() =>
+      prMogrtAddTool.handler(
+        {
+          sequence: "Bozza",
+          file: template("Titolo.mogrt"),
+          time: 2,
+          track: 2,
+          texts: { Titolo: "Ciao" },
+        },
+        transport,
+      ),
+    );
+    const r = result(res);
+    expect((r.placed as Array<{ track: number; start: number }>)[0]).toMatchObject({
+      track: 2,
+      start: 2,
+    });
+    expect(r.projectItemsAdded).toBe(2);
+    expect(r.editableParams).toEqual([]);
+    expect((r.texts as { missing: string[]; note: string }).note).toContain("Grafica essenziale");
+    expect(project.items.root.kids.map((k) => k.name)).toContain("Motion Graphics Template Media");
+
+    await run(() => prUndoLastTool.handler({}, transport));
+    expect(seq.video[1]!.items).toHaveLength(0);
+    expect(project.items.root.kids.map((k) => k.name)).not.toContain(
+      "Motion Graphics Template Media",
+    );
+    expect(project.items.root.kids.map((k) => k.name)).not.toContain("Parlez - da togliere");
+  });
+
+  it("sets the text of an After Effects-made template inside its JSON value", async () => {
+    const res = await run(() =>
+      prMogrtAddTool.handler(
+        {
+          sequence: "Bozza",
+          file: template("AE titolo.mogrt"),
+          time: 1,
+          texts: { Titolo: "Benvenuti", Altro: "x" },
+        },
+        transport,
+      ),
+    );
+    const r = result(res);
+    expect(r.editableParams).toEqual(["Titolo"]);
+    expect(r.texts).toMatchObject({ set: ["Titolo"], missing: ["Altro"], note: null });
+    const placed = seq.video[1]!.items[0] as unknown as { mgtValue: () => string };
+    expect(JSON.parse(placed.mgtValue())).toEqual({ textEditValue: "Benvenuti", fontSize: 80 });
+  });
+
+  it("only deletes media it added: a template bin that holds the user's things stays", async () => {
+    await run(() =>
+      prMogrtAddTool.handler(
+        { sequence: "Bozza", file: template("Uno.mogrt"), time: 1 },
+        transport,
+      ),
+    );
+    const bin = project.items.root.kids.find((k) => k.name === "Motion Graphics Template Media")!;
+    bin.add(new FakeItem("Mio logo.png"));
+    await run(() =>
+      prMogrtAddTool.handler(
+        { sequence: "Bozza", file: template("Due.mogrt"), time: 6 },
+        transport,
+      ),
+    );
+    await run(() => prUndoLastTool.handler({}, transport));
+    expect(bin.kids.map((k) => k.name)).toEqual(["Logo_Dummy.png", "Mio logo.png"]);
+  });
+
+  it("refuses a file that is not a .mogrt, or that does not exist, before contacting Premiere", async () => {
+    const wrong = await prMogrtAddTool.handler({ file: template("x.mov"), time: 1 }, transport);
+    expect(wrong.isError).toBe(true);
+    const missing = await prMogrtAddTool.handler(
+      { file: path.join(tmp, "nope.mogrt"), time: 1 },
+      transport,
+    );
+    expect((missing.structuredContent as { error: { code: string } }).error.code).toBe("IO");
   });
 });

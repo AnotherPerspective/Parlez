@@ -199,6 +199,7 @@ export function fakeProject(projectPath = String.raw`D:\Prove\Prova.prproj`) {
   m2.end = 3;
   m2.setColorByIndex(4);
   markers.list.push(m1, m2);
+  sequence.mgtRoot = root;
   const sequences: FakeSequence[] = [sequence];
   return {
     name: "Prova.prproj",
@@ -221,6 +222,7 @@ export function fakeProject(projectPath = String.raw`D:\Prove\Prova.prproj`) {
         seq.video[0]!.overwriteClip(source, at);
         at += FAKE_CLIP_SECONDS;
       }
+      seq.mgtRoot = root;
       sequences.push(seq);
       return seq;
     },
@@ -430,6 +432,46 @@ export class FakeSequence {
   readonly video: FakeTrack[];
   readonly audio: FakeTrack[];
   readonly markers = new FakeMarkers();
+  /** The project root, for importMGT (set by fakeProject). */
+  mgtRoot: FakeItem | null = null;
+
+  /**
+   * Like Premiere 26.3.2: lays a "Graphic" clip on video track v (0-based)
+   * and adds the template's media to a "Motion Graphics Template Media" bin.
+   * A path containing "AE" stands for an After Effects-made template, whose
+   * text parameter "Titolo" is reachable through getMGTComponent().
+   */
+  importMGT(file: string, ticks: string, v: number): FakeTrackItem {
+    const root = this.mgtRoot!;
+    let bin = root.kids.find((k) => k.name === "Motion Graphics Template Media");
+    if (!bin) bin = root.createBin("Motion Graphics Template Media");
+    bin.add(new FakeItem("Logo_Dummy.png", { media: "C:/x/Logo_Dummy.png" }));
+    const source = new FakeItem("Graphic");
+    const at = Number(ticks) / TPS;
+    const item = new FakeTrackItem(this.video[v]!, source, at);
+    this.video[v]!.items.push(item);
+    const aeMade = file.includes("AE");
+    let value = JSON.stringify({ textEditValue: "Testo", fontSize: 80 });
+    (item as unknown as { getMGTComponent: () => unknown }).getMGTComponent = () =>
+      aeMade
+        ? {
+            properties: coll(
+              [
+                {
+                  displayName: "Titolo",
+                  getValue: () => value,
+                  setValue: (x: string) => {
+                    value = x;
+                  },
+                },
+              ],
+              "numItems",
+            ),
+          }
+        : null;
+    (item as unknown as { mgtValue: () => string }).mgtValue = () => value;
+    return item;
+  }
   projectItem: FakeItem;
 
   constructor(name: string, id: string, item: FakeItem, videoTracks: number, audioTracks: number) {

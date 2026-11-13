@@ -479,6 +479,9 @@ PR.undoStep = function (step) {
         }
         return back > 0 ? null : "clip non trovate";
     }
+    if (step.kind === "project.items.created") {
+        return PR.deleteProjectItems(step.nodeIds);
+    }
     if (step.kind === "sequence.created") {
         seq = PR.sequenceById(step.sequenceID);
         if (!seq) return "sequenza gi\u00e0 tolta";
@@ -742,4 +745,86 @@ PR.timecode = function (seconds, fps) {
     function two(n) { return (n < 10 ? "0" : "") + String(n); }
     return two(Math.floor(totalSeconds / 3600)) + ":" + two(Math.floor(totalSeconds / 60) % 60) + ":" +
         two(totalSeconds % 60) + ":" + two(ff);
+};
+
+/** nodeIds of every project item, as a lookup object ("k" + nodeId). */
+PR.projectItemIds = function () {
+    var ids = {};
+    PR.walkItems(function (item) {
+        var id = PR.safe(function () { return String(item.nodeId); }, null);
+        if (id !== null) ids["k" + id] = true;
+        return false;
+    });
+    return ids;
+};
+
+/** nodeIds of project items not in `before` (from PR.projectItemIds). */
+PR.newProjectItems = function (before) {
+    var out = [];
+    PR.walkItems(function (item) {
+        var id = PR.safe(function () { return String(item.nodeId); }, null);
+        if (id !== null && !before.hasOwnProperty("k" + id)) out.push(id);
+        return false;
+    });
+    return out;
+};
+
+/**
+ * Delete project items this program created. Premiere's scripting deletes
+ * bins (with their content) but not single items, so the items are moved
+ * into a bin of their own and that bin is deleted. A created bin is deleted
+ * whole only when everything in it was created too; otherwise it stays.
+ * Returns null when done, else why not.
+ */
+PR.deleteProjectItems = function (nodeIds) {
+    var mine = {};
+    var i;
+    for (i = 0; i < nodeIds.length; i++) mine["k" + nodeIds[i]] = true;
+    var loose = [];
+    var bins = [];
+    for (i = 0; i < nodeIds.length; i++) {
+        var f = PR.itemByNodeId(nodeIds[i]);
+        if (!f) continue;
+        var parentMine = mine.hasOwnProperty("k" + PR.safe(function () { return String(f.parent.nodeId); }, ""));
+        if (parentMine) continue;
+        if (PR.itemKind(f.item) === "bin") bins.push(f.item);
+        else loose.push(f.item);
+    }
+    var kept = 0;
+    for (i = 0; i < bins.length; i++) {
+        var foreign = false;
+        var bin = bins[i];
+        PR.walkItems(function (item, parent) {
+            if (PR.sameItem(parent, bin) && !mine.hasOwnProperty("k" + PR.safe(function () { return String(item.nodeId); }, ""))) foreign = true;
+            return false;
+        });
+        if (foreign) { kept++; continue; }
+        bin.deleteBin();
+    }
+    if (loose.length > 0) {
+        var trash = app.project.rootItem.createBin("Parlez - da togliere");
+        for (i = 0; i < loose.length; i++) loose[i].moveBin(trash);
+        trash.deleteBin();
+    }
+    return kept > 0 ? "un bin creato contiene anche altro: lasciato al suo posto" : null;
+};
+
+/**
+ * Set a text parameter of an After Effects-made template. Its value is
+ * either plain text or a JSON document with the text in textEditValue.
+ */
+PR.setTextParam = function (prop, text) {
+    var current = PR.safe(function () { return String(prop.getValue()); }, "");
+    var doc = null;
+    try {
+        doc = JSON.parse(current);
+    } catch (eJson) {
+        doc = null;
+    }
+    if (doc !== null && typeof doc === "object" && doc.hasOwnProperty("textEditValue")) {
+        doc.textEditValue = text;
+        prop.setValue(JSON.stringify(doc), true);
+    } else {
+        prop.setValue(text, true);
+    }
 };
