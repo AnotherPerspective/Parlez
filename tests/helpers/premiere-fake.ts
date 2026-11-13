@@ -203,7 +203,11 @@ export function fakeProject(projectPath = String.raw`D:\Prove\Prova.prproj`) {
   return {
     name: "Prova.prproj",
     path: projectPath,
-    rootItem: root,
+    // Like Premiere: every read hands out a new wrapper, so === never matches
+    // two reads of the same item (the agent must compare nodeIds).
+    get rootItem(): FakeItem {
+      return Object.create(root) as FakeItem;
+    },
     get sequences() {
       return coll(sequences, "numSequences");
     },

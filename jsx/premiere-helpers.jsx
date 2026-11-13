@@ -415,16 +415,19 @@ PR.undoStep = function (step) {
     if (step.kind === "item.moved") {
         found = PR.itemByNodeId(step.nodeId);
         if (!found) return "elemento non trovato";
-        var back = (step.fromBin === "ROOT") ? { item: app.project.rootItem } : PR.itemByNodeId(step.fromBin);
+        var rootKey = PR.safe(function () { return String(app.project.rootItem.nodeId); }, null);
+        var back = (step.fromBin === "ROOT" || step.fromBin === rootKey)
+            ? { item: app.project.rootItem }
+            : PR.itemByNodeId(step.fromBin);
         if (!back) return "bin di partenza non trovato";
         found.item.moveBin(back.item);
         return null;
     }
     if (step.kind === "bin.created") {
         found = PR.itemByNodeId(step.nodeId);
-        if (!found) return "bin già tolto";
+        if (!found) return "bin gi\u00e0 tolto";
         var left = PR.safe(function () { return found.item.children.numItems; }, 0);
-        if (left > 0) return "il bin creato non è vuoto: lasciato al suo posto";
+        if (left > 0) return "il bin creato non \u00e8 vuoto: lasciato al suo posto";
         found.item.deleteBin();
         return null;
     }
@@ -439,11 +442,11 @@ PR.undoStep = function (step) {
             hit.item.remove(step.ripple === true, false);
             gone++;
         }
-        return gone > 0 ? null : "clip già tolte";
+        return gone > 0 ? null : "clip gi\u00e0 tolte";
     }
     if (step.kind === "sequence.created") {
         seq = PR.sequenceById(step.sequenceID);
-        if (!seq) return "sequenza già tolta";
+        if (!seq) return "sequenza gi\u00e0 tolta";
         app.project.deleteSequence(seq);
         return null;
     }
@@ -512,8 +515,22 @@ PR.itemByNodeId = function (nodeId) {
 };
 
 /** nodeId of an item's parent bin, "ROOT" for the project root. */
+// Premiere hands out a new wrapper object on every read of a member, so two
+// references to the same item are never === (found on 26.3.2: undoing a
+// move could not find the project root). Items are compared by nodeId.
+PR.sameItem = function (a, b) {
+    var ka = PR.safe(function () { return String(a.nodeId); }, null);
+    var kb = PR.safe(function () { return String(b.nodeId); }, null);
+    return ka !== null && ka === kb;
+};
+
+PR.isRoot = function (item) {
+    return PR.sameItem(item, app.project.rootItem);
+};
+
+/** nodeId of an item's parent bin, "ROOT" for the project root. */
 PR.parentKey = function (parent) {
-    if (parent === app.project.rootItem) return "ROOT";
+    if (PR.isRoot(parent)) return "ROOT";
     return PR.safe(function () { return String(parent.nodeId); }, "ROOT");
 };
 

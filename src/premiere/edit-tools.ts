@@ -254,7 +254,7 @@ const BINS_CODE = `
             problems.push(mv.bin + ": sul percorso c'e' un elemento che non e' un bin");
             continue;
         }
-        if (found.parent === target) continue;
+        if (PR.sameItem(found.parent, target)) continue;
         var from = PR.parentKey(found.parent);
         found.item.moveBin(target);
         moveSteps.push({ kind: "item.moved", nodeId: String(mv.nodeId), fromBin: from });
