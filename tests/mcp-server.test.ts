@@ -24,7 +24,9 @@ const EXPECTED_TOOLS = [
   "pr_markers",
   "pr_project_info",
   "pr_rename_items",
+  "pr_sequence_create",
   "pr_sequence_info",
+  "pr_timeline_add",
   "pr_undo_last",
 ];
 

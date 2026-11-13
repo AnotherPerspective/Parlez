@@ -185,19 +185,11 @@ export function fakeProject(projectPath = String.raw`D:\Prove\Prova.prproj`) {
     new FakeItem("Drone.mp4", { nodeId: "n-drone", media: "D:/Lavori/Drone.mp4", offline: true }),
   );
   const seqItem = root.add(new FakeItem("Montaggio", { nodeId: "n-seq", sequence: true }));
-  const trackItem = {
-    name: "Intervista.mov",
-    start: { seconds: 0 },
-    end: { seconds: 4 },
-    inPoint: { seconds: 1 },
-    outPoint: { seconds: 5 },
-    nodeId: "t-1",
-    disabled: false,
-    isSelected: () => true,
-    getSpeed: () => 1,
-    projectItem: clip,
-  };
-  const markers = new FakeMarkers();
+  const sequence = new FakeSequence("Montaggio", "seq-guid-1", seqItem, 1, 0);
+  const first = new FakeTrackItem(sequence.video[0]!, clip, 0, { nodeId: "t-1", inS: 1 });
+  first.selected = true;
+  sequence.video[0]!.items.push(first);
+  const markers = sequence.markers;
   const m1 = new FakeMarker(0, "m1");
   m1.name = "Inizio";
   m1.comments = "attacco";
@@ -207,39 +199,203 @@ export function fakeProject(projectPath = String.raw`D:\Prove\Prova.prproj`) {
   m2.end = 3;
   m2.setColorByIndex(4);
   markers.list.push(m1, m2);
-  const sequence = {
-    name: "Montaggio",
-    sequenceID: "seq-guid-1",
-    frameSizeHorizontal: 1920,
-    frameSizeVertical: 1080,
-    timebase: String(TPS / 25),
-    end: String(10 * TPS),
-    videoTracks: coll(
-      [
-        {
-          name: "V1",
-          isMuted: () => false,
-          isLocked: () => false,
-          clips: coll([trackItem], "numItems"),
-        },
-      ],
-      "numTracks",
-    ),
-    audioTracks: coll([], "numTracks"),
-    markers,
-    getPlayerPosition: () => ({ seconds: 2.5 }),
-    getInPointAsTime: () => ({ seconds: 0 }),
-    getOutPointAsTime: () => ({ seconds: 10 }),
-    projectItem: seqItem,
-  };
+  const sequences: FakeSequence[] = [sequence];
   return {
     name: "Prova.prproj",
     path: projectPath,
     rootItem: root,
-    sequences: coll([sequence], "numSequences"),
-    activeSequence: sequence,
-    /** For assertions: the sequence's markers and the project's items. */
+    get sequences() {
+      return coll(sequences, "numSequences");
+    },
+    activeSequence: sequence as FakeSequence | null,
+    /** Lays the clips one after the other on V1, linked audio on A1 (3 + 3 tracks). */
+    createNewSequenceFromClips(name: string, items: FakeItem[], target: FakeItem): FakeSequence {
+      const item = target.add(new FakeItem(name, { sequence: true }));
+      const seq = new FakeSequence(name, `seq-new-${++sequenceCounter}`, item, 3, 3);
+      let at = 0;
+      for (const source of items) {
+        seq.video[0]!.overwriteClip(source, at);
+        at += FAKE_CLIP_SECONDS;
+      }
+      sequences.push(seq);
+      return seq;
+    },
+    deleteSequence(seq: FakeSequence): void {
+      sequences.splice(sequences.indexOf(seq), 1);
+      const item = seq.projectItem;
+      if (item.parent) item.parent.kids.splice(item.parent.kids.indexOf(item), 1);
+    },
+    /** For assertions: the first sequence, its markers, the project's items. */
     markers,
+    sequence,
+    allSequences: sequences,
     items: { root, bin, clip, seqItem },
   };
+}
+
+/** Seconds a fake clip lasts when put on a timeline. */
+export const FAKE_CLIP_SECONDS = 4;
+
+let trackItemCounter = 0;
+let sequenceCounter = 0;
+
+/** A clip on a track: start/end on the timeline, in/out in the source. */
+export class FakeTrackItem {
+  name: string;
+  nodeId: string;
+  disabled = false;
+  selected = false;
+  projectItem: FakeItem;
+  track: FakeTrack;
+  startS: number;
+  endS: number;
+  inS: number;
+  outS: number;
+
+  constructor(
+    track: FakeTrack,
+    source: FakeItem,
+    start: number,
+    opts: { nodeId?: string; inS?: number } = {},
+  ) {
+    this.track = track;
+    this.projectItem = source;
+    this.name = source.name;
+    this.nodeId = opts.nodeId ?? "ti-" + String(++trackItemCounter);
+    this.startS = start;
+    this.endS = start + FAKE_CLIP_SECONDS;
+    this.inS = opts.inS ?? 0;
+    this.outS = this.inS + FAKE_CLIP_SECONDS;
+  }
+  get start(): { seconds: number } {
+    return { seconds: this.startS };
+  }
+  get end(): { seconds: number } {
+    return { seconds: this.endS };
+  }
+  get inPoint(): { seconds: number } {
+    return { seconds: this.inS };
+  }
+  get outPoint(): { seconds: number } {
+    return { seconds: this.outS };
+  }
+  isSelected(): boolean {
+    return this.selected;
+  }
+  getSpeed(): number {
+    return 1;
+  }
+  /** Premiere's TrackItem.remove(ripple, alignToVideo). */
+  remove(ripple: boolean): void {
+    this.track.take(this, ripple);
+  }
+}
+
+export class FakeTrack {
+  name: string;
+  readonly items: FakeTrackItem[] = [];
+  /** The audio track that receives the linked audio of what lands here (video tracks only). */
+  linked: FakeTrack | null = null;
+
+  constructor(name: string) {
+    this.name = name;
+  }
+  get clips(): Record<string | number, unknown> {
+    return coll(
+      [...this.items].sort((a, b) => a.startS - b.startS),
+      "numItems",
+    );
+  }
+  isMuted(): boolean {
+    return false;
+  }
+  isLocked(): boolean {
+    return false;
+  }
+  private targets(): FakeTrack[] {
+    return this.linked ? [this, this.linked] : [this];
+  }
+  private lay(source: FakeItem, at: number): void {
+    for (const t of this.targets()) t.items.push(new FakeTrackItem(t, source, at));
+  }
+  insertClip(source: FakeItem, time: unknown): void {
+    const at = toSeconds(time);
+    for (const t of this.targets()) {
+      for (const it of t.items) {
+        if (it.startS >= at) {
+          it.startS += FAKE_CLIP_SECONDS;
+          it.endS += FAKE_CLIP_SECONDS;
+        }
+      }
+    }
+    this.lay(source, at);
+  }
+  overwriteClip(source: FakeItem, time: unknown): void {
+    const at = toSeconds(time);
+    for (const t of this.targets()) {
+      // Whatever lies under the new clip is gone (enough for these tests).
+      for (const it of t.items.slice()) {
+        if (it.startS < at + FAKE_CLIP_SECONDS && it.endS > at)
+          t.items.splice(t.items.indexOf(it), 1);
+      }
+    }
+    this.lay(source, at);
+  }
+  take(item: FakeTrackItem, ripple: boolean): void {
+    const i = this.items.indexOf(item);
+    if (i < 0) return;
+    this.items.splice(i, 1);
+    if (!ripple) return;
+    const len = item.endS - item.startS;
+    for (const it of this.items) {
+      if (it.startS >= item.endS) {
+        it.startS -= len;
+        it.endS -= len;
+      }
+    }
+  }
+}
+
+export class FakeSequence {
+  name: string;
+  sequenceID: string;
+  frameSizeHorizontal = 1920;
+  frameSizeVertical = 1080;
+  timebase = String(TPS / 25);
+  readonly video: FakeTrack[];
+  readonly audio: FakeTrack[];
+  readonly markers = new FakeMarkers();
+  projectItem: FakeItem;
+
+  constructor(name: string, id: string, item: FakeItem, videoTracks: number, audioTracks: number) {
+    this.name = name;
+    this.sequenceID = id;
+    this.projectItem = item;
+    this.video = Array.from({ length: videoTracks }, (_, i) => new FakeTrack("V" + String(i + 1)));
+    this.audio = Array.from({ length: audioTracks }, (_, i) => new FakeTrack("A" + String(i + 1)));
+    this.video.forEach((t, i) => {
+      t.linked = this.audio[i] ?? null;
+    });
+  }
+  get videoTracks(): Record<string | number, unknown> {
+    return coll(this.video, "numTracks");
+  }
+  get audioTracks(): Record<string | number, unknown> {
+    return coll(this.audio, "numTracks");
+  }
+  get end(): string {
+    let end = 10;
+    for (const t of [...this.video, ...this.audio])
+      for (const it of t.items) end = Math.max(end, it.endS);
+    return String(end * TPS);
+  }
+  getPlayerPosition(): { seconds: number } {
+    return { seconds: 2.5 };
+  }
+  getInPointAsTime(): { seconds: number } {
+    return { seconds: 0 };
+  }
+  getOutPointAsTime(): { seconds: number } {
+    return { seconds: 10 };
+  }
 }

@@ -18,6 +18,7 @@ import {
   prRenameItemsTool,
   prUndoLastTool,
 } from "../src/premiere/edit-tools.js";
+import { prSequenceCreateTool, prTimelineAddTool } from "../src/premiere/timeline-tools.js";
 import { PremiereTransport } from "../src/premiere/transport.js";
 import type { ToolResult } from "../src/tools/types.js";
 import { type EsEngine, loadJsx, makeEngine } from "./helpers/extendscript-shim.js";
@@ -402,5 +403,118 @@ describe("pr_rename_items", () => {
       project.items.seqItem.name,
       project.items.clip.getColorLabel(),
     ]).toEqual(["Intervista.mov", "Montaggio", 3]);
+  });
+});
+
+describe("pr_sequence_create", () => {
+  it("builds a sequence from clips in order, into a new bin; undo deletes it and the bin", async () => {
+    const agent = startAgent();
+    const res = await withPanel(agent, true, false, () =>
+      prSequenceCreateTool.handler(
+        { name: "Bozza 1", clips: ["n-drone", "n-clip", "nope"], bin: "Sequenze" },
+        transport,
+      ),
+    );
+    const r = result(res);
+    expect(r.missing).toEqual(["nope"]);
+    expect((r.sequence as { name: string }).name).toBe("Bozza 1");
+    const clips = r.clips as Array<{ name: string; kind: string; track: number; start: number }>;
+    expect(clips.filter((c) => c.kind === "video").map((c) => [c.name, c.start])).toEqual([
+      ["Drone.mp4", 0],
+      ["Intervista.mov", 4],
+    ]);
+    expect(project.allSequences.map((q) => q.name)).toEqual(["Montaggio", "Bozza 1"]);
+    expect(project.items.root.kids.map((k) => k.name)).toContain("Sequenze");
+
+    await withPanel(agent, true, false, () => prUndoLastTool.handler({}, transport));
+    expect(project.allSequences.map((q) => q.name)).toEqual(["Montaggio"]);
+    expect(project.items.root.kids.map((k) => k.name)).toEqual(["Girato", "Montaggio"]);
+  });
+});
+
+describe("pr_timeline_add", () => {
+  it("appends at the end of the track, linked audio included; undo removes exactly those", async () => {
+    const agent = startAgent();
+    const created = await withPanel(agent, true, false, () =>
+      prSequenceCreateTool.handler({ name: "Bozza", clips: ["n-clip"] }, transport),
+    );
+    const seqName = (result(created).sequence as { name: string }).name;
+    const seq = project.allSequences.find((q) => q.name === seqName)!;
+    const res = await withPanel(agent, true, false, () =>
+      prTimelineAddTool.handler(
+        { sequence: seqName, clips: [{ nodeId: "n-drone" }, { nodeId: "n-clip" }] },
+        transport,
+      ),
+    );
+    const placed = result(res).placed as Array<{ kind: string; start: number; track: number }>;
+    expect(placed.filter((p) => p.kind === "video").map((p) => p.start)).toEqual([4, 8]);
+    expect(placed.filter((p) => p.kind === "audio")).toHaveLength(2);
+    expect(seq.video[0]!.items).toHaveLength(3);
+
+    await withPanel(agent, true, false, () => prUndoLastTool.handler({}, transport));
+    expect(seq.video[0]!.items.map((i) => i.startS)).toEqual([0]);
+    expect(seq.audio[0]!.items.map((i) => i.startS)).toEqual([0]);
+  });
+
+  it("insert pushes the rest later, and undo closes the gap again", async () => {
+    const agent = startAgent();
+    const created = await withPanel(agent, true, false, () =>
+      prSequenceCreateTool.handler({ name: "Bozza", clips: ["n-clip", "n-drone"] }, transport),
+    );
+    const seq = project.allSequences.find(
+      (q) => q.name === (result(created).sequence as { name: string }).name,
+    )!;
+    await withPanel(agent, true, false, () =>
+      prTimelineAddTool.handler(
+        { sequence: seq.sequenceID, clips: [{ nodeId: "n-clip", time: 4, mode: "insert" }] },
+        transport,
+      ),
+    );
+    expect(
+      seq.video[0]!.items.map((i) => [i.name, i.startS]).sort(
+        (a, b) => Number(a[1]) - Number(b[1]),
+      ),
+    ).toEqual([
+      ["Intervista.mov", 0],
+      ["Intervista.mov", 4],
+      ["Drone.mp4", 8],
+    ]);
+    await withPanel(agent, true, false, () => prUndoLastTool.handler({}, transport));
+    expect(
+      seq.video[0]!.items.map((i) => [i.name, i.startS]).sort(
+        (a, b) => Number(a[1]) - Number(b[1]),
+      ),
+    ).toEqual([
+      ["Intervista.mov", 0],
+      ["Drone.mp4", 4],
+    ]);
+  });
+
+  it("overwriting clips already there needs confirm: true, and nothing changes without it", async () => {
+    const agent = startAgent();
+    const res = await withPanel(agent, true, false, () =>
+      prTimelineAddTool.handler({ clips: [{ nodeId: "n-drone", time: 1 }] }, transport),
+    );
+    expect(res.isError).toBe(true);
+    expect(JSON.stringify(res.structuredContent)).toContain("confirm: true");
+    expect(project.sequence.video[0]!.items.map((i) => i.nodeId)).toEqual(["t-1"]);
+
+    const ok = await withPanel(agent, true, false, () =>
+      prTimelineAddTool.handler(
+        { clips: [{ nodeId: "n-drone", time: 1 }], confirm: true },
+        transport,
+      ),
+    );
+    expect(String(result(ok).undo)).toContain("punto di ritorno");
+  });
+
+  it("refuses a track that does not exist, before changing anything", async () => {
+    const agent = startAgent();
+    const res = await withPanel(agent, true, false, () =>
+      prTimelineAddTool.handler({ clips: [{ nodeId: "n-drone", track: 4 }] }, transport),
+    );
+    expect(res.isError).toBe(true);
+    expect(JSON.stringify(res.structuredContent)).toContain("V4");
+    expect(project.sequence.video[0]!.items).toHaveLength(1);
   });
 });

@@ -428,6 +428,25 @@ PR.undoStep = function (step) {
         found.item.deleteBin();
         return null;
     }
+    if (step.kind === "trackitems.added") {
+        seq = PR.sequenceById(step.sequenceID);
+        if (!seq) return "sequenza non trovata";
+        var gone = 0;
+        // Newest last: take them out in reverse, so a ripple closes each gap in turn.
+        for (var k = step.nodeIds.length - 1; k >= 0; k--) {
+            var hit = PR.trackItemByNodeId(seq, step.nodeIds[k]);
+            if (!hit) continue;
+            hit.item.remove(step.ripple === true, false);
+            gone++;
+        }
+        return gone > 0 ? null : "clip già tolte";
+    }
+    if (step.kind === "sequence.created") {
+        seq = PR.sequenceById(step.sequenceID);
+        if (!seq) return "sequenza già tolta";
+        app.project.deleteSequence(seq);
+        return null;
+    }
     return "passo sconosciuto: " + String(step.kind);
 };
 
@@ -527,4 +546,77 @@ PR.binByPath = function (binPath, created) {
         cur = next;
     }
     return cur;
+};
+
+// --- The timeline: what is on it, what a change added ---------------------
+
+/** Every clip on every track: [{ nodeId, kind: "video"|"audio", track, start, end }]. */
+PR.timelineItems = function (seq) {
+    var out = [];
+    function scan(collection, kind) {
+        var n = PR.safe(function () { return collection.numTracks; }, 0);
+        for (var t = 0; t < n; t++) {
+            var track = PR.safe(function () { return collection[t]; }, null);
+            var clips = PR.safe(function () { return track.clips; }, null);
+            var c = PR.safe(function () { return clips.numItems; }, 0);
+            for (var i = 0; i < c; i++) {
+                var item = PR.safe(function () { return clips[i]; }, null);
+                if (item === null) continue;
+                out.push({
+                    nodeId: PR.safe(function () { return String(item.nodeId); }, null),
+                    kind: kind,
+                    track: t + 1,
+                    start: PR.seconds(PR.safe(function () { return item.start; }, null)),
+                    end: PR.seconds(PR.safe(function () { return item.end; }, null)),
+                    item: item
+                });
+            }
+        }
+    }
+    scan(PR.safe(function () { return seq.videoTracks; }, null), "video");
+    scan(PR.safe(function () { return seq.audioTracks; }, null), "audio");
+    return out;
+};
+
+/** nodeIds in `after` that were not in `before` (both from PR.timelineItems). */
+PR.newItems = function (before, after) {
+    var seen = {};
+    var i;
+    for (i = 0; i < before.length; i++) seen["k" + before[i].nodeId] = true;
+    var added = [];
+    for (i = 0; i < after.length; i++) {
+        if (seen.hasOwnProperty("k" + after[i].nodeId)) continue;
+        added.push(after[i]);
+    }
+    return added;
+};
+
+PR.trackItemByNodeId = function (seq, nodeId) {
+    var all = PR.timelineItems(seq);
+    for (var i = 0; i < all.length; i++) {
+        if (all[i].nodeId === String(nodeId)) return all[i];
+    }
+    return null;
+};
+
+/** End (seconds) of the last clip on video track n and audio track n, 0 when empty. */
+PR.trackEnd = function (seq, n) {
+    var all = PR.timelineItems(seq);
+    var end = 0;
+    for (var i = 0; i < all.length; i++) {
+        if (all[i].track === n && typeof all[i].end === "number" && all[i].end > end) end = all[i].end;
+    }
+    return end;
+};
+
+/** Plain description of a clip on the timeline, for answers. */
+PR.placed = function (e) {
+    return {
+        nodeId: e.nodeId,
+        name: PR.safe(function () { return String(e.item.name); }, null),
+        kind: e.kind,
+        track: e.track,
+        start: e.start,
+        end: e.end
+    };
 };
