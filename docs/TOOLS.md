@@ -4,7 +4,7 @@ Generated from `src/tools/**` via `npm run docs:tools` — do not edit by hand. 
 
 `ae_do`'s operation registry (`layer.*`, `keyframe.*`, …) is discoverable at runtime via `ae_catalog` and is **not** listed in this file.
 
-20 tools across 5 groups.
+23 tools across 5 groups.
 
 ## Inspect
 
@@ -59,4 +59,7 @@ Adobe® Premiere Pro® through the Parlez! panel (read-only for now).
 | `pr_rename_items`    | Rename Premiere Pro project items (clips, bins, sequences - by nodeId from pr_project_info) and/or set their colour label (0-15, Premiere's label order).                                                                                                                      |
 | `pr_sequence_create` | Create a new Premiere Pro sequence from project clips (nodeIds from pr_project_info), placed one after the other in the order given; the sequence takes its settings from the first clip.                                                                                      |
 | `pr_timeline_add`    | Put project clips (nodeIds from pr_project_info) on a Premiere Pro sequence's video track (1-based, default V1; linked audio follows on its own).                                                                                                                              |
+| `pr_clip_edit`       | Change clips already on a Premiere Pro timeline (track item nodeIds from pr_sequence_info): `start` / `end` trim where the clip begins and ends on the timeline (seconds); `moveTo` moves it so it begins there; `enabled` switches it off or on.                              |
+| `pr_clip_remove`     | Remove clips from a Premiere Pro timeline (track item nodeIds from pr_sequence_info), with their audio unless withAudio is false; ripple closes the gap.                                                                                                                       |
+| `pr_razor`           | Cut (razor) every clip that crosses `time` (seconds) on the ACTIVE Premiere Pro sequence, video and audio together.                                                                                                                                                            |
 | `pr_undo_last`       | Take back Claude's last change in Premiere Pro - the whole request, all its steps - the way the panel's Annulla button does.                                                                                                                                                   |

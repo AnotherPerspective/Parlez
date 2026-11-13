@@ -1,0 +1,224 @@
+// Trimming, moving, switching off, removing and cutting clips on a Premiere
+// timeline, end to end without Premiere (same setup as premiere-edit.test.ts).
+// The fake behaves the way Premiere 26.3.2 did when probed: start/end trim on
+// the timeline, move() shifts only the item it is called on, the QE razor
+// cuts one track at a time.
+
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { prClipEditTool, prClipRemoveTool, prRazorTool } from "../src/premiere/clip-tools.js";
+import { PREMIERE_AGENT_JSX } from "../src/premiere/config.js";
+import { prUndoLastTool } from "../src/premiere/edit-tools.js";
+import { prSequenceCreateTool } from "../src/premiere/timeline-tools.js";
+import { PremiereTransport } from "../src/premiere/transport.js";
+import type { ToolResult } from "../src/tools/types.js";
+import { type EsEngine, loadJsx, makeEngine } from "./helpers/extendscript-shim.js";
+import { type FakeSequence, fakeProject, fakeQe } from "./helpers/premiere-fake.js";
+
+let tmp: string;
+let project: ReturnType<typeof fakeProject>;
+let engine: EsEngine;
+let transport: PremiereTransport;
+let seq: FakeSequence;
+let agent: { tick: (on: boolean, ro: boolean) => string };
+
+const g = globalThis as Record<string, unknown>;
+
+beforeEach(async () => {
+  tmp = mkdtempSync(path.join(os.tmpdir(), "parlez-premiere-clips-"));
+  const mailbox = path.join(tmp, "runtime").replace(/\\/g, "/");
+  const projectFile = path.join(tmp, "progetti", "Prova.prproj");
+  mkdirSync(path.dirname(projectFile), { recursive: true });
+  writeFileSync(projectFile, "<project/>", "utf8");
+  engine = makeEngine(tmp);
+  const app = engine.app as unknown as Record<string, unknown>;
+  for (const key of [
+    "settings",
+    "beginUndoGroup",
+    "endUndoGroup",
+    "beginSuppressDialogs",
+    "endSuppressDialogs",
+  ]) {
+    delete app[key];
+  }
+  app.version = "26.3.2";
+  app.enableQE = () => undefined;
+  project = fakeProject(projectFile);
+  app.project = project;
+  g.qe = fakeQe(project);
+  transport = new PremiereTransport({
+    instancesDir: path.join(mailbox, "premiere"),
+    instance: null,
+  });
+  engine.global.PARLEZ_PR_MAILBOX = mailbox;
+  engine.run(
+    `${loadJsx(PREMIERE_AGENT_JSX, ["serve.jsx", "premiere-helpers.jsx"])}\n;globalThis.PR = PR;`,
+  );
+  agent = engine.global.PARLEZ_PR as { tick: (on: boolean, ro: boolean) => string };
+  // A sequence with three clips, each with its audio on A1: 0-4, 4-8, 8-12.
+  const res = await run(() =>
+    prSequenceCreateTool.handler(
+      { name: "Bozza", clips: ["n-clip", "n-drone", "n-clip"] },
+      transport,
+    ),
+  );
+  expect(res.isError).toBe(false);
+  seq = project.allSequences.at(-1)!;
+  project.activeSequence = seq;
+});
+
+afterEach(() => {
+  delete g.PR;
+  delete g.qe;
+  rmSync(tmp, { recursive: true, force: true });
+});
+
+async function run<T>(call: () => Promise<T>): Promise<T> {
+  agent.tick(true, false);
+  const timer = setInterval(() => agent.tick(true, false), 20);
+  try {
+    return await call();
+  } finally {
+    clearInterval(timer);
+  }
+}
+
+function result(res: ToolResult): Record<string, unknown> {
+  expect(res.isError, JSON.stringify(res.structuredContent ?? res)).toBe(false);
+  return (res.structuredContent as { result: Record<string, unknown> }).result;
+}
+
+const v1 = () =>
+  seq.video[0]!.items.map((i) => [i.name, i.startS, i.endS, i.disabled] as const).toSorted(
+    (a, b) => a[1] - b[1],
+  );
+const a1 = () =>
+  seq.audio[0]!.items.map((i) => [i.name, i.startS, i.endS] as const).toSorted(
+    (a, b) => a[1] - b[1],
+  );
+const id = (start: number) => seq.video[0]!.items.find((i) => i.startS === start)!.nodeId;
+
+describe("pr_clip_edit", () => {
+  it("trims, moves and switches off; the audio follows; undo puts everything back", async () => {
+    const res = await run(() =>
+      prClipEditTool.handler(
+        {
+          sequence: "Bozza",
+          clips: [
+            { nodeId: id(4), end: 7 },
+            { nodeId: id(8), moveTo: 20 },
+            { nodeId: id(0), enabled: false },
+          ],
+        },
+        transport,
+      ),
+    );
+    expect(
+      (result(res).changed as Array<{ audioMovedWith: number }>).map((c) => c.audioMovedWith),
+    ).toEqual([1, 1, 1]);
+    expect(v1()).toEqual([
+      ["Intervista.mov", 0, 4, true],
+      ["Drone.mp4", 4, 7, false],
+      ["Intervista.mov", 20, 24, false],
+    ]);
+    expect(a1()).toEqual([
+      ["Intervista.mov", 0, 4],
+      ["Drone.mp4", 4, 7],
+      ["Intervista.mov", 20, 24],
+    ]);
+    await run(() => prUndoLastTool.handler({}, transport));
+    expect(v1()).toEqual([
+      ["Intervista.mov", 0, 4, false],
+      ["Drone.mp4", 4, 8, false],
+      ["Intervista.mov", 8, 12, false],
+    ]);
+    expect(a1().map((x) => [x[1], x[2]])).toEqual([
+      [0, 4],
+      [4, 8],
+      [8, 12],
+    ]);
+  });
+
+  it("moving onto another clip needs confirm, and nothing changes without it", async () => {
+    const res = await run(() =>
+      prClipEditTool.handler(
+        { sequence: "Bozza", clips: [{ nodeId: id(8), moveTo: 2 }] },
+        transport,
+      ),
+    );
+    expect(res.isError).toBe(true);
+    expect(JSON.stringify(res.structuredContent)).toContain("confirm: true");
+    expect(v1().map((x) => x[1])).toEqual([0, 4, 8]);
+  });
+
+  it("refuses a clip that would end before it starts", async () => {
+    const res = await run(() =>
+      prClipEditTool.handler(
+        { sequence: "Bozza", clips: [{ nodeId: id(4), start: 7, end: 6 }] },
+        transport,
+      ),
+    );
+    expect(res.isError).toBe(true);
+    expect(v1().map((x) => [x[1], x[2]])[1]).toEqual([4, 8]);
+  });
+});
+
+describe("pr_clip_remove", () => {
+  it("needs confirm: true", async () => {
+    const res = await run(() =>
+      prClipRemoveTool.handler({ sequence: "Bozza", clips: [id(4)] }, transport),
+    );
+    expect(res.isError).toBe(true);
+    expect(v1()).toHaveLength(3);
+  });
+
+  it("removes the clip and its audio; ripple closes the gap; it says undo cannot bring it back", async () => {
+    const res = await run(() =>
+      prClipRemoveTool.handler(
+        { sequence: "Bozza", clips: [id(4), "nope"], ripple: true, confirm: true },
+        transport,
+      ),
+    );
+    const r = result(res);
+    expect((r.removed as Array<{ kind: string }>).map((x) => x.kind)).toEqual(["video", "audio"]);
+    expect(r.missing).toEqual(["nope"]);
+    expect(String(r.undo)).toContain("punto di ritorno");
+    expect(v1().map((x) => [x[0], x[1]])).toEqual([
+      ["Intervista.mov", 0],
+      ["Intervista.mov", 4],
+    ]);
+    expect(a1().map((x) => x[1])).toEqual([0, 4]);
+  });
+});
+
+describe("pr_razor", () => {
+  it("needs confirm: true", async () => {
+    const res = await run(() => prRazorTool.handler({ time: 2 }, transport));
+    expect(res.isError).toBe(true);
+    expect(v1()).toHaveLength(3);
+  });
+
+  it("works only on the active sequence", async () => {
+    const res = await run(() =>
+      prRazorTool.handler({ time: 2, sequence: "Montaggio", confirm: true }, transport),
+    );
+    expect(res.isError).toBe(true);
+    expect(JSON.stringify(res.structuredContent)).toContain("sequenza attiva");
+  });
+
+  it("cuts video and audio together where a clip crosses the time", async () => {
+    const res = await run(() => prRazorTool.handler({ time: 2, confirm: true }, transport));
+    const r = result(res);
+    expect(r).toMatchObject({ timecode: "00:00:02:00", tracksCut: ["V1", "A1"], newPieces: 2 });
+    expect(v1().map((x) => [x[1], x[2]])).toEqual([
+      [0, 2],
+      [2, 4],
+      [4, 8],
+      [8, 12],
+    ]);
+    expect(a1()).toHaveLength(4);
+  });
+});

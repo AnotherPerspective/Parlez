@@ -444,6 +444,41 @@ PR.undoStep = function (step) {
         }
         return gone > 0 ? null : "clip gi\u00e0 tolte";
     }
+    if (step.kind === "trackitem.disabled") {
+        seq = PR.sequenceById(step.sequenceID);
+        if (!seq) return "sequenza non trovata";
+        var dis = PR.trackItemByNodeId(seq, step.nodeId);
+        if (!dis) return "clip non trovata";
+        dis.item.disabled = step.before === true;
+        return null;
+    }
+    if (step.kind === "trackitem.trimmed") {
+        seq = PR.sequenceById(step.sequenceID);
+        if (!seq) return "sequenza non trovata";
+        var tr = PR.trackItemByNodeId(seq, step.nodeId);
+        if (!tr) return "clip non trovata";
+        // Growing back to the left first, so start never passes end on the way.
+        if (step.before.start < tr.start) {
+            PR.setSeconds(tr.item, "start", step.before.start);
+            PR.setSeconds(tr.item, "end", step.before.end);
+        } else {
+            PR.setSeconds(tr.item, "end", step.before.end);
+            PR.setSeconds(tr.item, "start", step.before.start);
+        }
+        return null;
+    }
+    if (step.kind === "trackitems.moved") {
+        seq = PR.sequenceById(step.sequenceID);
+        if (!seq) return "sequenza non trovata";
+        var back = 0;
+        for (var mv = 0; mv < step.nodeIds.length; mv++) {
+            var it = PR.trackItemByNodeId(seq, step.nodeIds[mv]);
+            if (!it) continue;
+            PR.moveBy(it.item, -step.offset);
+            back++;
+        }
+        return back > 0 ? null : "clip non trovate";
+    }
     if (step.kind === "sequence.created") {
         seq = PR.sequenceById(step.sequenceID);
         if (!seq) return "sequenza gi\u00e0 tolta";
@@ -649,4 +684,62 @@ PR.clipAcross = function (seq, n, time) {
         }
     }
     return null;
+};
+
+/**
+ * The audio items that belong with a video clip: same source, starting and
+ * ending where it does. Premiere 26.3.2's getLinkedItems() answered null,
+ * and move() shifts only the item it is called on.
+ */
+PR.companions = function (seq, e) {
+    if (e.kind !== "video") return [];
+    var source = PR.safe(function () { return String(e.item.projectItem.nodeId); }, null);
+    var all = PR.timelineItems(seq);
+    var out = [];
+    for (var i = 0; i < all.length; i++) {
+        var a = all[i];
+        if (a.kind !== "audio") continue;
+        if (Math.abs(a.start - e.start) > 0.05 || Math.abs(a.end - e.end) > 0.05) continue;
+        var src = PR.safe(function () { return String(a.item.projectItem.nodeId); }, null);
+        if (src !== null && src === source) out.push(a);
+    }
+    return out;
+};
+
+/** Name of another clip on e's track overlapping [from, to), or null. */
+PR.overlapping = function (seq, e, from, to) {
+    var all = PR.timelineItems(seq);
+    for (var i = 0; i < all.length; i++) {
+        var o = all[i];
+        if (o.kind !== e.kind || o.track !== e.track || o.nodeId === e.nodeId) continue;
+        if (o.start < to - 0.05 && o.end > from + 0.05) return PR.safe(function () { return String(o.item.name); }, "?");
+    }
+    return null;
+};
+
+/** Shift a track item by `seconds` (Premiere's move takes a Time offset). */
+PR.moveBy = function (item, seconds) {
+    var t;
+    try {
+        t = new Time();
+        t.seconds = seconds;
+    } catch (eTime) {
+        t = seconds;
+    }
+    item.move(t);
+};
+
+/**
+ * Seconds as the "HH:MM:SS:FF" timecode Premiere's QE razor takes, counting
+ * frames at the nominal rate (24 for 23.976). Non-drop-frame only: a
+ * 29.97 drop-frame sequence would be off by a few frames per minute.
+ */
+PR.timecode = function (seconds, fps) {
+    var nominal = Math.round(fps);
+    var frames = Math.round(seconds * fps);
+    var ff = frames % nominal;
+    var totalSeconds = Math.floor(frames / nominal);
+    function two(n) { return (n < 10 ? "0" : "") + String(n); }
+    return two(Math.floor(totalSeconds / 3600)) + ":" + two(Math.floor(totalSeconds / 60) % 60) + ":" +
+        two(totalSeconds % 60) + ":" + two(ff);
 };

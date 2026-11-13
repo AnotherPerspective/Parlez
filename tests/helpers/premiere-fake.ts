@@ -271,11 +271,19 @@ export class FakeTrackItem {
     this.inS = opts.inS ?? 0;
     this.outS = this.inS + FAKE_CLIP_SECONDS;
   }
+  // Like Premiere 26.3.2: start/end trim the clip on the timeline (the other
+  // end stays put); move(Time) shifts only this item, not its audio.
   get start(): { seconds: number } {
     return { seconds: this.startS };
   }
+  set start(v: unknown) {
+    this.startS = toSeconds(v);
+  }
   get end(): { seconds: number } {
     return { seconds: this.endS };
+  }
+  set end(v: unknown) {
+    this.endS = toSeconds(v);
   }
   get inPoint(): { seconds: number } {
     return { seconds: this.inS };
@@ -289,10 +297,51 @@ export class FakeTrackItem {
   getSpeed(): number {
     return 1;
   }
+  move(offset: unknown): void {
+    const by = toSeconds(offset);
+    this.startS += by;
+    this.endS += by;
+  }
   /** Premiere's TrackItem.remove(ripple, alignToVideo). */
   remove(ripple: boolean): void {
     this.track.take(this, ripple);
   }
+}
+
+/**
+ * Premiere's undocumented QE razor for the fake's active sequence: cuts the
+ * clip across an "HH:MM:SS:FF" timecode on one track, only that track.
+ */
+export function fakeQe(project: { activeSequence: FakeSequence | null }, fps = 25) {
+  const toSec = (tc: string) => {
+    const [h, m, s, f] = tc.split(":").map(Number);
+    return h! * 3600 + m! * 60 + s! + f! / fps;
+  };
+  const cut = (track: FakeTrack, tc: string) => {
+    const at = toSec(tc);
+    for (const it of track.items.slice()) {
+      if (it.startS < at && it.endS > at) {
+        const piece = new FakeTrackItem(track, it.projectItem, at, {
+          inS: it.inS + (at - it.startS),
+        });
+        piece.endS = it.endS;
+        it.endS = at;
+        track.items.push(piece);
+      }
+    }
+  };
+  return {
+    project: {
+      getActiveSequence() {
+        const seq = project.activeSequence!;
+        return {
+          name: seq.name,
+          getVideoTrackAt: (i: number) => ({ razor: (tc: string) => cut(seq.video[i]!, tc) }),
+          getAudioTrackAt: (i: number) => ({ razor: (tc: string) => cut(seq.audio[i]!, tc) }),
+        };
+      },
+    },
+  };
 }
 
 export class FakeTrack {

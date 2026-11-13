@@ -58,6 +58,9 @@ const PREMIERE_TITLES: Record<string, string> = {
   pr_rename_items: "nomi ed etichette",
   pr_sequence_create: "crea una sequenza",
   pr_timeline_add: "mette clip in timeline",
+  pr_clip_edit: "rifila e sposta clip",
+  pr_clip_remove: "toglie clip dalla timeline",
+  pr_razor: "taglio con la lametta",
   pr_undo_last: "annulla l'ultima modifica di Claude",
 };
 
