@@ -547,7 +547,10 @@ export class FakeTrack {
     for (const t of this.targets()) {
       const item = new FakeTrackItem(t, source, at, { inS: source.srcIn ?? 0 });
       if (source.srcIn !== null || source.srcOut !== null) {
-        const len = (source.srcOut ?? 10) - (source.srcIn ?? 0);
+        // Like Premiere 26.3.2 (2026-11-15): placed with an out point, the
+        // clip stops one frame before it (the fake runs at 25 fps).
+        const len =
+          (source.srcOut ?? 10) - (source.srcIn ?? 0) - (source.srcOut !== null ? 0.04 : 0);
         item.endS = at + len;
         item.outS = item.inS + len;
       }

@@ -86,6 +86,12 @@ PR.snapTicks = function (seq, seconds) {
     return Math.round(seconds * PR.TICKS_PER_SECOND / tpf) * tpf;
 };
 
+/** One frame of the sequence, in seconds (0 without a timebase). */
+PR.frameSeconds = function (seq) {
+    var tpf = PR.frameTicks(seq);
+    return (tpf === null) ? 0 : tpf / PR.TICKS_PER_SECOND;
+};
+
 /** `seconds` on the frame grid (unchanged without a timebase). */
 PR.snap = function (seq, seconds) {
     var ticks = PR.snapTicks(seq, seconds);

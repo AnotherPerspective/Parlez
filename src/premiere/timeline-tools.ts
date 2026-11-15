@@ -136,9 +136,12 @@ const TIMELINE_ADD_CODE = `
         if (usePiece) {
             srcIn = PR.seconds(source.getInPoint());
             srcOut = PR.seconds(source.getOutPoint());
-            // On the frame grid: 2.002 at 23.976 made the clip a frame short.
+            // On the frame grid. And one frame more on the out: placed with an
+            // out point, Premiere 26.3.2 leaves the out frame itself out of
+            // the clip (sourceOut 2.002 at 23.976 gave 47 frames, not 48,
+            // even on the grid; seen twice on 2026-11-15).
             if (typeof c.sourceIn === "number") source.setInPoint(PR.snap(seq, c.sourceIn), 4);
-            if (typeof c.sourceOut === "number") source.setOutPoint(PR.snap(seq, c.sourceOut), 4);
+            if (typeof c.sourceOut === "number") source.setOutPoint(PR.snap(seq, c.sourceOut) + PR.frameSeconds(seq), 4);
         }
         var before = PR.timelineItems(seq);
         // Seconds first; some Premiere builds want a Time object instead.

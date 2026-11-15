@@ -170,6 +170,22 @@ describe("a piece of a clip", () => {
   });
 });
 
+describe("a piece of a clip: the out frame is in (Premiere 26.3.2, 2026-11-15)", () => {
+  it("sourceIn 0, sourceOut 2 at 25 fps places exactly 50 frames, not 49", async () => {
+    const res = await run(() =>
+      prTimelineAddTool.handler(
+        { sequence: "Bozza", clips: [{ nodeId: "n-clip", sourceIn: 0, sourceOut: 2 }] },
+        transport,
+      ),
+    );
+    const placed = (
+      result(res).placed as Array<{ kind: string; start: number; end: number }>
+    ).filter((p) => p.kind === "video");
+    expect(placed).toHaveLength(1);
+    expect(Math.round((placed[0].end - placed[0].start) * 25)).toBe(50);
+  });
+});
+
 describe("sequences", () => {
   it("pr_sequence_duplicate names the copy; undo removes it", async () => {
     const res = await run(() =>
