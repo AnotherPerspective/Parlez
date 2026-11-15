@@ -1161,9 +1161,14 @@
         win.center();
         win.show();
     }
-    try {
-        app.scheduleTask("$.global.AE_MCP_PANEL.settle()", 300, false);
-    } catch (eSettle) { /* the timer checks the size too */ }
+    // Not with the sveglia: a task of ours due 300 ms after opening came due
+    // under the Home screen at startup and popped an error (2026-11-15); its
+    // pulses check the size too.
+    if (!svegliaInstalled()) {
+        try {
+            app.scheduleTask("$.global.AE_MCP_PANEL.settle()", 300, false);
+        } catch (eSettle) { /* the timer checks the size too */ }
+    }
     // With the sveglia installed its pulses refresh the panel: a timer of our
     // own would come due under the Home screen. Without it, or refused now (a
     // modal window up?): the agent re-books it, or the next click.

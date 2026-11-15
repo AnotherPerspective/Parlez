@@ -28,10 +28,10 @@
 
 (function () {
   var PULSE_MS = 250;
-  // A pulse may serve a long request (a render): its answer can take minutes.
-  // One whose answer never came is given up after this (the server's own
-  // limit for a busy agent, HEARTBEAT_BUSY_STALE_MS).
-  var GIVE_UP_MS = 15 * 60000;
+  // A pulse sent just as a modal window opens can be dropped by After Effects
+  // with no answer at all; one left unanswered this long is given up. A pulse
+  // that serves a long request (a render) only queues the next one behind it.
+  var GIVE_UP_MS = 5000;
   var BACKOFF_MAX_MS = 60000;
   // After the main window comes back, let After Effects settle first.
   var SETTLE_MS = 300;
