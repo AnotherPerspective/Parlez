@@ -423,6 +423,9 @@ function runJsx(code: string, AE: Record<string, unknown>): Record<string, unkno
 function easeAE(prop: ReturnType<typeof fakeProperty>) {
   return {
     findCompByNameOrId: () => ({ name: "Main", frameDuration: 1 / 25 }),
+    // jsx/helpers.jsx: on the comp's whole frames.
+    snapTime: (comp: { frameDuration: number }, t: number) =>
+      Math.round(t / comp.frameDuration) * comp.frameDuration,
     resolveLayers: () => [{ index: 1, name: "L1" }],
     propertyAtPath: () => prop,
     separationFollowers: () => null,
@@ -664,9 +667,12 @@ function fakeLayers(n: number) {
   });
 }
 
-function staggerAE(layers: ReturnType<typeof fakeLayers>) {
+function staggerAE(layers: ReturnType<typeof fakeLayers>, frameDuration = 1 / 25) {
   return {
-    findCompByNameOrId: () => ({ name: "Main", frameDuration: 1 / 25 }),
+    findCompByNameOrId: () => ({ name: "Main", frameDuration }),
+    // jsx/helpers.jsx: on the comp's whole frames.
+    snapTime: (comp: { frameDuration: number }, t: number) =>
+      Math.round(t / comp.frameDuration) * comp.frameDuration,
     resolveLayers: () => layers,
     snapshotKeys: (p: { keys: Array<{ time: number }> }) => p.keys.map((k) => ({ ...k })),
     removeAllKeys: (p: { keys: unknown[] }) => {
@@ -680,9 +686,13 @@ function staggerAE(layers: ReturnType<typeof fakeLayers>) {
   };
 }
 
-function stagger(args: Record<string, unknown>, layers: ReturnType<typeof fakeLayers>) {
+function stagger(
+  args: Record<string, unknown>,
+  layers: ReturnType<typeof fakeLayers>,
+  frameDuration = 1 / 25,
+) {
   const code = getOp("layer.stagger")!.toJsx({ comp: "Main", layers: "selected", ...args });
-  return { code, result: runJsx(code, staggerAE(layers)) };
+  return { code, result: runJsx(code, staggerAE(layers, frameDuration)) };
 }
 
 describe("layer.stagger: what it does", () => {
@@ -702,23 +712,22 @@ describe("layer.stagger: what it does", () => {
 
   it("moves the layer start in mode 'start', keys untouched", () => {
     const layers = fakeLayers(3);
-    stagger({ step: 0.1, mode: "start", order: "reverse" }, layers);
+    // At 30 fps, where 0.1 s is a whole number of frames (3).
+    stagger({ step: 0.1, mode: "start", order: "reverse" }, layers, 1 / 30);
     expect(layers.map((l) => Math.round(l.startTime * 1000) / 1000)).toEqual([0.2, 0.1, 0]);
     expect(layers.map((l) => l.opacity.keys[0].time)).toEqual([0, 0, 0]);
   });
 
   it("warns when the cascade lasts more than 0.5 s, not at exactly 0.5 s", () => {
-    const over = stagger({ step: 0.1 }, fakeLayers(7)).result;
+    const over = stagger({ step: 0.1 }, fakeLayers(7), 1 / 30).result;
     expect((over.warnings as string[]).some((w) => w.includes("more than 0.5 s"))).toBe(true);
-    const edge = stagger({ step: 0.1 }, fakeLayers(6)).result;
+    const edge = stagger({ step: 0.1 }, fakeLayers(6), 1 / 30).result;
     expect((edge.warnings as string[]).some((w) => w.includes("0.5 s"))).toBe(false);
   });
 
   it("warns when a step in seconds is not a whole number of frames", () => {
     const { result } = stagger({ step: 0.05 }, fakeLayers(2));
-    expect((result.warnings as string[]).some((w) => w.includes("whole number of frames"))).toBe(
-      true,
-    );
+    expect((result.warnings as string[]).some((w) => w.includes("rounded to 1 frames"))).toBe(true);
   });
 
   it("refuses to push keys below 0 s and then changes nothing at all", () => {

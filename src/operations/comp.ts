@@ -154,10 +154,10 @@ registerOp({
   description: "Set the work area start and duration on a composition.",
   params: [
     { name: "comp", type: "any", description: "Comp name or id", required: true },
-    { name: "start", type: "number", description: "Work area start in seconds", required: true },
+    { name: "start", type: "time", description: "Work area start in seconds", required: true },
     {
       name: "duration",
-      type: "number",
+      type: "time",
       description: "Work area duration in seconds",
       required: true,
     },
@@ -165,8 +165,8 @@ registerOp({
   toJsx(args) {
     return `
             ${jsxCompPreamble(args)}
-            _comp.workAreaStart = ${jsxVal(args.start)};
-            _comp.workAreaDuration = ${jsxVal(args.duration)};
+            _comp.workAreaStart = AE.timeIn(_comp, ${jsxVal(args.start)}, "position");
+            _comp.workAreaDuration = AE.timeIn(_comp, ${jsxVal(args.duration)}, "length");
             return { ok: true, workAreaStart: _comp.workAreaStart, workAreaDuration: _comp.workAreaDuration };
         `;
   },

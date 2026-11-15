@@ -1,5 +1,6 @@
 // Keyframe operations — add, remove, set easing.
 
+import { TIMECODE_RE } from "../opschema.js";
 import {
   registerOp,
   jsxFail,
@@ -8,6 +9,9 @@ import {
   jsxCompLayerPreamble,
   jsxPropertyLookup,
 } from "../registry.js";
+
+const TC =
+  'the comp\'s timecode "HH:MM:SS:FF" as shown in the timeline (";" before FF in drop-frame) — preferred — or seconds; always lands on a whole frame of the comp';
 
 registerOp({
   name: "keyframe.add",
@@ -27,7 +31,7 @@ registerOp({
       description: 'Property path, e.g. ["Transform","Position"]',
       required: true,
     },
-    { name: "time", type: "number", description: "Time in seconds", required: true },
+    { name: "time", type: "time", description: "When: " + TC, required: true },
     { name: "value", type: "any", description: "Value at this keyframe", required: true },
   ],
   toJsx(args) {
@@ -103,10 +107,13 @@ registerOp({
       if (
         !key ||
         typeof key !== "object" ||
-        typeof key.time !== "number" ||
+        !(
+          typeof key.time === "number" ||
+          (typeof key.time === "string" && TIMECODE_RE.test(key.time))
+        ) ||
         key.value === undefined
       ) {
-        return jsxFail(`keys[${i}] must be { time: number, value, … }`);
+        return jsxFail(`keys[${i}] must be { time: timecode HH:MM:SS:FF or seconds, value, … }`);
       }
     }
     const spatial = args.spatialTangents ?? "auto";
@@ -273,7 +280,7 @@ registerOp({
       required: true,
     },
     { name: "property", type: "array", description: "Property path", required: true },
-    { name: "times", type: "array", description: "Times in seconds", required: true },
+    { name: "times", type: "array", description: "Times: " + TC, required: true },
     {
       name: "values",
       type: "array",
@@ -290,6 +297,7 @@ registerOp({
             var _values = ${jsxVal(args.values)};
             if (_times.length === 0) return { ok: false, error: "times is empty" };
             if (_times.length !== _values.length) return { ok: false, error: "times (" + _times.length + ") and values (" + _values.length + ") must have the same length" };
+            for (var _ti = 0; _ti < _times.length; _ti++) _times[_ti] = AE.keyTime(_node, _times[_ti]);
             // A separated leader rejects setValuesAtTimes; feed each follower
             // its own component instead (same routing as AE.writeValue).
             var _followers = AE.separationFollowers(_node);
@@ -339,8 +347,8 @@ registerOp({
     },
     {
       name: "pivot",
-      type: "number",
-      description: "Pivot time in seconds for scaling (default 0)",
+      type: "time",
+      description: "Pivot for scaling (default 0): " + TC,
       required: false,
       default: 0,
     },
@@ -353,11 +361,11 @@ registerOp({
             if (!_node.numKeys || _node.numKeys === 0) return { ok: false, error: "property has no keyframes" };
             var _offset = ${jsxVal(args.offset ?? 0)};
             var _scale = ${jsxVal(args.scale ?? 1)};
-            var _pivot = ${jsxVal(args.pivot ?? 0)};
+            var _pivot = AE.timeIn(_comp, ${jsxVal(args.pivot ?? 0)}, "position");
             if (_scale === 0) return { ok: false, error: "scale must be non-zero" };
             var _keys = AE.snapshotKeys(_node);
             for (var _i = 0; _i < _keys.length; _i++) {
-                _keys[_i].time = (_keys[_i].time - _pivot) * _scale + _pivot + _offset;
+                _keys[_i].time = AE.snapTime(_comp, (_keys[_i].time - _pivot) * _scale + _pivot + _offset);
             }
             // Validate the whole target layout BEFORE removeAllKeys destroys
             // the current one. addKey inside applyKeys can throw (negative

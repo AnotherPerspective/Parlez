@@ -125,7 +125,7 @@ registerOp({
     ...maskGeometryParams(),
     {
       name: "time",
-      type: "number",
+      type: "time",
       description: "Write the path as a keyframe at this time instead of the static value",
       required: false,
     },
@@ -235,7 +235,7 @@ registerOp({
     const writeJsx =
       args.time === undefined
         ? `_pathProp.setValue(_shape);`
-        : `_pathProp.setValueAtTime(${jsxVal(args.time)}, _shape);`;
+        : `_pathProp.setValueAtTime(AE.timeIn(_comp, ${jsxVal(args.time)}, "position"), _shape);`;
     const featherJsx = !hasFeather
       ? ""
       : `

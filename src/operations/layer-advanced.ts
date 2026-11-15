@@ -18,7 +18,7 @@ registerOp({
     },
     {
       name: "time",
-      type: "number",
+      type: "time",
       description: "Time in seconds (default: current comp time)",
       required: false,
     },
@@ -34,7 +34,7 @@ registerOp({
     return `
             ${jsxCompLayerPreamble(args)}
             if (typeof _layer.sourceRectAtTime !== "function") return { ok: false, error: "layer has no sourceRectAtTime (camera/light?)" };
-            var _t = ${jsxVal(args.time ?? null)};
+            var _t = AE.timeIn(_comp, ${jsxVal(args.time ?? null)}, "position");
             if (_t === null) _t = _comp.time;
             var _r = _layer.sourceRectAtTime(_t, ${jsxVal(args.includeExtents ?? false)});
             var _out = { ok: true, time: _t, layerSpace: { top: _r.top, left: _r.left, width: _r.width, height: _r.height } };
@@ -89,7 +89,7 @@ registerOp({
     { name: "point", type: "array", description: "[x, y] point to convert", required: true },
     {
       name: "time",
-      type: "number",
+      type: "time",
       description: "Evaluate at this time (default: current comp time)",
       required: false,
     },
@@ -100,7 +100,7 @@ registerOp({
             var _toComp = ${jsxVal(args.direction)} === "sourceToComp";
             var _fn = _toComp ? _layer.sourcePointToComp : _layer.compPointToSource;
             if (typeof _fn !== "function") return { ok: false, error: "point conversion unavailable on this layer (text layers, AE 13.2+)" };
-            var _t = ${jsxVal(args.time ?? null)};
+            var _t = AE.timeIn(_comp, ${jsxVal(args.time ?? null)}, "position");
             var _prevT = _comp.time;
             if (_t !== null) _comp.time = _t;
             var _res;
@@ -320,7 +320,7 @@ registerOp({
       description: "1-based layer index, or the layer name",
       required: true,
     },
-    { name: "time", type: "number", description: "Time in seconds to split at", required: true },
+    { name: "time", type: "time", description: "Time in seconds to split at", required: true },
   ],
   toJsx(args) {
     // Layer.splitLayer() does not exist in the AE scripting DOM; emulate the
@@ -329,7 +329,7 @@ registerOp({
     // matching the native command's behavior.
     return `
             ${jsxCompLayerPreamble(args)}
-            var _t = ${jsxVal(args.time)};
+            var _t = AE.timeIn(_comp, ${jsxVal(args.time)}, "position");
             if (typeof _t !== "number") return { ok: false, error: "time must be a number" };
             if (_t <= _layer.inPoint || _t >= _layer.outPoint) {
                 return { ok: false, error: "split time " + _t + " is outside the layer's span (" + _layer.inPoint + ", " + _layer.outPoint + ")" };
@@ -364,7 +364,7 @@ registerOp({
     },
     {
       name: "startTime",
-      type: "number",
+      type: "time",
       description: "Absolute startTime for the copy (applied after timeOffset)",
       required: false,
     },
@@ -393,9 +393,10 @@ registerOp({
             var _bakeT = ${jsxVal(args.bakeAtTime ?? null)};
             if (_bakeT !== null) _baked = AE.bakeKeysAtTime(_newLayer, _bakeT);
             var _off = ${jsxVal(args.timeOffset ?? null)};
-            if (_off !== null) _newLayer.startTime = _newLayer.startTime + _off;
+            // On whole frames of the target comp; startTime may be its timecode.
+            if (_off !== null) _newLayer.startTime = AE.snapTime(_target, _newLayer.startTime + _off);
             var _start = ${jsxVal(args.startTime ?? null)};
-            if (_start !== null) _newLayer.startTime = _start;
+            if (_start !== null) _newLayer.startTime = AE.timeIn(_target, _start, "position");
             ${args.name ? `_newLayer.name = ${jsxVal(args.name)};` : ""}
             return { ok: true, copied: _layer.name, targetComp: _target.name, newIndex: _newLayer.index, newName: _newLayer.name, newId: AE.safeGet(function () { return _newLayer.id; }, null), startTime: _newLayer.startTime, inPoint: _newLayer.inPoint, outPoint: _newLayer.outPoint, bakedProperties: _baked };
         `;

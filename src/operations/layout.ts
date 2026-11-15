@@ -4,6 +4,7 @@
 // `layer` vocabulary as transform.set / property.set: index | name | { id } |
 // 'selected' | 'all' | an array of those.
 
+import { TIMECODE_RE } from "../opschema.js";
 import { registerOp, jsxFail, jsxVal, jsxCompPreamble } from "../registry.js";
 
 const LAYER_TARGET_PARAM = {
@@ -42,7 +43,7 @@ registerOp({
     },
     {
       name: "time",
-      type: "number",
+      type: "time",
       description:
         "Time at which the bounds are measured for a preset (default: current comp time)",
       required: false,
@@ -61,7 +62,7 @@ registerOp({
             if (_preset !== null && !AE.ANCHOR_PRESETS.hasOwnProperty(_preset)) return { ok: false, error: "unknown preset '" + _preset + "'" };
             var _point = ${jsxVal(args.point ?? null)};
             var _offset = ${jsxVal(args.offset ?? null)};
-            var _t = ${jsxVal(args.time ?? null)};
+            var _t = AE.timeIn(_comp, ${jsxVal(args.time ?? null)}, "position");
             if (_t === null) _t = _comp.time;
             var _out = [];
             var _failed = 0;
@@ -106,39 +107,46 @@ registerOp({
       description: "Seconds to move the layer by (in/out points follow)",
       required: false,
     },
-    { name: "startTime", type: "number", description: "Absolute layer start", required: false },
+    { name: "startTime", type: "time", description: "Absolute layer start", required: false },
     {
       name: "inPoint",
       type: "any",
-      description: "In point in seconds, or 'comp' for the comp start (0)",
+      description:
+        "In point: the comp's timecode \"HH:MM:SS:FF\" (preferred) or seconds, on a whole frame; or 'comp' for the comp start (0)",
       required: false,
     },
     {
       name: "outPoint",
       type: "any",
-      description: "Out point in seconds, or 'comp' for the comp end (comp.duration)",
+      description:
+        "Out point: the comp's timecode \"HH:MM:SS:FF\" (preferred) or seconds, on a whole frame; or 'comp' for the comp end (comp.duration)",
       required: false,
     },
     { name: "stretch", type: "number", description: "Time stretch in percent", required: false },
   ],
   toJsx(args) {
     const sets: string[] = [];
-    if (args.shift !== undefined) sets.push(`_l.startTime = _l.startTime + ${jsxVal(args.shift)};`);
-    if (args.startTime !== undefined) sets.push(`_l.startTime = ${jsxVal(args.startTime)};`);
+    if (args.shift !== undefined)
+      sets.push(`_l.startTime = AE.snapTime(_comp, _l.startTime + ${jsxVal(args.shift)});`);
+    if (args.startTime !== undefined)
+      sets.push(`_l.startTime = AE.timeIn(_comp, ${jsxVal(args.startTime)}, "position");`);
     if (args.inPoint !== undefined)
-      sets.push(`_l.inPoint = (${jsxVal(args.inPoint)} === "comp") ? 0 : ${jsxVal(args.inPoint)};`);
+      sets.push(
+        `_l.inPoint = (${jsxVal(args.inPoint)} === "comp") ? 0 : AE.timeIn(_comp, ${jsxVal(args.inPoint)}, "position");`,
+      );
     if (args.outPoint !== undefined)
       sets.push(
-        `_l.outPoint = (${jsxVal(args.outPoint)} === "comp") ? _comp.duration : ${jsxVal(args.outPoint)};`,
+        `_l.outPoint = (${jsxVal(args.outPoint)} === "comp") ? _comp.duration : AE.timeIn(_comp, ${jsxVal(args.outPoint)}, "position");`,
       );
     if (args.stretch !== undefined) sets.push(`_l.stretch = ${jsxVal(args.stretch)};`);
     if (sets.length === 0) {
       return jsxFail("give at least one of shift, startTime, inPoint, outPoint, stretch");
     }
-    const inBad = typeof args.inPoint === "string" && args.inPoint !== "comp";
-    const outBad = typeof args.outPoint === "string" && args.outPoint !== "comp";
-    if (inBad || outBad) {
-      return jsxFail("inPoint/outPoint must be a number or 'comp'");
+    const bad = (v: unknown) => typeof v === "string" && v !== "comp" && !TIMECODE_RE.test(v);
+    if (bad(args.inPoint) || bad(args.outPoint)) {
+      return jsxFail(
+        "inPoint/outPoint must be a timecode HH:MM:SS:FF, a number of seconds, or 'comp'",
+      );
     }
     return `
             ${jsxCompPreamble(args)}
@@ -241,8 +249,8 @@ registerOp({
                     var _l = _layers[_li];
                     try {
                         if (_mode === "inOut") {
-                            _l.inPoint = _ranges[0][0];
-                            _l.outPoint = _ranges[0][1];
+                            _l.inPoint = AE.snapTime(_comp, _ranges[0][0]);
+                            _l.outPoint = AE.snapTime(_comp, _ranges[0][1]);
                             _out.push({ entry: _ei, index: _l.index, name: _l.name, ok: true, inPoint: _l.inPoint, outPoint: _l.outPoint });
                         } else {
                             var _op = _l.transform.opacity;

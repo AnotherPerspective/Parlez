@@ -72,7 +72,7 @@ registerOp({
     { name: "property", type: "array", description: "Property path", required: true },
     {
       name: "time",
-      type: "number",
+      type: "time",
       description: "If set, get value at this time (for animated properties)",
       required: false,
     },
@@ -84,7 +84,7 @@ registerOp({
             ${jsxPropertyLookup()}
             var _val;
             if (${jsxVal(args.time ?? null)} !== null) {
-                _val = _node.valueAtTime(${jsxVal(args.time)}, false);
+                _val = _node.valueAtTime(AE.timeIn(_comp, ${jsxVal(args.time)}, "position"), false);
             } else {
                 _val = _node.value;
             }

@@ -53,7 +53,7 @@ describe("validateOpArgs", () => {
     if (res.ok) return;
     expect(res.issues).toContainEqual({
       path: "time",
-      message: "must be number, got string",
+      message: 'must be a timecode "HH:MM:SS:FF" or a number of seconds, got "2"',
     });
   });
 

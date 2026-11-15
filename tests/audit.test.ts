@@ -111,9 +111,9 @@ describe("comp.audit registration", () => {
     ]);
   });
 
-  it("has exactly the 14 audit rules, each with its own function", () => {
-    expect(AUDIT_RULE_IDS).toHaveLength(14);
-    expect(new Set(AUDIT_RULE_IDS).size).toBe(14);
+  it("has exactly the 15 audit rules, each with its own function", () => {
+    expect(AUDIT_RULE_IDS).toHaveLength(15);
+    expect(new Set(AUDIT_RULE_IDS).size).toBe(15);
     for (const r of AUDIT_RULES) {
       expect(r.code).toContain(`function ${r.fn}(ctx)`);
       expect(["errore", "avviso", "nota"]).toContain(r.gravita);
@@ -124,7 +124,7 @@ describe("comp.audit registration", () => {
 describe("comp.audit code generation", () => {
   const ruleFns = AUDIT_RULES.map((r) => r.fn);
 
-  it("emits all 14 rule functions by default", () => {
+  it("emits all 15 rule functions by default", () => {
     const jsx = buildAuditJsx({ comp: "Main" });
     for (const fn of ruleFns) expect(jsx).toContain(`function ${fn}(ctx)`);
   });
@@ -532,6 +532,34 @@ describe("rule keyframe-oltre-fine", () => {
     l.tp("ADBE Position").keys = [key(0, [0, 0]), key(10, [9, 9])];
     l.tp("ADBE Opacity").keys = [key(12, 0)];
     expect(only("keyframe-oltre-fine", c)).toEqual([]);
+  });
+});
+
+describe("rule fuori-fotogramma (2026-11-15)", () => {
+  it("flags keys between two frames, once per layer, and timings off the frame grid", () => {
+    const c = new FakeComp("Main");
+    const l = c.add(new FakeShapeLayer({ name: "S" }));
+    // At 25 fps a frame is 0.04 s: 0.5 is frame 12.5, 0.48 is frame 12.
+    l.tp("ADBE Opacity").keys = [key(0.48, 0), key(0.5, 50), key(1.3, 100)];
+    c.add(new FakeTextLayer({ name: "T", inPoint: 0.1, outPoint: 4 }));
+    const f = only("fuori-fotogramma", c);
+    expect(f.map((x) => x.livello).sort()).toEqual(["S", "T"]);
+    const keys = f.find((x) => x.livello === "S")!;
+    // 0.5 and 1.3 s are frames 12.5 and 32.5.
+    expect(keys.messaggio).toMatch(/^2 keyframe tra due fotogrammi/);
+    expect(keys.tempo).toBe(0.5);
+    expect(keys.comeCorreggere).toContain("keyframe.shift");
+    const timing = f.find((x) => x.livello === "T")!;
+    expect(timing.messaggio).toContain("ingresso 2.5");
+    expect(timing.gravita).toBe("avviso");
+  });
+
+  it("stays silent when every time is on a whole frame", () => {
+    const c = new FakeComp("Main");
+    const l = c.add(new FakeShapeLayer({ name: "S" }));
+    l.tp("ADBE Opacity").keys = [key(0, 0), key(0.48, 50), key(1.32, 100)];
+    c.add(new FakeTextLayer({ name: "T", inPoint: 0.12, outPoint: 4 }));
+    expect(only("fuori-fotogramma", c)).toEqual([]);
   });
 });
 

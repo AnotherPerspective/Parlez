@@ -485,6 +485,164 @@ AE.KEY_INTERP_NAMES = {};
 })();
 
 // Safely call a getter that may throw or return undefined. Returns the fallback on any failure.
+// --- Time: whole frames, timecode (Anthony, 2026-11-15) ---------------------
+//
+// Every time Parlez! writes into a comp lands on a whole frame of that comp:
+// "round" seconds put keys between two frames (3.3 s at 23.976 is frame
+// 79.1) and layers a hair before or after a frame. And a time may be given as
+// the comp's timecode "HH:MM:SS:FF" (";" before FF in drop-frame), as the user
+// reads it in the timeline: it counts from the comp's start timecode
+// (displayStartTime) for a point on the timeline, from 00:00:00:00 for a
+// length. The timecode arithmetic is the same as PR.tcToFrames /
+// PR.framesToTc in jsx/premiere-helpers.jsx (tests keep them in step).
+
+/** { fps, fd, base, drop } of a comp, or null when it has no frame rate. */
+AE.compRate = function (comp) {
+    try {
+        var fps = Number(comp.frameRate);
+        if (!(fps > 0)) return null;
+        var fd = Number(comp.frameDuration);
+        if (!(fd > 0)) fd = 1 / fps;
+        var base = Math.round(fps);
+        var drop = false;
+        try { drop = comp.dropFrame === true && (base === 30 || base === 60); } catch (eDf) { drop = false; }
+        return { fps: fps, fd: fd, base: base, drop: drop };
+    } catch (eRate) {
+        return null;
+    }
+};
+
+/** Whole frames from 00:00:00:00 for "HH:MM:SS:FF"; throws a plain Italian message when it is not one. */
+AE.tcToFrames = function (tc, rate) {
+    var m = /^(\d{1,2})[:;](\d{2})[:;](\d{2})[:;](\d{2})$/.exec(String(tc));
+    if (!m) throw new Error("\"" + tc + "\" non e' un timecode: scrivi HH:MM:SS:FF.");
+    var h = Number(m[1]);
+    var mi = Number(m[2]);
+    var s = Number(m[3]);
+    var f = Number(m[4]);
+    if (mi > 59 || s > 59) throw new Error("\"" + tc + "\": minuti e secondi vanno da 00 a 59.");
+    if (f >= rate.base) {
+        throw new Error("\"" + tc + "\": a " + rate.base + " fotogrammi al secondo i fotogrammi vanno da 00 a " + (rate.base - 1) + ".");
+    }
+    var frames = ((h * 60 + mi) * 60 + s) * rate.base + f;
+    if (rate.drop) {
+        var d = Math.round(rate.base / 15);
+        var minutes = h * 60 + mi;
+        if (s === 0 && f < d && mi % 10 !== 0) {
+            throw new Error("\"" + tc + "\" non esiste in drop-frame: al minuto " + mi + " si salta da ;00 a ;" + (d < 10 ? "0" : "") + d + ".");
+        }
+        frames -= d * (minutes - Math.floor(minutes / 10));
+    }
+    return frames;
+};
+
+/** Whole frames from 00:00:00:00 -> "HH:MM:SS:FF" (";" before FF in drop-frame). */
+AE.framesToTc = function (frames, rate) {
+    var n = Math.round(frames);
+    var neg = n < 0;
+    if (neg) n = -n;
+    if (rate.drop) {
+        var d = Math.round(rate.base / 15);
+        var perMinute = rate.base * 60 - d;
+        var perTen = perMinute * 10 + d;
+        var tens = Math.floor(n / perTen);
+        var rest = n % perTen;
+        n += d * 9 * tens;
+        if (rest > d) n += d * Math.floor((rest - d) / perMinute);
+    }
+    var f = n % rate.base;
+    var totalS = Math.floor(n / rate.base);
+    var s = totalS % 60;
+    var totalM = Math.floor(totalS / 60);
+    var mi = totalM % 60;
+    var h = Math.floor(totalM / 60);
+    function two(v) { return (v < 10 ? "0" : "") + String(v); }
+    return (neg ? "-" : "") + two(h) + ":" + two(mi) + ":" + two(s) + (rate.drop ? ";" : ":") + two(f);
+};
+
+/** `seconds` on the comp's frame grid (unchanged without a comp or a frame rate). */
+AE.snapTime = function (comp, seconds) {
+    if (typeof seconds !== "number" || !isFinite(seconds)) return seconds;
+    var rate = comp ? AE.compRate(comp) : null;
+    if (rate === null) return seconds;
+    return Math.round(seconds / rate.fd) * rate.fd;
+};
+
+/**
+ * A time from a tool, in seconds on the comp's frame grid. A number is
+ * seconds; a string is the comp's timecode. `kind` "length" counts the
+ * timecode from 00:00:00:00, anything else from the comp's start timecode.
+ * Throws a plain message for a bad timecode.
+ */
+AE.timeIn = function (comp, value, kind) {
+    if (typeof value === "number") return AE.snapTime(comp, value);
+    if (typeof value !== "string") return value;
+    var rate = comp ? AE.compRate(comp) : null;
+    if (rate === null) throw new Error("Non riesco a leggere i fotogrammi al secondo della comp: usa i secondi.");
+    var seconds = AE.tcToFrames(value, rate) * rate.fd;
+    if (kind !== "length") {
+        var start = 0;
+        try { start = Number(comp.displayStartTime) || 0; } catch (eSt) { start = 0; }
+        seconds -= start;
+        if (seconds < -rate.fd / 2) {
+            throw new Error("\"" + value + "\" viene prima dell'inizio della comp, che parte da " +
+                AE.framesToTc(Math.round(start / rate.fd), rate) + ".");
+        }
+    }
+    return AE.snapTime(comp, seconds);
+};
+
+/** The comp a property belongs to (through its layer), or null. */
+AE.compOfProperty = function (prop) {
+    try {
+        var layer = prop.propertyGroup(prop.propertyDepth);
+        return layer ? layer.containingComp : null;
+    } catch (eComp) {
+        return null;
+    }
+};
+
+/** A key time for `prop`: seconds or timecode, on its comp's frame grid. */
+AE.keyTime = function (prop, value) {
+    return AE.timeIn(AE.compOfProperty(prop), value, "position");
+};
+
+/** { tc, frame } of `seconds` in a comp (frame from the comp's start); null without a frame rate. */
+AE.tcOut = function (comp, seconds, kind) {
+    if (typeof seconds !== "number" || !isFinite(seconds)) return null;
+    var rate = comp ? AE.compRate(comp) : null;
+    if (rate === null) return null;
+    var frame = Math.round(seconds / rate.fd);
+    var shown = frame;
+    if (kind !== "length") {
+        var start = 0;
+        try { start = Number(comp.displayStartTime) || 0; } catch (eSt) { start = 0; }
+        shown = frame + Math.round(start / rate.fd);
+    }
+    return { tc: AE.framesToTc(shown, rate), frame: frame };
+};
+
+/** Add "<field>TC" / "<field>Frame" next to time fields of `obj` ({ name: "position" | "length" }). */
+AE.withTimecode = function (comp, obj, fields) {
+    if (obj === null || typeof obj !== "object") return obj;
+    for (var k in fields) {
+        if (!fields.hasOwnProperty(k)) continue;
+        var t = AE.tcOut(comp, obj[k], fields[k]);
+        if (t === null) continue;
+        obj[k + "TC"] = t.tc;
+        obj[k + "Frame"] = t.frame;
+    }
+    return obj;
+};
+
+/** True when `seconds` is not on a whole frame of the comp (beyond a hundredth of a frame). */
+AE.offFrame = function (comp, seconds) {
+    var rate = comp ? AE.compRate(comp) : null;
+    if (rate === null || typeof seconds !== "number" || !isFinite(seconds)) return false;
+    var f = seconds / rate.fd;
+    return Math.abs(f - Math.round(f)) > 0.01;
+};
+
 AE.safeGet = function (fn, fallback) {
     try { var v = fn(); return (v === undefined) ? fallback : v; } catch (e) { return fallback; }
 };
@@ -812,6 +970,8 @@ AE.applyKeys = function (prop, keys) {
     // two snapshot times collide or land on an existing key. Report what the
     // property actually gained.
     var before = prop.numKeys;
+    // On the comp's whole frames (remapped times are rarely whole).
+    for (i = 0; i < keys.length; i++) keys[i].time = AE.keyTime(prop, keys[i].time);
     for (i = 0; i < keys.length; i++) {
         key = keys[i];
         ki = prop.addKey(key.time);

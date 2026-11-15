@@ -10,7 +10,12 @@ import type { AeTransport } from "./transport/AeTransport.js";
 
 export type DestructiveRule = true | ((args: Record<string, unknown>) => string | null);
 
-export type ParamType = "string" | "number" | "boolean" | "array" | "object" | "any";
+/**
+ * "time": the comp's timecode "HH:MM:SS:FF" or a number of seconds. Inside
+ * After Effects AE.timeIn turns either into seconds on a whole frame of the
+ * comp (jsx/helpers.jsx).
+ */
+export type ParamType = "string" | "number" | "boolean" | "array" | "object" | "any" | "time";
 
 export interface OperationParam {
   name: string;

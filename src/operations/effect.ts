@@ -121,7 +121,7 @@ registerOp({
     { name: "value", type: "any", description: "Value to set", required: true },
     {
       name: "time",
-      type: "number",
+      type: "time",
       description: "If set, creates a keyframe at this time",
       required: false,
     },
@@ -140,7 +140,7 @@ registerOp({
                 if (!_next) return { ok: false, error: "effect property '" + _propPath[_pi] + "' not found" };
                 _node = _next;
             }
-            var _time = ${jsxVal(args.time ?? null)};
+            var _time = AE.timeIn(_comp, ${jsxVal(args.time ?? null)}, "position");
             if (_time !== null) {
                 _node.setValueAtTime(_time, ${jsxVal(args.value)});
             } else {

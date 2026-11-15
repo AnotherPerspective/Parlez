@@ -406,7 +406,7 @@
                 "value": 100,
                 "keyframes": [
                   {
-                    "time": 0.5,
+                    "time": 0.52,
                     "value": 0,
                     "inInterp": 6613,
                     "outInterp": 6613,
@@ -426,7 +426,7 @@
                     ]
                   },
                   {
-                    "time": 1.5,
+                    "time": 1.52,
                     "value": 100,
                     "inInterp": 6613,
                     "outInterp": 6613,

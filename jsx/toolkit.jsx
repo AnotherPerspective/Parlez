@@ -73,6 +73,8 @@ AE._componentFor = function (value, d, count) {
 // Set a property's value — or a key at `time` — separated-dimension safe and
 // __kind aware. Returns how many properties were written.
 AE.writeValue = function (prop, value, time) {
+    // A key lands on a whole frame of the comp; a timecode is read as one.
+    if (time !== undefined && time !== null) time = AE.keyTime(prop, time);
     var followers = AE.separationFollowers(prop);
     var v = AE.nativeValue(prop, value);
     var targets = followers ? followers : [prop];
@@ -230,6 +232,8 @@ AE.applyKeySpecs = function (prop, specs, opts) {
     var targets = followers ? followers : [prop];
     var warnings = [];
     var written = 0;
+    // Whole frames of the comp (a timecode is read as one), before anything is written.
+    for (var si = 0; si < specs.length; si++) specs[si].time = AE.keyTime(prop, specs[si].time);
     for (var ti = 0; ti < targets.length; ti++) {
         var tp = targets[ti];
         if (opts.replace) AE.removeAllKeys(tp);

@@ -13,6 +13,9 @@
 
 import type { Operation, OperationParam, ParamType } from "./registry.js";
 
+/** HH:MM:SS:FF, ";" allowed (drop-frame). The same as src/premiere/timecode.ts. */
+export const TIMECODE_RE = /^\d{1,2}[:;]\d{2}[:;]\d{2}[:;]\d{2}$/;
+
 export interface ArgIssue {
   path: string;
   message: string;
@@ -40,6 +43,11 @@ function typeMatches(type: ParamType, v: unknown): boolean {
       return isPlainObject(v);
     case "any":
       return true;
+    case "time":
+      return (
+        (typeof v === "number" && Number.isFinite(v)) ||
+        (typeof v === "string" && TIMECODE_RE.test(v))
+      );
   }
 }
 
@@ -142,7 +150,10 @@ export function validateOpArgs(op: Operation, raw: unknown): ValidateOpArgsResul
     if (!typeMatches(param.type, value)) {
       issues.push({
         path: param.name,
-        message: `must be ${param.type}, got ${describeValue(value)}`,
+        message:
+          param.type === "time"
+            ? `must be a timecode "HH:MM:SS:FF" or a number of seconds, got ${typeof value === "string" ? JSON.stringify(value) : describeValue(value)}`
+            : `must be ${param.type}, got ${describeValue(value)}`,
       });
     }
   }

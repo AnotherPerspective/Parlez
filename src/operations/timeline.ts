@@ -8,12 +8,12 @@ registerOp({
   description: "Set the current time indicator (CTI) in a composition.",
   params: [
     { name: "comp", type: "any", description: "Comp name or id", required: true },
-    { name: "time", type: "number", description: "Time in seconds", required: true },
+    { name: "time", type: "time", description: "Time in seconds", required: true },
   ],
   toJsx(args) {
     return `
             ${jsxCompPreamble(args)}
-            _comp.time = ${jsxVal(args.time)};
+            _comp.time = AE.timeIn(_comp, ${jsxVal(args.time)}, "position");
             return { ok: true, time: _comp.time };
         `;
   },

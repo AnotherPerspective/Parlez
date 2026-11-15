@@ -464,7 +464,8 @@ registerOp({
             if (_layers.length === 0) return { ok: false, error: "no layers matched" };
             var _unit = ${jsxVal(unit)};
             var _step = ${jsxVal(step)};
-            var _stepSec = _unit === "frames" ? _step * _comp.frameDuration : _step;
+            // A step of whole frames: offsets never land between two frames.
+            var _stepSec = _unit === "frames" ? _step * _comp.frameDuration : AE.snapTime(_comp, _step);
             var _mode = ${jsxVal(mode)};
             var _path = ${jsxVal(args.property ?? null)};
             var _ranks = _staggerRanks(_layers.length, ${jsxVal(order)}, ${jsxVal(seed)});
@@ -476,8 +477,8 @@ registerOp({
                 _warnings.push("the cascade lasts " + (Math.round(_total * 1000) / 1000) + " s, more than 0.5 s: the last layer arrives when the eye has moved on — shorten the step or group the layers");
             }
             if (_unit === "seconds") {
-                var _frames = _stepSec / _comp.frameDuration;
-                if (Math.abs(_frames - Math.round(_frames)) > 1e-6) _warnings.push("step is not a whole number of frames: keys will land between frames");
+                var _frames = _step / _comp.frameDuration;
+                if (Math.abs(_frames - Math.round(_frames)) > 1e-6) _warnings.push("step is not a whole number of frames: rounded to " + Math.round(_frames) + " frames, so no key lands between two frames");
             }
             // Properties whose keys move with the layer: every animated leaf
             // except markers and Time Remap (layer timing, which mode 'start'
@@ -539,7 +540,7 @@ registerOp({
                 var _jb = _jobs[_j];
                 var _moved = 0;
                 if (_mode === "start") {
-                    _jb.layer.startTime = _jb.layer.startTime + _jb.offset;
+                    _jb.layer.startTime = AE.snapTime(_comp, _jb.layer.startTime + _jb.offset);
                 } else {
                     for (var _q = 0; _q < _jb.props.length; _q++) {
                         AE.removeAllKeys(_jb.props[_q].prop);

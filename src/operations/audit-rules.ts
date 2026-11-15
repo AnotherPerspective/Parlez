@@ -609,6 +609,62 @@ export const AUDIT_RULES: AuditRuleDef[] = [
 `,
   },
   {
+    id: "fuori-fotogramma",
+    gravita: "avviso",
+    fn: "_auR_fuoriFotogramma",
+    descrizione:
+      "Keyframe, inizio, punto di ingresso o di uscita di un livello che cadono tra due fotogrammi della composizione",
+    code: `
+    function _auR_fuoriFotogramma(ctx) {
+        var c = ctx.comp;
+        var fd = _auGet(c, "frameDuration", 0);
+        if (!(fd > 0)) return;
+        // More than a hundredth of a frame away from a whole frame.
+        function off(t) {
+            if (typeof t !== "number") return false;
+            var f = t / fd;
+            return Math.abs(f - Math.round(f)) > 0.01;
+        }
+        function frames(t) {
+            return Math.round(t / fd * 100) / 100;
+        }
+        for (var i = 1; i <= c.numLayers; i++) {
+            var l = c.layer(i);
+            var timing = [];
+            if (off(l.startTime)) timing.push("inizio " + frames(l.startTime));
+            if (off(l.inPoint)) timing.push("ingresso " + frames(l.inPoint));
+            if (off(l.outPoint)) timing.push("uscita " + frames(l.outPoint));
+            if (timing.length > 0) {
+                ctx.add(l, l.inPoint,
+                    "Il livello non parte o non finisce su un fotogramma intero (" + timing.join(", ") + " fotogrammi).",
+                    "Rimetti inizio, ingresso e uscita sul fotogramma intero piu' vicino: ae_do layer.set_timing con il timecode HH:MM:SS:FF (Parlez! arrotonda sempre al fotogramma).");
+            }
+            var count = 0;
+            var first = null;
+            var names = [];
+            _auWalk(l, function (p) {
+                if (p.matchName === "ADBE Marker") return;
+                var n = _auGet(p, "numKeys", 0);
+                var found = false;
+                for (var k = 1; k <= n; k++) {
+                    var t = p.keyTime(k);
+                    if (!off(t)) continue;
+                    count++;
+                    found = true;
+                    if (first === null || t < first) first = t;
+                }
+                if (found) names.push(p.name);
+            }, 0);
+            if (count > 0) {
+                ctx.add(l, first,
+                    count + " keyframe tra due fotogrammi (" + names.join(", ") + "): l'animazione salta in modo diverso da come si vede in timeline.",
+                    "Riallinea i keyframe al fotogramma intero piu' vicino: ae_do keyframe.shift con offset 0 su quella proprieta' (Parlez! arrotonda sempre al fotogramma).");
+            }
+        }
+    }
+`,
+  },
+  {
     id: "fuori-dal-tempo",
     gravita: "errore",
     fn: "_auR_fuoriTempo",

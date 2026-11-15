@@ -121,7 +121,7 @@ describe("mask geometry", () => {
     const op = getOp("mask.set_path")!;
     const keyed = op.toJsx({ ...target, maskIndex: 1, shape: "rect", size: [10, 10], time: 1.5 });
     expect(keyed).toContain('AE.geometryShape("rect", _center, [10,10], 0)');
-    expect(keyed).toContain("_pathProp.setValueAtTime(1.5, _shape)");
+    expect(keyed).toContain('_pathProp.setValueAtTime(AE.timeIn(_comp, 1.5, "position"), _shape)');
     const vertices = op.toJsx({ ...target, maskIndex: 1, vertices: [[0, 0]] });
     expect(vertices).toContain("new Shape()");
     expect(vertices).toContain("_pathProp.setValue(_shape)");
@@ -155,12 +155,16 @@ describe("layer.set_timing", () => {
   it("expands the 'comp' sentinel and applies in the documented order", () => {
     const op = getOp("layer.set_timing")!;
     const jsx = op.toJsx({ comp: "Main", layer: 1, shift: 1, inPoint: "comp", outPoint: "comp" });
-    expect(jsx).toContain("_l.startTime = _l.startTime + 1;");
-    expect(jsx).toContain('_l.inPoint = ("comp" === "comp") ? 0 : "comp";');
-    expect(jsx).toContain('_l.outPoint = ("comp" === "comp") ? _comp.duration : "comp";');
+    expect(jsx).toContain("_l.startTime = AE.snapTime(_comp, _l.startTime + 1);");
+    expect(jsx).toContain(
+      '_l.inPoint = ("comp" === "comp") ? 0 : AE.timeIn(_comp, "comp", "position");',
+    );
+    expect(jsx).toContain(
+      '_l.outPoint = ("comp" === "comp") ? _comp.duration : AE.timeIn(_comp, "comp", "position");',
+    );
     expect(jsx.indexOf("_l.startTime")).toBeLessThan(jsx.indexOf("_l.inPoint"));
     expect(op.toJsx({ comp: "Main", layer: 1 })).toContain("give at least one of");
-    expect(op.toJsx({ comp: "Main", layer: 1, outPoint: "end" })).toContain("number or 'comp'");
+    expect(op.toJsx({ comp: "Main", layer: 1, outPoint: "end" })).toContain("seconds, or 'comp'");
   });
 });
 

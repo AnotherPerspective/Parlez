@@ -25,7 +25,7 @@ function jsxMarkerPreamble(args: Record<string, unknown>): string {
 function jsxMarkerKeyLookup(args: Record<string, unknown>): string {
   return `
         var _ki = ${jsxVal(args.keyIndex ?? null)};
-        var _t = ${jsxVal(args.time ?? null)};
+        var _t = AE.timeIn(_comp, ${jsxVal(args.time ?? null)}, "position");
         if (_ki === null && _t === null) return { ok: false, error: "pass keyIndex or time" };
         if (_mp.numKeys === 0) return { ok: false, error: "no markers" };
         if (_ki === null) {
@@ -50,7 +50,8 @@ function jsxMarkerKeyLookup(args: Record<string, unknown>): string {
 function jsxMarkerFieldSets(args: Record<string, unknown>): string {
   const sets: string[] = [];
   if (args.label !== undefined) sets.push(`_mv.label = ${jsxVal(args.label)};`);
-  if (args.duration !== undefined) sets.push(`_mv.duration = ${jsxVal(args.duration)};`);
+  if (args.duration !== undefined)
+    sets.push(`_mv.duration = AE.timeIn(_comp, ${jsxVal(args.duration)}, "length");`);
   if (args.chapter !== undefined) sets.push(`_mv.chapter = ${jsxVal(args.chapter)};`);
   if (args.url !== undefined) sets.push(`_mv.url = ${jsxVal(args.url)};`);
   if (args.frameTarget !== undefined) sets.push(`_mv.frameTarget = ${jsxVal(args.frameTarget)};`);
@@ -78,7 +79,7 @@ function jsxMarkerFieldSets(args: Record<string, unknown>): string {
 /** Marker fields shared by add_comp / add_layer / update. */
 const MARKER_FIELD_PARAMS = [
   { name: "label", type: "number", description: "Label color index (0-16)", required: false },
-  { name: "duration", type: "number", description: "Marker duration in seconds", required: false },
+  { name: "duration", type: "time", description: "Marker duration in seconds", required: false },
   { name: "chapter", type: "string", description: "Chapter link text", required: false },
   { name: "url", type: "string", description: "Web link URL", required: false },
   {
@@ -119,7 +120,7 @@ registerOp({
   description: "Add a marker to a composition at a given time.",
   params: [
     { name: "comp", type: "any", description: "Comp name or id", required: true },
-    { name: "time", type: "number", description: "Time in seconds", required: true },
+    { name: "time", type: "time", description: "Time in seconds", required: true },
     {
       name: "comment",
       type: "string",
@@ -135,7 +136,7 @@ registerOp({
             var _mv = new MarkerValue(${jsxVal(args.comment ?? "")});
             var _w = [];
             ${jsxMarkerFieldSets(args)}
-            _comp.markerProperty.setValueAtTime(${jsxVal(args.time)}, _mv);
+            _comp.markerProperty.setValueAtTime(AE.timeIn(_comp, ${jsxVal(args.time)}, "position"), _mv);
             return { ok: true, numMarkers: _comp.markerProperty.numKeys, warnings: _w };
         `;
   },
@@ -153,7 +154,7 @@ registerOp({
       description: "1-based layer index, or the layer name",
       required: true,
     },
-    { name: "time", type: "number", description: "Time in seconds", required: true },
+    { name: "time", type: "time", description: "Time in seconds", required: true },
     {
       name: "comment",
       type: "string",
@@ -169,7 +170,7 @@ registerOp({
             var _mv = new MarkerValue(${jsxVal(args.comment ?? "")});
             var _w = [];
             ${jsxMarkerFieldSets(args)}
-            _layer.property("Marker").setValueAtTime(${jsxVal(args.time)}, _mv);
+            _layer.property("Marker").setValueAtTime(AE.timeIn(_comp, ${jsxVal(args.time)}, "position"), _mv);
             return { ok: true, numMarkers: _layer.property("Marker").numKeys, warnings: _w };
         `;
   },
@@ -191,7 +192,7 @@ registerOp({
     { name: "keyIndex", type: "number", description: "1-based marker index", required: false },
     {
       name: "time",
-      type: "number",
+      type: "time",
       description: "Remove the marker nearest to this time (used when keyIndex omitted)",
       required: false,
     },
@@ -223,7 +224,7 @@ registerOp({
     { name: "keyIndex", type: "number", description: "1-based marker index", required: false },
     {
       name: "time",
-      type: "number",
+      type: "time",
       description: "Update the marker nearest to this time (used when keyIndex omitted)",
       required: false,
     },

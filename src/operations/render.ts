@@ -120,13 +120,13 @@ registerOp({
     { name: "outputPath", type: "string", description: "Output file path", required: false },
     {
       name: "timeSpanStart",
-      type: "number",
+      type: "time",
       description: "Render span start in seconds (comp time)",
       required: false,
     },
     {
       name: "timeSpanDuration",
-      type: "number",
+      type: "time",
       description: "Render span duration in seconds",
       required: false,
     },
@@ -190,11 +190,11 @@ registerOp({
       rqiSets.push(`_applyTpl(_rqi, ${jsxVal(args.renderTemplate)}, "renderTemplate");`);
     if (args.timeSpanStart !== undefined)
       rqiSets.push(
-        `try { _rqi.timeSpanStart = ${jsxVal(args.timeSpanStart)}; } catch (eTs) { _w.push("timeSpanStart: " + AE.errText(eTs)); }`,
+        `try { _rqi.timeSpanStart = AE.timeIn(_rqi.comp, ${jsxVal(args.timeSpanStart)}, "position"); } catch (eTs) { _w.push("timeSpanStart: " + AE.errText(eTs)); }`,
       );
     if (args.timeSpanDuration !== undefined)
       rqiSets.push(
-        `try { _rqi.timeSpanDuration = ${jsxVal(args.timeSpanDuration)}; } catch (eTd) { _w.push("timeSpanDuration: " + AE.errText(eTd)); }`,
+        `try { _rqi.timeSpanDuration = AE.timeIn(_rqi.comp, ${jsxVal(args.timeSpanDuration)}, "length"); } catch (eTd) { _w.push("timeSpanDuration: " + AE.errText(eTd)); }`,
       );
     if (args.render !== undefined)
       rqiSets.push(
@@ -562,13 +562,13 @@ registerOp({
     },
     {
       name: "timeSpanStart",
-      type: "number",
+      type: "time",
       description: "Render span start in seconds",
       required: false,
     },
     {
       name: "timeSpanDuration",
-      type: "number",
+      type: "time",
       description: "Render span duration in seconds",
       required: false,
     },
@@ -645,8 +645,8 @@ registerOp({
                         var _om = _rqi.outputModule(1);
                         ${args.outputTemplate !== undefined ? `var _wo = AE.applyTemplate(_om, ${jsxVal(args.outputTemplate)}, "outputTemplate"); if (_wo) _entry.warnings.push(_wo);` : ""}
                         _om.file = AE.ensureParentDir(_path);
-                        ${args.timeSpanStart !== undefined ? `_rqi.timeSpanStart = ${jsxVal(args.timeSpanStart)};` : ""}
-                        ${args.timeSpanDuration !== undefined ? `_rqi.timeSpanDuration = ${jsxVal(args.timeSpanDuration)};` : ""}
+                        ${args.timeSpanStart !== undefined ? `_rqi.timeSpanStart = AE.timeIn(_rqi.comp, ${jsxVal(args.timeSpanStart)}, "position");` : ""}
+                        ${args.timeSpanDuration !== undefined ? `_rqi.timeSpanDuration = AE.timeIn(_rqi.comp, ${jsxVal(args.timeSpanDuration)}, "length");` : ""}
                         rq.render();
                         _entry.status = String(_rqi.status);
                         _entry.outputPath = _om.file ? _om.file.fsName.replace(/\\\\/g, "/") : _path;
