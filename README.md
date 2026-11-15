@@ -12,7 +12,7 @@ Parlez! lets **Claude work inside After Effects and Premiere Pro**. Tell Claude 
 Free and open source (MIT). It grows out of [mcp-aftereffects](https://github.com/kumoproductions/mcp-aftereffects) by kumo.productions (see [Credits](#credits)).
 
 > [!IMPORTANT]
-> **Testing status.** Parlez! is **tested only on Windows 10, with After Effects 2026 (26.5) and Premiere Pro 2026 (26.3)**. macOS, After Effects 2024 and 2025, Premiere Pro 2024 and 2025 are **written to work but not tested yet**. Background rendering (aerender) has not yet succeeded from the program. This is a preview (0.2): try it on a copy of a project first, not on real work.
+> **Testing status.** Parlez! is **tested only on Windows 10, with After Effects 2026 (26.5) and Premiere Pro 2026 (26.3.2)**. macOS, After Effects 2024 and 2025, Premiere Pro 2024 and 2025 are **written to work but not tested yet**. Background rendering (aerender) has not yet succeeded from the program. This is a preview (0.2): try it on a copy of a project first, not on real work.
 >
 > Before using it, read the **[notices](AVVERTENZE.md#english)**: Parlez! is free and experimental, provided as is, and you use it at your own risk.
 
@@ -70,6 +70,8 @@ The sveglia (since 0.2) reads the agent's heartbeat file, runs one PowerShell li
 
 Claude can read projects and sequences, import files (also numbered image sequences as one clip, e.g. a PNG render from After Effects), place, trim, move and cut clips, add markers, transitions, titles, captions and audio levels, and export. Every time can be given as the sequence timecode `HH:MM:SS:FF`.
 
+**From After Effects to Premiere with PNG sequences** (tested on Windows with After Effects 2026 and Premiere Pro 26.3.2): Claude renders the comp as a numbered PNG sequence and imports it in Premiere as one clip with its frame rate. When After Effects renders it again (all of it or part of it), Parlez! first lets Premiere release the files, then makes Premiere read them again, without importing anything twice; clips stay in the timeline. After Effects needs a **PNG output module template** saved once by you (in the Render Queue, set the Output Module to PNG Sequence, then choose Make Template from its menu): scripts cannot change the output format.
+
 **Undo in Premiere:** Premiere's Ctrl+Z does not undo changes made by scripts. Parlez! keeps its own undo: the **Annulla** button in the panel (or asking Claude) undoes the whole last request, and before every change a copy of the saved project goes to `_parlez-checkpoints` next to it.
 
 ## What it does and does not do
@@ -82,7 +84,7 @@ What Claude reads from the project (names, text, file paths, frames) goes to the
 
 ## Troubleshooting
 
-Timeouts: is After Effects open, the panel ON, the scripting checkbox on, and no dialog open (sometimes hidden behind the main window)? Then run `parlez doctor`. A grey panel usually comes back by itself once the open dialog closes; if it stays stopped, press **Riavvia** in the panel. After an After Effects update (e.g. 26.5 → 26.6) or a Parlez! update, run `parlez setup` again. Issues: [github.com/AnotherPerspective/Parlez/issues](https://github.com/AnotherPerspective/Parlez/issues).
+Timeouts: is After Effects open, the panel ON, the scripting checkbox on, and no dialog open (sometimes hidden behind the main window)? Then run `parlez doctor`. A grey panel usually comes back by itself once the open dialog closes; if it stays stopped, press **Riavvia** in the panel. After an After Effects update (e.g. 26.5 → 26.6) or a Parlez! update, run `parlez setup` again (or the new installer), then reopen After Effects or press **Riavvia** in its panel, and close and reopen the Parlez! panel in Premiere Pro. Issues: [github.com/AnotherPerspective/Parlez/issues](https://github.com/AnotherPerspective/Parlez/issues).
 
 Developers: advanced options and architecture are in [`docs/TOOLS.md`](docs/TOOLS.md) and [`CONTRIBUTING.md`](CONTRIBUTING.md). **Default connection:** Parlez! talks to After Effects through the startup script; kumo's direct `AfterFX.exe -r` path remains as a fallback when the startup script is not installed (or with `AE_MCP_PULL_ONLY=0`).
 
@@ -99,7 +101,7 @@ Parlez! fa lavorare **Claude dentro After Effects e Premiere Pro**. Scrivi a Cla
 È gratuito e open source (licenza MIT). Nasce da [mcp-aftereffects](https://github.com/kumoproductions/mcp-aftereffects) di kumo.productions (vedi [Crediti](#crediti)).
 
 > [!IMPORTANT]
-> **Stato delle prove.** Parlez! è **provato solo su Windows 10, con After Effects 2026 (26.5) e Premiere Pro 2026 (26.3)**. Il Mac, After Effects 2024 e 2025, Premiere Pro 2024 e 2025 sono **scritti per funzionare ma non ancora provati**. Il render in sottofondo (aerender) non è ancora riuscito dal programma. È una versione di prova (0.2): usala prima su una copia di un progetto, non sul lavoro vero.
+> **Stato delle prove.** Parlez! è **provato solo su Windows 10, con After Effects 2026 (26.5) e Premiere Pro 2026 (26.3.2)**. Il Mac, After Effects 2024 e 2025, Premiere Pro 2024 e 2025 sono **scritti per funzionare ma non ancora provati**. Il render in sottofondo (aerender) non è ancora riuscito dal programma. È una versione di prova (0.2): usala prima su una copia di un progetto, non sul lavoro vero.
 >
 > Prima di usarlo leggi le **[avvertenze](AVVERTENZE.md#italiano)**: Parlez! è gratuito e sperimentale, è fornito così com'è e lo usi a tuo rischio.
 
@@ -192,6 +194,8 @@ Dentro After Effects, **Finestra → Parlez!** apre un pannello con un grande in
 
 Claude può leggere progetti e sequenze, importare file (anche sequenze di immagini numerate come una sola clip, per esempio un render PNG di After Effects), mettere, rifilare, spostare e tagliare clip, aggiungere marker, transizioni, titoli, sottotitoli e volumi, ed esportare. Ogni tempo si può dare come timecode della sequenza `HH:MM:SS:FF`.
 
+**Da After Effects a Premiere con sequenze PNG** (provato su Windows con After Effects 2026 e Premiere Pro 26.3.2): Claude renderizza la composizione come sequenza PNG numerata e la importa in Premiere come una sola clip, con la sua frequenza dei fotogrammi. Quando After Effects la renderizza di nuovo (tutta o in parte), Parlez! prima fa lasciare i file a Premiere, poi glieli fa rileggere, senza importare niente due volte; le clip restano in timeline. In After Effects serve un **modello di uscita PNG** salvato una volta da te (nella coda di rendering imposta il modulo di output su sequenza PNG, poi dal suo menu scegli il comando per creare un modello): da script non si può cambiare il formato di uscita.
+
 **Annulla in Premiere:** il Ctrl+Z di Premiere non annulla le modifiche fatte da script. Parlez! ha il suo annulla: il bottone **Annulla** nel pannello (o chiederlo a Claude) disfa tutta l'ultima richiesta, e prima di ogni modifica una copia del progetto salvato finisce in `_parlez-checkpoints`, accanto al progetto.
 
 ## Cosa fa e cosa non fa
@@ -218,7 +222,7 @@ Claude può leggere progetti e sequenze, importare file (anche sequenze di immag
 - **Claude va in timeout**: controlla che After Effects sia aperto, che il pannello sia su ON, che la casella degli script sia accesa e che non ci sia una finestra di dialogo aperta (a volte resta nascosta dietro la finestra principale). Poi `parlez doctor`.
 - **«Claude è in pausa»**: il pannello è su OFF. Portalo su ON.
 - **Dopo un aggiornamento di After Effects** (per esempio da 26.5 a 26.6) rilancia `parlez setup`: ogni versione ha la sua cartella.
-- **Dopo un aggiornamento di Parlez!** rilancia `parlez setup` per aggiornare il pannello.
+- **Dopo un aggiornamento di Parlez!** rilancia `parlez setup` (o il nuovo installatore) per aggiornare i pannelli, poi riapri After Effects oppure premi **Riavvia** nel suo pannello, e in Premiere Pro chiudi e riapri il pannello Parlez!.
 - **Il pannello è grigio o non risponde**: di solito riparte da solo appena si chiude la finestra di dialogo aperta. Se resta fermo, premi **Riavvia** nel pannello. Dalla 0.2 la **sveglia** evita i blocchi all'apertura dei progetti pesanti: se `parlez doctor` dice che manca, rilancia `parlez setup`.
 - **La sveglia** legge il file di battito dello script di avvio, usa una riga di PowerShell per leggere se la finestra di After Effects è libera (solo Windows, solo lettura) e manda ad After Effects sempre la stessa riga di codice. Nient'altro, niente rete. Provata su After Effects 2026 / Windows; sul Mac è scritta per funzionare ma non ancora provata.
 

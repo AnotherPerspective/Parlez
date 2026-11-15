@@ -217,8 +217,8 @@ end;
 
 { --- PlayerDebugMode di CEP: acceso solo se l'utente lo sceglie, e rimesso
   com'era alla disinstallazione. Per ogni CSXS.<n> che cambiamo ci segniamo
-  il valore di prima sotto HKCU\Software\Parlez. CSXS.11 = After Effects e
-  Premiere 2024, CSXS.12 = 2025 e 2026 (gli stessi che legge parlez setup). --- }
+  il valore di prima sotto HKCU\Software\Parlez. CSXS.11, 12 e 13: le versioni di CEP
+  di After Effects e Premiere 2024–2026 (gli stessi che legge parlez setup). --- }
 
 const
   OurKey = 'Software\Parlez';
@@ -228,7 +228,7 @@ var
   Major: Integer;
   Key, Old: String;
 begin
-  for Major := 11 to 12 do
+  for Major := 11 to 13 do
   begin
     Key := 'Software\Adobe\CSXS.' + IntToStr(Major);
     if not RegQueryStringValue(HKCU, Key, 'PlayerDebugMode', Old) then Old := '<assente>';
@@ -245,7 +245,7 @@ var
   Major: Integer;
   Key, Old: String;
 begin
-  for Major := 11 to 12 do
+  for Major := 11 to 13 do
   begin
     Key := 'Software\Adobe\CSXS.' + IntToStr(Major);
     if RegQueryStringValue(HKCU, OurKey, 'PrimaPlayerDebugMode.' + IntToStr(Major), Old) then
