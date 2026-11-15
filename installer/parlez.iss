@@ -112,7 +112,7 @@ Type: filesandordirs; Name: "{app}\app"
 
 [Run]
 Filename: "{cmd}"; Parameters: "/c ""{code:SetupCommand} > ""{app}\installazione.txt"" 2>&1"""; StatusMsg: "{cm:RunSetup}"; Flags: runhidden waituntilterminated
-Filename: "{cmd}"; Parameters: "/c ""{code:ClaudeCodeCommand}"""; Description: "{cm:RunClaudeCode}"; Flags: postinstall runhidden waituntilterminated; Check: ClaudeCodeFound
+Filename: "{cmd}"; Parameters: "/c ""{code:ClaudeCodeCommand}"""; Description: "{cm:RunClaudeCode}"; Flags: postinstall runhidden waituntilterminated skipifsilent; Check: ClaudeCodeFound
 Filename: "{app}\installazione.txt"; Description: "{cm:OpenReport}"; Flags: postinstall shellexec skipifsilent
 
 [UninstallRun]
