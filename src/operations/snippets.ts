@@ -26,6 +26,14 @@ export const COMP_INFO_FN = `
         _ciOut.shutterPhase = c.shutterPhase;
         _ciOut.motionBlur = c.motionBlur;
         _ciOut.layers = _ciLayers;
+        // Timecode and frame next to the seconds (Anthony, 2026-11-15).
+        AE.withTimecode(c, _ciOut, { duration: "length", workAreaStart: "position", workAreaDuration: "length" });
+        var _ciRate = AE.compRate(c);
+        if (_ciRate !== null) {
+            _ciOut.startTimecode = AE.framesToTc(Math.round(c.displayStartTime / _ciRate.fd), _ciRate);
+            _ciOut.dropFrame = _ciRate.drop;
+        }
+        AE.timecodeTree(c, _ciLayers, 0);
         return _ciOut;
     }
 `;
@@ -34,6 +42,8 @@ export const COMP_INFO_FN = `
 export const LAYER_FULL_FN = `
     function _layerFull(l, incl, detail) {
         var _lfOut = AE.serializeLayerFull(l, { includeProperties: incl, detail: detail });
+        // Timecode and frame next to in/out/start and every key time.
+        AE.timecodeTree(l.containingComp, _lfOut, 0);
         _lfOut.ok = true;
         _lfOut.found = true;
         return _lfOut;

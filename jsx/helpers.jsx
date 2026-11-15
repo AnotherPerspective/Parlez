@@ -635,6 +635,35 @@ AE.withTimecode = function (comp, obj, fields) {
     return obj;
 };
 
+/**
+ * Timecode and frame next to the times of an answer, for the reading tools
+ * (ae_comp_info, ae_layer_info, comp.sample): a layer summary's in/out/start,
+ * and every keyframe list ({ keyframes: [{ time }] }) anywhere below `obj`.
+ * Not used for project export, whose format stays as it is.
+ */
+AE.timecodeTree = function (comp, obj, depth) {
+    if (obj === null || typeof obj !== "object" || (depth || 0) > 12) return obj;
+    if (obj instanceof Array) {
+        for (var i = 0; i < obj.length; i++) AE.timecodeTree(comp, obj[i], (depth || 0) + 1);
+        return obj;
+    }
+    if (typeof obj.inPoint === "number" && typeof obj.outPoint === "number" && typeof obj.startTime === "number") {
+        AE.withTimecode(comp, obj, { inPoint: "position", outPoint: "position", startTime: "position" });
+    }
+    if (obj.keyframes instanceof Array) {
+        for (var k = 0; k < obj.keyframes.length; k++) {
+            if (obj.keyframes[k] && typeof obj.keyframes[k].time === "number") {
+                AE.withTimecode(comp, obj.keyframes[k], { time: "position" });
+            }
+        }
+    }
+    for (var key in obj) {
+        if (!obj.hasOwnProperty(key) || key === "keyframes") continue;
+        if (obj[key] !== null && typeof obj[key] === "object") AE.timecodeTree(comp, obj[key], (depth || 0) + 1);
+    }
+    return obj;
+};
+
 /** True when `seconds` is not on a whole frame of the comp (beyond a hundredth of a frame). */
 AE.offFrame = function (comp, seconds) {
     var rate = comp ? AE.compRate(comp) : null;

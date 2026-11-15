@@ -186,3 +186,34 @@ describe("the operations take a timecode, and every write goes through the grid"
     expect(op.toJsx(args as Record<string, unknown>)).toContain(expected);
   });
 });
+
+describe("timecode in the answers of the reading tools", () => {
+  it("adds TC and frame to a layer's in/out/start and to every key time, below any depth", () => {
+    const api = AE as unknown as { timecodeTree: (c: unknown, o: unknown, d: number) => unknown };
+    const c = comp(25, { start: 3600 });
+    const layer = {
+      inPoint: 0,
+      outPoint: 4,
+      startTime: 0,
+      transformGroup: { properties: [{ name: "Opacity", keyframes: [{ time: 1.32, value: 50 }] }] },
+    };
+    api.timecodeTree(c, layer, 0);
+    expect(layer).toMatchObject({
+      inPointTC: "01:00:00:00",
+      outPointTC: "01:00:04:00",
+      outPointFrame: 100,
+    });
+    expect(layer.transformGroup.properties[0].keyframes[0]).toMatchObject({
+      time: 1.32,
+      timeTC: "01:00:01:08",
+      timeFrame: 33,
+    });
+  });
+
+  it("comp.sample takes timecodes and converts them inside After Effects", () => {
+    const op = getOp("comp.sample")!;
+    const jsx = op.toJsx({ comp: "Main", times: ["00:00:01:00", 2] });
+    expect(jsx).toContain('AE.timeIn(_c, _times[_ti], "position")');
+    expect(op.toJsx({ comp: "Main", times: ["1s"] })).toContain("timecodes HH:MM:SS:FF");
+  });
+});

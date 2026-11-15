@@ -245,7 +245,7 @@ describe("comp.sample", () => {
   it("validates times and defaults to the five transform properties", () => {
     const op = getOp("comp.sample")!;
     expect(op.readOnly).toBe(true);
-    expect(op.toJsx({ comp: "Main", times: [] })).toContain("non-empty array of numbers");
+    expect(op.toJsx({ comp: "Main", times: [] })).toContain("non-empty array of timecodes");
     const jsx = op.toJsx({ comp: ["A", "B"], times: [0, 1] });
     expect(jsx).toContain('AE.findComps(["A","B"])');
     expect(jsx).toContain('["Transform","Opacity"]');

@@ -3,6 +3,7 @@
 // layer's active state. Covers value probes, visible-layer listings, and
 // match-cut checks (sample both comps, compare the rows).
 
+import { TIMECODE_RE } from "../opschema.js";
 import { registerOp, jsxFail, jsxVal } from "../registry.js";
 
 const DEFAULT_PROPERTIES = [
@@ -26,7 +27,13 @@ registerOp({
       description: "Comp name/id, pattern ('shot_*'), or array of those",
       required: true,
     },
-    { name: "times", type: "array", description: "Times in seconds to sample", required: true },
+    {
+      name: "times",
+      type: "array",
+      description:
+        'Times to sample: the comp timecode "HH:MM:SS:FF" (preferred) or seconds; each lands on a whole frame. Answers give time, timeTC and timeFrame.',
+      required: true,
+    },
     {
       name: "layer",
       type: "any",
@@ -52,8 +59,13 @@ registerOp({
   ],
   toJsx(args) {
     const times = Array.isArray(args.times) ? (args.times as unknown[]) : [];
-    if (times.length === 0 || !times.every((t) => typeof t === "number")) {
-      return jsxFail("times must be a non-empty array of numbers");
+    if (
+      times.length === 0 ||
+      !times.every((t) => typeof t === "number" || (typeof t === "string" && TIMECODE_RE.test(t)))
+    ) {
+      return jsxFail(
+        "times must be a non-empty array of timecodes HH:MM:SS:FF or numbers of seconds",
+      );
     }
     const props = (args.properties ?? DEFAULT_PROPERTIES) as unknown[];
     if (!Array.isArray(props) || !props.every((p) => Array.isArray(p) && p.length > 0)) {
@@ -71,7 +83,7 @@ registerOp({
                 var _layers = AE.resolveLayers(_c, ${jsxVal(args.layer ?? "all")});
                 var _samples = [];
                 for (var _ti = 0; _ti < _times.length; _ti++) {
-                    var _t = _times[_ti];
+                    var _t = AE.timeIn(_c, _times[_ti], "position");
                     var _rows = [];
                     for (var _li = 0; _li < _layers.length; _li++) {
                         var _l = _layers[_li];
@@ -87,7 +99,7 @@ registerOp({
                         }
                         _rows.push(_row);
                     }
-                    _samples.push({ time: _t, layers: _rows });
+                    _samples.push(AE.withTimecode(_c, { time: _t, layers: _rows }, { time: "position" }));
                 }
                 _out.push({ comp: _c.name, id: _c.id, samples: _samples });
             }
