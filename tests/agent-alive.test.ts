@@ -1,4 +1,4 @@
-// The agent keeps itself alive (Parlez! 0.1.2). On After Effects 26.5 /
+// The agent keeps itself alive (Parlez! 0.2). On After Effects 26.5 /
 // Windows (2026-11-14/15) opening a project, Import File and other modal
 // windows made After Effects drop every pending app.scheduleTask of the
 // session at once, silently: the agent stopped for good, and the only way back

@@ -276,7 +276,7 @@ function historyRows(panel: Ctl): string[] {
 
 /**
  * Steps of a timer chain still booked (the one-shot size check is not one).
- * Since 0.1.2 no timer repeats: each step books the next.
+ * Since 0.2 no timer repeats: each step books the next.
  */
 function activeTasks(code: string) {
   return engine.app
@@ -1057,7 +1057,7 @@ describe("the panel and the rest agree", () => {
   });
 });
 
-// --- The watchdog (Parlez! 0.1.2) --------------------------------------------
+// --- The watchdog (Parlez! 0.2) --------------------------------------------
 // After Effects 26.5 dropped every pending scheduleTask when a project opened
 // (2026-11-14/15): the agent and the panel stopped for good. The shim's
 // dropAllTasks() is that; runPending() is time passing.

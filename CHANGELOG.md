@@ -4,6 +4,19 @@ Tutte le modifiche importanti di Parlez! per Adobe® After Effects® sono scritt
 
 Il formato segue [Keep a Changelog](https://keepachangelog.com/it-IT/1.1.0/) e i numeri di versione seguono il [Semantic Versioning](https://semver.org/lang/it/). La storia di mcp-aftereffects di kumo.productions, da cui Parlez! deriva, è in [`docs/CHANGELOG-kumo.md`](docs/CHANGELOG-kumo.md).
 
+## [0.2] - in preparazione
+
+Il salto da 0.1 a 0.2 è voluto: questa versione cambia il modo in cui Parlez! resta vivo dentro After Effects. La 0.1.1 funziona; la 0.1.2 (solo locale, con Premiere Pro) ha lo stesso codice After Effects e con buona probabilità funziona anche lei, ma va verificato.
+
+### Corretto
+
+- **Parlez! non resta più fermo dopo l'apertura di un progetto.** Su After Effects 26.5 / Windows un timer di script che scatta sotto certe finestre modali (apertura di un progetto, Import File) fa cadere tutti i timer di script della sessione, in silenzio. Agente e pannello smettevano di funzionare fino al riavvio di After Effects. Ora:
+  - l'agente non usa più un timer ripetuto: ogni passo prenota il successivo, e un riavvio non crea mai due giri;
+  - agente e pannello si fanno da guardia a vicenda: se uno si ferma, l'altro lo fa ripartire entro un paio di secondi, anche con il pannello nascosto;
+  - se After Effects li ferma tutti e due, il primo clic nel pannello li fa ripartire (e non fa altro: il pannello lo dice);
+  - ogni riavvio compare tra le ultime richieste e nello storico, con il tempo di silenzio e la causa probabile («dopo apertura progetto», «dopo una finestra di dialogo»);
+  - bottone «Riavvia» nel pannello, visibile solo quando l'agente non risponde.
+
 ## [0.1.1] - 2026-11-11
 
 ### Aggiunto

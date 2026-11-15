@@ -38,7 +38,7 @@
 // history goes from empty to not empty. Nothing outside the panel calls into
 // it, except the agent calling `watch`, which only re-books the timer.
 //
-// The watchdog (Parlez! 0.1.2). After Effects 26.5 can drop every pending
+// The watchdog (Parlez! 0.2). After Effects 26.5 can drop every pending
 // app.scheduleTask at once (a task due under certain modal windows: opening a
 // project, Import File - see "Staying alive" in jsx/agent.jsx). So the timer
 // is a chain of one-shot steps with a generation, like the agent's, and each

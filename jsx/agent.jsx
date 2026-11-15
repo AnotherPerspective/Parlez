@@ -51,7 +51,7 @@
 // thing the agent may call is the panel's `watch`, which only re-books the
 // panel's own timer and touches no control (see "Staying alive" below).
 //
-// Staying alive (Parlez! 0.1.2, AE 26.5 / Windows, 2026-11-14/15). After
+// Staying alive (Parlez! 0.2, AE 26.5 / Windows, 2026-11-14/15). After
 // Effects can drop every pending app.scheduleTask of the session at once:
 // when a task comes due while certain modal windows are up (opening a project,
 // Import File), the task fails with "Cannot run a script while a modal dialog
