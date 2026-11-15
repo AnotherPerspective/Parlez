@@ -456,6 +456,38 @@ describe("pull path: an agent with code from before an update (2026-11-15)", () 
     expect(error).toContain("Dettaglio tecnico: Function AE.timeIn is undefined");
   });
 
+  it("an old agent's error inside a result that ran: the transport says what the panel can do", async () => {
+    const layered = () => ({
+      ok: false,
+      error: "1 of 1 layers failed",
+      layers: [{ index: 1, ok: false, error: "Function AE.keepTrim is undefined" }],
+    });
+    agent = new FakeAgent(layered);
+    await agent.start();
+    const transport = new FileIpcTransport({
+      instance: agent.id,
+      spawn: recordingSpawn(() => {}).spawn,
+    });
+    const before = await transport.execute({
+      code: "return 1;",
+      label: "set_timing",
+      timeoutMs: 5_000,
+    });
+    expect(before.ok).toBe(true);
+    expect(before.panelReloads).toBe(false);
+    await fs.writeFile(
+      path.join(agent.dir, PANEL_NOTE_FILENAME),
+      '{"reloads":true,"ts":1}',
+      "utf8",
+    );
+    const after = await transport.execute({
+      code: "return 1;",
+      label: "set_timing",
+      timeoutMs: 5_000,
+    });
+    expect(after.panelReloads).toBe(true);
+  });
+
   it("with a panel that says its Riavvia reloads it: «premi Riavvia»", async () => {
     agent = new FakeAgent(() => null);
     await agent.start();

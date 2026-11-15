@@ -186,6 +186,35 @@ describe("render error 793: an output file kept open by another program (2026-11
   });
 });
 
+describe("an old agent's error inside per-layer results (layer.set_timing, 2026-11-15)", () => {
+  it("the summary «1 of 1 layers failed» becomes what to do, with the panel's advice", async () => {
+    const { errorResult } = await import("../src/errors.js");
+    const details = {
+      operation: "layer.set_timing",
+      result: {
+        ok: false,
+        error: "1 of 1 layers failed",
+        layers: [{ index: 1, ok: false, error: "Function AE.keepTrim is undefined" }],
+      },
+    };
+    const text = (r: ReturnType<typeof errorResult>) =>
+      r.content[0]!.type === "text" ? r.content[0]!.text : "";
+    const plain = text(
+      errorResult("OPERATION_FAILED", "layer.set_timing: 1 of 1 layers failed", { details }),
+    );
+    expect(plain).toContain("chiudi e riapri After Effects");
+    expect(plain).toContain("Function AE.keepTrim is undefined");
+    const withPanel = text(
+      errorResult("OPERATION_FAILED", "layer.set_timing: 1 of 1 layers failed", {
+        details,
+        panelReloads: true,
+      }),
+    );
+    expect(withPanel).toContain("premi Riavvia nel pannello Parlez!");
+    expect(withPanel).not.toContain("panelReloads");
+  });
+});
+
 describe("an agent loaded before a Parlez! update (2026-11-15)", () => {
   it("turns 'Function AE.timeIn is undefined' into what to do, keeping the detail", async () => {
     const { errorResult, outdatedAgentMessage } = await import("../src/errors.js");

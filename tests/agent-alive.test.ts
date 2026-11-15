@@ -142,6 +142,39 @@ describe("a chain of one-shot steps, never a repeating task", () => {
   });
 });
 
+describe("history: what really happened (2026-11-15)", () => {
+  it("a silence while a render ran is listed as «dopo un render»", () => {
+    const agent = loadAgent();
+    engine.runPending(isStep);
+    engine.app.dropAllTasks();
+    silence(agent, 12_000);
+    const startedAt = new Date(Date.now() - 6000);
+    (engine.app.project as Record<string, unknown>).renderQueue = {
+      numItems: 1,
+      item: () => ({ startTime: startedAt }),
+    };
+    agent.watch("pannello");
+    engine.runPending(isStep);
+    const restart = agent.state.recent[agent.state.recent.length - 1];
+    expect(restart.title).toBe("Agente riavviato dopo un render");
+  });
+
+  it("a render from an earlier time is not this silence's cause", () => {
+    const agent = loadAgent();
+    engine.runPending(isStep);
+    engine.app.dropAllTasks();
+    silence(agent, 12_000);
+    (engine.app.project as Record<string, unknown>).renderQueue = {
+      numItems: 1,
+      item: () => ({ startTime: new Date(Date.now() - 3_600_000) }),
+    };
+    agent.watch("pannello");
+    engine.runPending(isStep);
+    const restart = agent.state.recent[agent.state.recent.length - 1];
+    expect(restart.title).toBe("Agente riavviato dopo una finestra di dialogo");
+  });
+});
+
 describe("watch(): back after After Effects drops every task", () => {
   it("does nothing while the agent steps", () => {
     const agent = loadAgent();

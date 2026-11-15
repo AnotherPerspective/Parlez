@@ -459,7 +459,7 @@
                     title: (summary && typeof summary.title === "string") ? cleanLabel(summary.title, TITLE_MAX) : label,
                     outcome: outcome,
                     ms: ms,
-                    undoable: !!(summary && outcome === "ok" && summary.mutates && summary.undoGroup)
+                    undoable: !!(summary && (outcome === "ok" || summary.ran === true) && summary.mutates && summary.undoGroup)
                 };
                 writeHistory(entry);
                 var next = [];
@@ -512,10 +512,31 @@
          * those are what stop the timers on AE 26.5, and nothing more precise
          * can be read afterwards.
          */
-        function restartCause(before, after) {
+        function restartCause(before, after, since, now) {
             if (after !== null && after !== before) return "dopo apertura progetto";
             if (after === null && before !== null) return "dopo chiusura progetto";
+            if (renderedBetween(since, now)) return "dopo un render";
             return "dopo una finestra di dialogo";
+        }
+
+        /**
+         * A render-queue item started during the silence: a render in After
+         * Effects blocks every script while it runs, and this one was listed
+         * as "dopo una finestra di dialogo" (2026-11-15). Never throws.
+         */
+        function renderedBetween(since, now) {
+            try {
+                if (typeof since !== "number" || since <= 0) return false;
+                var rq = app.project.renderQueue;
+                for (var i = 1; i <= rq.numItems; i++) {
+                    var started = null;
+                    try { started = rq.item(i).startTime; } catch (eStart) { started = null; }
+                    if (!started || typeof started.getTime !== "function") continue;
+                    var at = started.getTime();
+                    if (at >= since - 1000 && at <= now) return true;
+                }
+            } catch (eRq) { /* no project, or a queue that cannot be read */ }
+            return false;
         }
 
         /**
@@ -533,7 +554,7 @@
             var cause;
             if (src.indexOf("pulsante Riavvia (codice ricaricato)") === 0) cause = "con Riavvia, codice ricaricato";
             else if (src.indexOf("pulsante Riavvia") === 0) cause = "con il pulsante Riavvia";
-            else cause = restartCause(pr.project, projectInfo().project);
+            else cause = restartCause(pr.project, projectInfo().project, pr.since, now);
             state.restarts++;
             state.lastRestart = { t: now, cause: cause, source: pr.source, silentMs: silentMs };
             var entry = {
@@ -612,6 +633,8 @@
                     if (outcome === "paused" || outcome === "readonly") state.refused++;
                     else state.served++;
                     remember(summary, outcome, ms);
+                    // A long request (a render) is not a silence: count from its end.
+                    state.lastTickAt = new Date().getTime();
                     heartbeat(true);
                 }
             } catch (eTick) {

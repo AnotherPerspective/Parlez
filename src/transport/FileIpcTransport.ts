@@ -32,7 +32,7 @@ import {
   responsePathFor,
   runtimeDirWarnings,
 } from "../config.js";
-import { type AeErrorCode, outdatedAgentMessage } from "../errors.js";
+import { type AeErrorCode, outdatedAgentMessage, outdatedIn } from "../errors.js";
 import { describeRequest } from "../request-titles.js";
 import type { AeTransport, EvalRequest, EvalResult } from "./AeTransport.js";
 import { type AeDialog, dialogBlockMessage, dialogHint, scanAeDialogs } from "./dialogs.js";
@@ -851,6 +851,9 @@ export class FileIpcTransport implements AeTransport {
         stack: null,
         logs: parsed.logs ?? [],
         durationMs,
+        ...(instanceDir !== undefined && outdatedIn(parsed.result) !== null
+          ? { panelReloads: panelReloads(instanceDir) }
+          : {}),
       };
     }
     const dispatchFailure = parsed.phase === "dispatch";

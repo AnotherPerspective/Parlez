@@ -221,8 +221,25 @@ AE_MCP.serveRequest = function (requestFile, mailboxDir, logPath) {
             label: label,
             title: title,
             mutates: !(request && request.mutates === false),
-            undoGroup: !(request && request.undoGroup === false)
+            undoGroup: !(request && request.undoGroup === false),
+            // The code ran to its end inside the undo group: one Undo reverts
+            // it, even when it reported a failure (some layers done, some not).
+            ran: response.ok === true
         };
+    }
+
+    /**
+     * The code ran but reported { ok: false } - directly, or as ae_do's
+     * { result: { ok: false } }. The history said "eseguita" for a call
+     * whose every layer had failed (2026-11-15).
+     */
+    function reportedFailure(r) {
+        try {
+            if (r === null || typeof r !== "object") return false;
+            if (r.ok === false) return true;
+            if (r.result !== null && typeof r.result === "object" && r.result.ok === false) return true;
+        } catch (eShape) { /* an odd result: count it as done */ }
+        return false;
     }
 
     var responsePath = mailboxDir + "/response-" + requestId + ".json";
@@ -432,5 +449,5 @@ AE_MCP.serveRequest = function (requestFile, mailboxDir, logPath) {
     }
 
     writeResponse();
-    return summary(response.ok ? "ok" : "error");
+    return summary(response.ok && !reportedFailure(response.result) ? "ok" : "error");
 };
