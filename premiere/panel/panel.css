@@ -102,15 +102,13 @@ body {
   gap: 6px;
 }
 
-/* As wide as the ON/OFF block: Annulla across the top, then two rows of two
-   (Anthony, 2026-11-15: three places for two buttons left a hole). */
+/* Annulla across the top, then two rows of two (Anthony, 2026-11-15: three
+   places for two buttons left a hole). The rows fill the panel's width, as
+   in After Effects. */
 .buttons {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 4px;
-  width: 200px;
-  max-width: 100%;
-  align-self: center;
 }
 
 #undo {
@@ -153,9 +151,8 @@ footer {
 
 footer a {
   color: var(--text);
-  /* The same size as the counters line, as in the After Effects panel, where
-     both are 9 (12 px read too big next to it, 2026-11-15). */
-  font-size: 9px;
+  /* Between the two tried on 2026-11-15: 12 px read too big, 9 px tiny. */
+  font-size: 10.5px;
   white-space: nowrap;
   text-decoration: none;
 }

@@ -867,6 +867,8 @@
         ui.restart.onClick = function () {
             say(restartAgent());
             refresh();
+            // A new message can change the height: keep the signature at the bottom.
+            relayout();
         };
         ui.readOnly.onClick = function () {
             if (wokeByClick()) {
@@ -1079,6 +1081,7 @@
                 if (isShown()) {
                     ensureSize();
                     refresh();
+                    settleOnce();
                 }
             } catch (eRefresh) {
                 stopTimer();
@@ -1101,8 +1104,27 @@
         // panel (docked or floating) and its real size is known.
         settle: function () {
             ensureSize();
+            settleOnce();
         }
     };
+
+    /**
+     * Once after opening, when After Effects has given the panel its real
+     * size: lay it out again. Laid out only at build time, the signature sat
+     * in the middle until the user resized the panel (2026-11-15).
+     */
+    function settleOnce() {
+        if (ui.settled) return;
+        ui.settled = true;
+        relayout();
+    }
+
+    function relayout() {
+        try {
+            win.layout.layout(true);
+            win.layout.resize();
+        } catch (eLay) { /* the panel is closing */ }
+    }
 
     win.onResizing = win.onResize = function () {
         try {

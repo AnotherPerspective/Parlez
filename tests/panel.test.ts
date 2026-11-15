@@ -671,7 +671,25 @@ describe("undocking: never collapsed (AE 26.5, 2026-10-27)", () => {
       panel.size = [10, 10];
       settle();
     }
-    expect(panel.layouts - before).toBe(3);
+    // Three fixes, plus the one layout after opening (settleOnce).
+    expect(panel.layouts - before).toBe(4);
+  });
+
+  it("lays itself out once after opening, so the signature sits at the bottom (2026-11-15)", () => {
+    const panel = openPanel();
+    const before = panel.layouts;
+    settle();
+    settle();
+    expect(panel.layouts - before).toBe(1);
+  });
+
+  it("lays itself out again after Riavvia, whose message can change its height", () => {
+    setEnabled("1");
+    const panel = openPanel();
+    settle();
+    const before = panel.layouts;
+    panel.find("button", "Riavvia").onClick!();
+    expect(panel.layouts - before).toBeGreaterThanOrEqual(1);
   });
 });
 
