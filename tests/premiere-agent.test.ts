@@ -5,7 +5,7 @@
 // a throwaway mailbox. The "panel" is this test calling PARLEZ_PR.tick, the
 // way premiere/panel/panel.js does every quarter of a second.
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -329,5 +329,63 @@ describe("pr_* tools against the fake project", () => {
     const s = structured(res);
     expect(typeof s.connected).toBe("boolean");
     expect(Array.isArray(s.rules)).toBe(true);
+  });
+});
+
+describe("Premiere agent: the panel's Ripristino, Elenco and Storico", () => {
+  function agentApi() {
+    return engine.global.PARLEZ_PR as {
+      checkpoint: () => string;
+      openCheckpoints: () => string;
+      openHistory: () => string;
+    };
+  }
+
+  function realProject() {
+    const dir = path.join(tmp, "progetti");
+    mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, "Spot.prproj");
+    writeFileSync(file, "progetto", "utf8");
+    (engine.app as unknown as Record<string, unknown>).project = fakeProject(file);
+    return { dir, file };
+  }
+
+  it("Ripristino saves, then copies the project into _parlez-checkpoints, never overwriting", () => {
+    startAgent();
+    const { dir } = realProject();
+    const first = JSON.parse(agentApi().checkpoint());
+    expect(first.ok).toBe(true);
+    expect(first.message).toMatch(/^Ripristino creato: Spot__\d{8}-\d{6}__pannello\.prproj$/);
+    const second = JSON.parse(agentApi().checkpoint());
+    expect(second.ok).toBe(true);
+    const copies = readdirSync(path.join(dir, "_parlez-checkpoints"));
+    expect(copies).toHaveLength(2);
+    expect((engine.app as unknown as { project: { saves: number } }).project.saves).toBe(2);
+  });
+
+  it("Ripristino and Elenco say so when the project was never saved", () => {
+    startAgent();
+    (engine.app as unknown as Record<string, unknown>).project = fakeProject("");
+    expect(JSON.parse(agentApi().checkpoint()).message).toContain("Salva prima il progetto");
+    expect(agentApi().openCheckpoints()).toBe("nosave");
+  });
+
+  it("every request goes into a history file next to After Effects', which Storico opens", async () => {
+    const agent = startAgent();
+    await withPanel(agent, true, false, () =>
+      transport.execute({
+        code: "return 1;",
+        label: "pr_context",
+        mutates: false,
+        timeoutMs: 5000,
+      }),
+    );
+    const storico = path.join(tmp, "userData", "Parlez", "storico");
+    const files = readdirSync(storico).filter((n) => n.startsWith("storico-premiere-"));
+    expect(files).toHaveLength(1);
+    expect(readFileSync(path.join(storico, files[0]), "utf8")).toMatch(
+      /\| pr_context \| eseguita \|/,
+    );
+    expect(agentApi().openHistory()).toBe("ok");
   });
 });

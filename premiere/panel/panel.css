@@ -102,10 +102,19 @@ body {
   gap: 6px;
 }
 
+/* As wide as the ON/OFF block: Annulla across the top, then two rows of two
+   (Anthony, 2026-11-15: three places for two buttons left a hole). */
 .buttons {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 4px;
+  width: 200px;
+  max-width: 100%;
+  align-self: center;
+}
+
+#undo {
+  grid-column: 1 / -1;
 }
 
 .buttons button {
@@ -144,8 +153,10 @@ footer {
 
 footer a {
   color: var(--text);
-  /* The After Effects panel sets the signature at 9 pt (ScriptUI points): 12 px on screen. */
-  font-size: 12px;
+  /* The same size as the counters line, as in the After Effects panel, where
+     both are 9 (12 px read too big next to it, 2026-11-15). */
+  font-size: 9px;
+  white-space: nowrap;
   text-decoration: none;
 }
 

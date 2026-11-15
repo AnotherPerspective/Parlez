@@ -15,10 +15,11 @@ Il salto da 0.1 a 0.2 è voluto: questa versione cambia il modo in cui Parlez! r
   - senza la sveglia (per esempio sul Mac, non ancora provato) l'agente usa la sua catena di passi, con agente e pannello che si fanno da guardia a vicenda; se After Effects li ferma tutti e due, il primo clic nel pannello li fa ripartire;
   - ogni ripartenza dopo un silenzio lungo compare tra le ultime richieste del pannello e nello storico, con la causa probabile («dopo apertura progetto», «dopo una finestra di dialogo»);
   - bottone **Riavvia** nel pannello, sempre visibile, come ultima risorsa.
-- **Premiere Pro**: se una risposta di Premiere al pannello va persa, il giro del pannello riparte da solo invece di fermarsi.
+- **Premiere Pro**: se una risposta di Premiere al pannello va persa, il giro del pannello riparte da solo invece di fermarsi; se lo script di Parlez! sparisce da Premiere, il pannello lo ricarica da solo.
 
 ### Cambiato
 
+- **Pannello di Premiere Pro come quello di After Effects**: bottoni larghi quanto il riquadro ON/OFF («Annulla» sopra, poi due righe da due), con in più **Ripristino** (salva il progetto e ne fa una copia in `_parlez-checkpoints`), **Elenco** (la cartella dei punti di ripristino) e **Storico** (lo storico delle richieste, ora scritto anche per Premiere in `%APPDATA%\Parlez\storico`); firma piccola come in After Effects.
 - **Pannello di After Effects più stretto**: bottoni su tre righe da due, riquadro ON/OFF piccolo anche nella vista verticale; il pannello scende fino a circa 224 pixel di larghezza. Angoli del riquadro arrotondati come il contorno blu che After Effects disegna dopo un clic.
 
 ## [0.1.2] - 2026-11-13

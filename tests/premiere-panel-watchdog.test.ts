@@ -19,7 +19,11 @@ function fakeElement(): unknown {
     style: {},
     classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
     dataset: {},
-    addEventListener() {},
+    listeners: {} as Record<string, Array<(e: unknown) => void>>,
+    addEventListener(type: string, fn: (e: unknown) => void) {
+      const l = target.listeners as Record<string, Array<(e: unknown) => void>>;
+      (l[type] ??= []).push(fn);
+    },
     appendChild() {},
     removeChild() {},
     setAttribute() {},
@@ -40,13 +44,26 @@ interface Call {
 }
 
 let calls: Call[];
+/** The page's elements by id, to click its buttons. */
+let byId: Map<string, Record<string, unknown>>;
+
+function click(id: string) {
+  const el = byId.get(id)!;
+  const listeners = (el.listeners as Record<string, Array<(e: unknown) => void>>).click ?? [];
+  for (const fn of listeners) fn({ preventDefault() {} });
+}
 
 function openPanel() {
   calls = [];
+  byId = new Map();
   const storage = new Map<string, string>([["parlez.claudeEnabled", "1"]]);
   const window = {
     __adobe_cep__: {
       evalScript: (script: string, cb: (r: string) => void) => calls.push({ script, answer: cb }),
+      getSystemPath: (kind: string) =>
+        kind === "extension"
+          ? "file:///C:/Users/x/AppData/Roaming/Adobe/CEP/extensions/com.anotherperspective.parlez"
+          : "",
     },
     localStorage: {
       getItem: (k: string) => storage.get(k) ?? null,
@@ -56,7 +73,10 @@ function openPanel() {
     setInterval: (fn: () => void, ms: number) => setInterval(fn, ms),
   };
   const document = {
-    getElementById: () => fakeElement(),
+    getElementById: (id: string) => {
+      if (!byId.has(id)) byId.set(id, fakeElement() as Record<string, unknown>);
+      return byId.get(id);
+    },
     createElement: () => fakeElement(),
   };
   new Function("window", "document", SRC)(window, document);
@@ -127,5 +147,36 @@ describe("the Premiere panel's giro survives a lost answer", () => {
     expect(pings()).toHaveLength(1);
     vi.advanceTimersByTime(3000);
     expect(pings()).toHaveLength(2);
+  });
+});
+
+describe("the Premiere panel's buttons and its agent", () => {
+  it("Ripristino, Elenco and Storico ask the agent, with fixed calls", () => {
+    openPanel();
+    click("checkpoint");
+    click("checkpoint-folder");
+    click("history");
+    const scripts = calls.map((c) => c.script);
+    expect(scripts).toContain("PARLEZ_PR.checkpoint()");
+    expect(scripts).toContain("PARLEZ_PR.openCheckpoints()");
+    expect(scripts).toContain("PARLEZ_PR.openHistory()");
+  });
+
+  it("an agent gone from Premiere is loaded again from the host stub, not more than once in 10 s", () => {
+    openPanel();
+    const answerMissing = () => {
+      ticks()[ticks().length - 1].answer("missing");
+      vi.advanceTimersByTime(250);
+    };
+    for (let i = 0; i < 4; i++) answerMissing();
+    vi.advanceTimersByTime(2000);
+    answerMissing();
+    const reloads = () => calls.filter((c) => c.script.includes("$.evalFile("));
+    expect(reloads()).toHaveLength(1);
+    expect(reloads()[0].script).toContain(
+      '"C:/Users/x/AppData/Roaming/Adobe/CEP/extensions/com.anotherperspective.parlez/host/parlez-stub.jsx"',
+    );
+    for (let i = 0; i < 8; i++) answerMissing();
+    expect(reloads()).toHaveLength(1);
   });
 });

@@ -49,6 +49,9 @@
     readOnly: document.getElementById("read-only"),
     rows: document.getElementById("rows"),
     mailbox: document.getElementById("mailbox"),
+    checkpoint: document.getElementById("checkpoint"),
+    checkpointFolder: document.getElementById("checkpoint-folder"),
+    history: document.getElementById("history"),
     undo: document.getElementById("undo"),
     notice: document.getElementById("notice"),
     counts: document.getElementById("counts"),
@@ -310,9 +313,43 @@
       if (mine !== tickGen) return;
       waitingSince = 0;
       agent = parse(result);
+      if (result === "missing") reloadAgent();
+      else missingSince = 0;
       refresh();
       window.setTimeout(tick, TICK_MS);
     });
+  }
+
+  // The agent gone from Premiere's script engine (the engine was reset): load
+  // the host stub again, as opening the panel does. This replaces a "Riavvia"
+  // button: the giro restarts by itself (watchdog below), and so does the
+  // agent. At most once every RELOAD_MS.
+  var RELOAD_AFTER_MS = 2000;
+  var RELOAD_MS = 10000;
+  var missingSince = 0;
+  var reloadedAt = 0;
+  function reloadAgent() {
+    var now = Date.now();
+    if (missingSince === 0) missingSince = now;
+    if (now - missingSince < RELOAD_AFTER_MS || now - reloadedAt < RELOAD_MS) return;
+    reloadedAt = now;
+    var root = "";
+    try {
+      root = cep.getSystemPath("extension");
+    } catch {
+      return;
+    }
+    if (typeof root !== "string" || root.length === 0) return;
+    // A path, not code: JSON.stringify quotes and escapes it.
+    // "file:///C:/..." on Windows, "file:///Users/..." on a Mac.
+    var folder = decodeURI(root)
+      .replace(/^file:\/\//, "")
+      .replace(/^\/([A-Za-z]:)/, "$1");
+    var stub = JSON.stringify(folder + "/host/parlez-stub.jsx");
+    cep.evalScript(
+      "try { $.evalFile(new File(" + stub + ")); 'ok'; } catch (e) { 'fail'; }",
+      function () {},
+    );
   }
 
   // The watchdog. Premiere runs scripts one at a time, in order: if the ping
@@ -398,6 +435,32 @@
       else if (res.failed && res.failed.length > 0) {
         say("Annullato in parte: " + res.failed.length + " passi non sono tornati indietro.");
       } else say("Annullata l'ultima modifica di Claude.");
+    });
+  });
+  el.checkpoint.addEventListener("click", function () {
+    if (!cep) return;
+    cep.evalScript("PARLEZ_PR.checkpoint()", function (r) {
+      try {
+        var res = JSON.parse(r);
+        say(typeof res.message === "string" ? res.message : "Punto di ripristino non riuscito.");
+      } catch {
+        say("Punto di ripristino non riuscito: aggiorna Parlez! (parlez setup).");
+      }
+    });
+  });
+  el.checkpointFolder.addEventListener("click", function () {
+    if (!cep) return;
+    cep.evalScript("PARLEZ_PR.openCheckpoints()", function (r) {
+      if (r === "nosave") say("Il progetto non è ancora stato salvato.");
+      else if (r === "missing") say("Nessun punto di ripristino per questo progetto, per ora.");
+      else if (r !== "ok") say("Non riesco ad aprire la cartella dei punti di ripristino.");
+    });
+  });
+  el.history.addEventListener("click", function () {
+    if (!cep) return;
+    cep.evalScript("PARLEZ_PR.openHistory()", function (r) {
+      if (r === "missing") say("Nessuna richiesta registrata finora.");
+      else if (r !== "ok") say("Non riesco ad aprire lo storico.");
     });
   });
   el.mailbox.addEventListener("click", function () {

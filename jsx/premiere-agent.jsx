@@ -41,7 +41,14 @@
 
 (function premiereAgentEntry() {
     // 2: undo journal (undoable entries in the history, undoLast for the panel).
-    var AGENT_VERSION = 2;
+    // 3: history file, restore point and folders for the panel's buttons
+    //    (Ripristino, Elenco, Storico), like the After Effects panel.
+    var AGENT_VERSION = 3;
+    // Same folder and naming as checkpoint.create and the After Effects
+    // panel (src/operations/checkpoint.ts, jsx/panel.jsx).
+    var CHECKPOINT_SUBDIR = "_parlez-checkpoints";
+    var CHECKPOINT_LABEL = "pannello";
+    var CHECKPOINT_MAX_COPY = 999;
     var RECENT_MAX = 8;
     var LABEL_MAX = 60;
     var TITLE_MAX = 120;
@@ -229,6 +236,7 @@
         if (summary && typeof summary.title === "string") entry.title = shorten(summary.title, TITLE_MAX);
         state.recent.push(entry);
         while (state.recent.length > RECENT_MAX) state.recent.shift();
+        writeHistory(entry);
         if (outcome === "paused" || outcome === "readonly") state.refused++;
         else state.served++;
         state.lastRequestAt = entry.t;
@@ -327,6 +335,136 @@
         }
     }
 
+    function pad2(n) {
+        return (n < 10 ? "0" : "") + String(n);
+    }
+
+    function stampOf(d) {
+        return String(d.getFullYear()) + pad2(d.getMonth() + 1) + pad2(d.getDate()) + "-" +
+            pad2(d.getHours()) + pad2(d.getMinutes()) + pad2(d.getSeconds());
+    }
+
+    var OUTCOME_WORDS = {
+        ok: "eseguita",
+        error: "errore",
+        paused: "rifiutata (pausa)",
+        readonly: "rifiutata (sola lettura)"
+    };
+
+    /**
+     * One line per request in this session's history file, in the same folder
+     * as After Effects' (<user data>/Parlez/storico), named "storico-premiere-...".
+     * Labels and titles only; never the request's code. Never throws.
+     */
+    function writeHistory(entry) {
+        try {
+            if (typeof state.historyPath !== "string") {
+                var dir = normalizePath(Folder.userData.fsName) + "/Parlez/storico";
+                if (!ensureDir(dir)) return;
+                state.historyPath = dir + "/storico-premiere-" + stampOf(new Date(state.startedAt)) + "-" + state.id + ".txt";
+                var head = new File(state.historyPath);
+                head.encoding = "UTF-8";
+                if (head.open("a")) {
+                    head.writeln("Parlez! - storico delle richieste di Claude in Premiere Pro, istanza " + state.id +
+                        ", aperto il " + new Date(state.startedAt).toString());
+                    head.writeln("ora      | cosa | operazione | esito | durata");
+                    head.close();
+                }
+            }
+            var f = new File(state.historyPath);
+            f.encoding = "UTF-8";
+            if (!f.open("a")) return;
+            var d = new Date(entry.t);
+            var words = OUTCOME_WORDS.hasOwnProperty(entry.outcome) ? OUTCOME_WORDS[entry.outcome] : entry.outcome;
+            var secs = (Math.round(entry.ms / 100) / 10).toString().replace(".", ",") + " s";
+            f.writeln(pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds()) + " | " +
+                (typeof entry.title === "string" ? entry.title : entry.label) + " | " + entry.label + " | " + words + " | " + secs);
+            f.close();
+        } catch (eHistory) { /* the history is a convenience */ }
+    }
+
+    /** The panel's "Storico": this session's file, else the folder. */
+    function openHistory() {
+        try {
+            if (typeof state.historyPath === "string" && new File(state.historyPath).exists) {
+                return new File(state.historyPath).execute() ? "ok" : "fail";
+            }
+            var folder = new Folder(normalizePath(Folder.userData.fsName) + "/Parlez/storico");
+            if (folder.exists) return folder.execute() ? "ok" : "fail";
+            return "missing";
+        } catch (eOpen) {
+            return "fail";
+        }
+    }
+
+    function projectFile() {
+        try {
+            if (app.project && app.project.path) return new File(String(app.project.path));
+        } catch (eFile) { /* no project */ }
+        return null;
+    }
+
+    /** The panel's "Elenco": the restore points' folder next to the project. */
+    function openCheckpoints() {
+        try {
+            var file = projectFile();
+            if (file === null) return "nosave";
+            var folder = new Folder(file.parent.fsName + "/" + CHECKPOINT_SUBDIR);
+            if (!folder.exists) return "missing";
+            return folder.execute() ? "ok" : "fail";
+        } catch (eOpen) {
+            return "fail";
+        }
+    }
+
+    /**
+     * The panel's "Ripristino": save the project, then copy its file into
+     * _parlez-checkpoints next to it; never overwrites. Returns JSON text
+     * { ok, message }; never throws.
+     */
+    function checkpoint() {
+        function done(ok, message) {
+            return JSON.stringify({ ok: ok, message: message });
+        }
+        try {
+            var file = projectFile();
+            if (file === null || !file.exists) return done(false, "Salva prima il progetto: un progetto mai salvato non ha un file da copiare.");
+            var name = String(file.name);
+            try { name = decodeURI(name); } catch (eDec) { /* keep raw */ }
+            var dot = name.lastIndexOf(".");
+            if (dot <= 0 || name.substring(dot).toLowerCase() !== ".prproj") {
+                return done(false, "Il punto di ripristino dal pannello funziona solo con progetti .prproj.");
+            }
+            try {
+                app.project.save();
+            } catch (eSave) {
+                return done(false, "Salvataggio non riuscito: il punto di ripristino non \u00e8 stato creato.");
+            }
+            var folder = new Folder(file.parent.fsName + "/" + CHECKPOINT_SUBDIR);
+            if (!folder.exists && !folder.create()) return done(false, "Non riesco a creare la cartella " + CHECKPOINT_SUBDIR + ".");
+            var base = name.substring(0, dot) + "__" + stampOf(new Date()) + "__" + CHECKPOINT_LABEL;
+            var dest = null;
+            for (var copy = 1; copy <= CHECKPOINT_MAX_COPY; copy++) {
+                var candidate = new File(folder.fsName + "/" + base + (copy > 1 ? " (" + copy + ")" : "") + ".prproj");
+                if (!candidate.exists) {
+                    dest = candidate;
+                    break;
+                }
+            }
+            if (dest === null) return done(false, "Troppi punti di ripristino con lo stesso nome.");
+            if (!file.copy(dest.fsName)) return done(false, "Copia non riuscita.");
+            if (dest.length !== file.length) {
+                try { dest.remove(); } catch (eRm) { /* leave it */ }
+                return done(false, "Copia incompleta: il punto di ripristino \u00e8 stato scartato.");
+            }
+            var shown = String(dest.name);
+            try { shown = decodeURI(shown); } catch (eShown) { /* keep raw */ }
+            return done(true, "Ripristino creato: " + shown);
+        } catch (eCheckpoint) {
+            return done(false, "Punto di ripristino non riuscito.");
+        }
+    }
+
     /** Open the mailbox folder in Explorer / Finder (the panel's "Cassetta" button). */
     function openMailbox() {
         try {
@@ -361,6 +499,9 @@
         state: state,
         tick: tick,
         openMailbox: openMailbox,
+        openHistory: openHistory,
+        openCheckpoints: openCheckpoints,
+        checkpoint: checkpoint,
         undoLast: undoLast,
         undoCount: undoCount
     };
