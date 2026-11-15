@@ -247,7 +247,9 @@ Poi chiedigli di cancellare quel livello (se l'hai già annullato, rifallo prima
 
 ## 13. Disinstallare tutto
 
-Nell'ordine (prima i comandi di Parlez!, poi la rimozione del programma):
+**Se hai installato Parlez! con l'installatore** (`Parlez-setup.exe`): Impostazioni → App → Parlez! → Disinstalla. Fa da solo tutti i passi qui sotto tranne Claude Desktop (togli tu il blocco `"parlez"` da Modifica configurazione) e rimette com'era la modalità debug di CEP, se l'avevi fatta accendere all'installatore.
+
+**Se hai installato dallo zip**, nell'ordine (prima i comandi di Parlez!, poi la rimozione del programma):
 
 ```powershell
 parlez uninstall-panel
@@ -256,6 +258,16 @@ parlez uninstall-panel
 ```powershell
 parlez uninstall-agent
 ```
+
+```powershell
+parlez uninstall-sveglia
+```
+
+```powershell
+parlez uninstall-premiere-panel
+```
+
+Gli ultimi due tolgono la sveglia (After Effects) e il pannello di Premiere Pro; se non li avevi installati rispondono `nothing to remove`.
 
 Con Claude Code:
 
@@ -271,7 +283,7 @@ Infine:
 npm uninstall -g parlez
 ```
 
-**Cosa devi vedere**: `removed …` per il pannello e lo script di avvio; `removed 1 package` (o simile) per l'ultimo.
+**Cosa devi vedere**: `removed …` per il pannello, lo script di avvio, la sveglia e il pannello di Premiere (se c'erano); `removed 1 package` (o simile) per l'ultimo.
 
 Rimangono, e puoi toglierli a mano da Esplora file (incolla il percorso nella barra degli indirizzi) se vuoi:
 
