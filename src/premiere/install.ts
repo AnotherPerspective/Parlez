@@ -170,8 +170,8 @@ async function packageVersion(): Promise<string> {
   return (JSON.parse(await fs.readFile(pkg, "utf8")) as { version: string }).version;
 }
 
-/** The ON/OFF pictures the panel uses (the full-size set; the After Effects panel's small ones are not needed). */
-const IMAGE_RE = /^(off|on|busy|idle)(-over|-down)?\.png$/;
+/** The ON/OFF pictures the panel uses: the small set, the one After Effects' panel shows. */
+const IMAGE_RE = /^(off|on|busy|idle)(-over|-down)?-small\.png$/;
 
 /** Every file the installed panel consists of: relative path → content. */
 export async function premierePanelFiles(

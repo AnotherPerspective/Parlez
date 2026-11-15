@@ -175,7 +175,9 @@
       function (v) {
         el.img.src = v;
       },
-      "images/" + state.look + variant + ".png",
+      // The small set, as in After Effects' panel: the same picture, pixel
+      // for pixel, at the same 200 points (2026-11-15).
+      "images/" + state.look + variant + "-small.png",
     );
     put(
       "alt",

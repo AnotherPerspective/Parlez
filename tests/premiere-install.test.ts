@@ -65,10 +65,11 @@ describe("installing", () => {
     expect(rel).toContain("panel.css");
     expect(rel).toContain("CSXS/manifest.xml");
     expect(rel).toContain("host/parlez-stub.jsx");
-    expect(rel).toContain("images/off.png");
-    expect(rel).toContain("images/on-over.png");
-    // the After Effects panel's small pictures and signature are not needed
-    expect(rel.some((r) => r.includes("small") || r.includes("firma"))).toBe(false);
+    expect(rel).toContain("images/off-small.png");
+    expect(rel).toContain("images/on-over-small.png");
+    // the small set only, the one After Effects' panel shows (2026-11-15); no signature picture
+    expect(rel.some((r) => r.startsWith("images/") && !r.endsWith("-small.png"))).toBe(false);
+    expect(rel.some((r) => r.includes("firma"))).toBe(false);
 
     const manifest = await fs.readFile(path.join(dir, "CSXS", "manifest.xml"), "utf8");
     expect(manifest).toContain(`ExtensionBundleVersion="${PKG_VERSION}"`);
