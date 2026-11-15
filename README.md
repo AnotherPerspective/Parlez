@@ -25,7 +25,7 @@ The zip holds the package `parlez-0.2.0.tgz`, the two step-by-step guides ([Wind
 **Checking the file (optional).** To make sure the package was not changed on the way, compare the fingerprint of `parlez-0.2.0.tgz` with this one:
 
 ```text
-0e31915c8f99ee4f850de46236b4b2147fca869ac4858d9bae793df45da0d02a
+3e2840332aa528a6f1d2458a0d9f19355ed3dc51e0766474e37ff94f5bd5aae5
 ```
 
 - Windows (PowerShell): `certutil -hashfile parlez-0.2.0.tgz SHA256`
@@ -102,7 +102,7 @@ Dentro lo zip trovi il pacchetto `parlez-0.2.0.tgz`, le due guide passo passo ([
 **Controllo del file (facoltativo).** Se vuoi essere sicuro che il pacchetto non sia stato cambiato, confronta l'impronta di `parlez-0.2.0.tgz` con questa:
 
 ```text
-0e31915c8f99ee4f850de46236b4b2147fca869ac4858d9bae793df45da0d02a
+3e2840332aa528a6f1d2458a0d9f19355ed3dc51e0766474e37ff94f5bd5aae5
 ```
 
 - Windows (PowerShell): `certutil -hashfile parlez-0.2.0.tgz SHA256`
