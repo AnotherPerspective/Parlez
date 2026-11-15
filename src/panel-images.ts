@@ -113,6 +113,9 @@ function onWord(word: string, x: number, y: number): boolean {
   return false;
 }
 
+/** Corner radius of the outline After Effects draws around a clicked button. */
+const BUTTON_OUTLINE_RADIUS = 10;
+
 /** Inside a rounded rectangle of w×h with corner radius r (pixel units). */
 function inRoundedRect(x: number, y: number, w: number, h: number, r: number): boolean {
   if (x < 0 || y < 0 || x > w || y > h) return false;
@@ -133,7 +136,10 @@ export function renderBlock(width: number, height: number, color: Rgb, word: str
   const wordPx = wordWidth(word) * cap;
   const left = (width - wordPx) / 2;
   const top = (height - cap) / 2;
-  const radius = Math.max(4, Math.round(height * 0.1));
+  // The corners follow the outline After Effects draws around a clicked
+  // button (about 10 px on AE 26.5 / Windows): with smaller ones the outline
+  // ran outside the picture at the corners (2026-11-15).
+  const radius = Math.max(4, Math.min(BUTTON_OUTLINE_RADIUS, Math.round(height * 0.18)));
   const n = SUPERSAMPLE;
   for (let py = 0; py < height; py++) {
     for (let px = 0; px < width; px++) {
