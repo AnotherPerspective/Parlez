@@ -430,6 +430,11 @@ describe("Riavvia loads the code again (an agent from before a Parlez! update)",
     expect((heartbeat(fresh).lastRestart as { source: string }).source).toBe(
       "pulsante Riavvia (codice ricaricato)",
     );
+    // The history names the button, not a guess from the project (2026-11-15).
+    const recent = fresh.state.recent as Array<{ title: string }>;
+    expect(recent[recent.length - 1]!.title).toBe(
+      "Agente riavviato con Riavvia, codice ricaricato",
+    );
   });
 
   it("without the flag, a live agent is left alone (one agent per process)", () => {

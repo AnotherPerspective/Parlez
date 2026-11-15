@@ -318,11 +318,14 @@
             // A short silence (the user dragging the panel's edge stops the
             // timers for a moment) is no news: only real stops are listed.
             // The history file keeps every one.
-            if (e.outcome === "restart" && !(typeof e.ms === "number" && e.ms >= RESTART_LIST_MS)) continue;
+            // A press of Riavvia is always listed: the user wants to see it worked.
+            var pressed = (typeof e.source === "string") && e.source.indexOf("pulsante Riavvia") === 0;
+            if (e.outcome === "restart" && !pressed && !(typeof e.ms === "number" && e.ms >= RESTART_LIST_MS)) continue;
             if (e.outcome === "restart") {
                 // "Riavviato dopo apertura progetto  12 s": how long it was silent.
-                lines.push(clock(e.t).substring(0, 5) + "  " + shorten(what.replace(/^Agente riavviato/, "Riavviato"), RESTART_CHARS) +
-                    "  " + seconds(e.ms));
+                var restartText = clock(e.t).substring(0, 5) + "  " + shorten(what.replace(/^Agente riavviato/, "Riavviato"), RESTART_CHARS);
+                if (!pressed) restartText += "  " + seconds(e.ms);
+                lines.push(restartText);
                 continue;
             }
             var mark = (typeof e.outcome === "string" && OUTCOME_MARK.hasOwnProperty(e.outcome))

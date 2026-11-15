@@ -13,7 +13,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   RUNTIME_DIR,
   rejectedOutputPath,
-  uncheckedMailboxAclWarning,
   unsafePointerDirWarning,
   unsafeRuntimeDirWarning,
 } from "../src/config.js";
@@ -139,12 +138,24 @@ describe("pointer directory permission check", () => {
 // For the default mailbox that silence is correct; for a custom one it would
 // read as "checked, and fine", which is the case this warning covers.
 describe("unverified Windows ACL", () => {
-  it("says nothing about the default mailbox", () => {
-    expect(uncheckedMailboxAclWarning("win32")).toBeNull();
-    expect(uncheckedMailboxAclWarning("darwin")).toBeNull();
+  it("says nothing about the default mailbox", async () => {
+    // The offline tests run on a mailbox of their own (vitest.config.ts):
+    // look at the default one here.
+    const saved = process.env.AE_MCP_RUNTIME_DIR;
+    delete process.env.AE_MCP_RUNTIME_DIR;
+    try {
+      vi.resetModules();
+      const mod = await import("../src/config.js");
+      expect(mod.uncheckedMailboxAclWarning("win32")).toBeNull();
+      expect(mod.uncheckedMailboxAclWarning("darwin")).toBeNull();
+    } finally {
+      if (saved !== undefined) process.env.AE_MCP_RUNTIME_DIR = saved;
+      vi.resetModules();
+    }
   });
 
   it("flags a custom mailbox on Windows only", async () => {
+    const saved = process.env.AE_MCP_RUNTIME_DIR;
     process.env.AE_MCP_RUNTIME_DIR = path.join(os.tmpdir(), "mcp-ae-test-acl");
     try {
       vi.resetModules();
@@ -156,7 +167,8 @@ describe("unverified Windows ACL", () => {
       expect(mod.uncheckedMailboxAclWarning("darwin")).toBeNull();
       expect(mod.uncheckedMailboxAclWarning("linux")).toBeNull();
     } finally {
-      delete process.env.AE_MCP_RUNTIME_DIR;
+      if (saved === undefined) delete process.env.AE_MCP_RUNTIME_DIR;
+      else process.env.AE_MCP_RUNTIME_DIR = saved;
       vi.resetModules();
     }
   });

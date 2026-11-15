@@ -94,7 +94,9 @@ describe("mailbox location", () => {
     // The package directory is routinely read-only (global npm install, npx
     // cache, Program Files); writing the mailbox there used to crash startup.
     expect(DEFAULT_RUNTIME_DIR.startsWith(os.tmpdir())).toBe(true);
-    expect(RUNTIME_DIR).toBe(DEFAULT_RUNTIME_DIR);
+    // The offline tests run on a mailbox of their own (vitest.config.ts).
+    const override = process.env.AE_MCP_RUNTIME_DIR;
+    expect(RUNTIME_DIR).toBe(override ? path.resolve(override) : DEFAULT_RUNTIME_DIR);
   });
 
   it("names every request and response after its own id", () => {
@@ -109,6 +111,7 @@ describe("mailbox location", () => {
 
   it("honours AE_MCP_RUNTIME_DIR", async () => {
     const custom = path.join(os.tmpdir(), "mcp-ae-test-runtime");
+    const saved = process.env.AE_MCP_RUNTIME_DIR;
     process.env.AE_MCP_RUNTIME_DIR = custom;
     try {
       vi.resetModules();
@@ -116,7 +119,8 @@ describe("mailbox location", () => {
       expect(mod.RUNTIME_DIR).toBe(path.resolve(custom));
       expect(mod.RUNTIME_DIR_IS_CUSTOM).toBe(true);
     } finally {
-      delete process.env.AE_MCP_RUNTIME_DIR;
+      if (saved === undefined) delete process.env.AE_MCP_RUNTIME_DIR;
+      else process.env.AE_MCP_RUNTIME_DIR = saved;
       vi.resetModules();
     }
   });

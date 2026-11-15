@@ -130,14 +130,25 @@ registerOp({
       sets.push(`_l.startTime = AE.snapTime(_comp, _l.startTime + ${jsxVal(args.shift)});`);
     if (args.startTime !== undefined)
       sets.push(`_l.startTime = AE.timeIn(_comp, ${jsxVal(args.startTime)}, "position");`);
+    // In and out are trims: what was not asked stays where it was. AE 26.5
+    // moved the out point too when only the in point of a text layer was set
+    // (2026-11-15: in 0 -> 3.295 took out 4.004 -> 7.299).
+    if (args.inPoint !== undefined || args.outPoint !== undefined)
+      sets.push(
+        "var _keepSt = _l.startTime; var _keepIn = _l.inPoint; var _keepOut = _l.outPoint; var _wantIn = null; var _wantOut = null;",
+      );
     if (args.inPoint !== undefined)
       sets.push(
-        `_l.inPoint = (${jsxVal(args.inPoint)} === "comp") ? 0 : AE.timeIn(_comp, ${jsxVal(args.inPoint)}, "position");`,
+        `_wantIn = (${jsxVal(args.inPoint)} === "comp") ? 0 : AE.timeIn(_comp, ${jsxVal(args.inPoint)}, "position");`,
+        "_l.inPoint = _wantIn;",
       );
     if (args.outPoint !== undefined)
       sets.push(
-        `_l.outPoint = (${jsxVal(args.outPoint)} === "comp") ? _comp.duration : AE.timeIn(_comp, ${jsxVal(args.outPoint)}, "position");`,
+        `_wantOut = (${jsxVal(args.outPoint)} === "comp") ? _comp.duration : AE.timeIn(_comp, ${jsxVal(args.outPoint)}, "position");`,
+        "_l.outPoint = _wantOut;",
       );
+    if (args.inPoint !== undefined || args.outPoint !== undefined)
+      sets.push("_warn = AE.keepTrim(_l, _keepSt, _keepIn, _keepOut, _wantIn, _wantOut);");
     if (args.stretch !== undefined) sets.push(`_l.stretch = ${jsxVal(args.stretch)};`);
     if (sets.length === 0) {
       return jsxFail("give at least one of shift, startTime, inPoint, outPoint, stretch");
@@ -156,9 +167,12 @@ registerOp({
             var _failed = 0;
             for (var _li = 0; _li < _layers.length; _li++) {
                 var _l = _layers[_li];
+                var _warn = null;
                 try {
                     ${sets.join("\n                    ")}
-                    _out.push({ index: _l.index, name: _l.name, ok: true, startTime: _l.startTime, inPoint: _l.inPoint, outPoint: _l.outPoint, stretch: _l.stretch });
+                    var _row = { index: _l.index, name: _l.name, ok: true, startTime: _l.startTime, inPoint: _l.inPoint, outPoint: _l.outPoint, stretch: _l.stretch };
+                    if (_warn !== null) _row.warning = _warn;
+                    _out.push(_row);
                 } catch (eT) {
                     _failed++;
                     _out.push({ index: _l.index, name: _l.name, ok: false, error: AE.errText(eT) });

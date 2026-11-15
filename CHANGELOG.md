@@ -16,7 +16,14 @@ Il salto da 0.1 a 0.2 è voluto: questa versione cambia il modo in cui Parlez! r
   - ogni ripartenza dopo un silenzio lungo compare tra le ultime richieste del pannello e nello storico, con la causa probabile («dopo apertura progetto», «dopo una finestra di dialogo»);
   - bottone **Riavvia** nel pannello, sempre visibile, come ultima risorsa: ricarica anche il codice di Parlez!, quindi dopo un aggiornamento fatto con After Effects aperto basta un clic. Dopo il clic il pannello mostra una barra con i secondi che mancano (al massimo 10) e poi dice sempre com'è finita: «Parlez! è ripartito» oppure «non è ripartito: chiudi e riapri After Effects». Se il server nuovo trova un After Effects (o un Premiere) con il codice vecchio, lo dice in italiano e spiega cosa fare, invece di dare un errore tecnico: «premi Riavvia» solo se il pannello aperto sa ricaricare il codice, altrimenti «chiudi e riapri After Effects».
   - il pannello non si ferma più per sempre se un aggiornamento dà errore mentre After Effects è occupato (per esempio mentre carica un progetto): dice cosa non va e riprende da solo.
+  - lo storico e il pannello scrivono «Agente riavviato con il pulsante Riavvia» quando il riavvio viene dal bottone, invece di indovinare la causa («dopo una finestra di dialogo»).
+- **After Effects, `layer.set_timing`**: cambiare solo l'inizio (inPoint) di un livello non sposta più la fine, e viceversa. Su un livello di testo After Effects 26.5 spostava anche la fine; ora Parlez! la rimette dov'era e avvisa se After Effects ha spostato l'intero livello.
+- **Test**: i test offline usano una cassetta tutta loro in una cartella temporanea, mai quella vera. Un battito finto lasciato da un test faceva vedere al server un secondo After Effects inesistente.
 - **Premiere Pro**: se una risposta di Premiere al pannello va persa, il giro del pannello riparte da solo invece di fermarsi; se lo script di Parlez! sparisce da Premiere, il pannello lo ricarica da solo.
+
+### Aggiunto
+
+- **Premiere Pro, `pr_import` con `numberedStills: true`**: si indica il primo file di una serie numerata (per esempio «Clip B_0000.png», il render PNG di After Effects) e Premiere la importa come una sola clip. La risposta dice quanti fotogrammi ha e quanto dura in timecode.
 
 ### Cambiato
 

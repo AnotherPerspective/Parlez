@@ -672,6 +672,30 @@ AE.offFrame = function (comp, seconds) {
     return Math.abs(f - Math.round(f)) > 0.01;
 };
 
+/**
+ * After setting a layer's in and/or out point (`wantIn` / `wantOut`, null =
+ * not asked): put back what was not asked. AE 26.5 moved the out point of a
+ * text layer when only its in point was set (2026-11-15: in 0 -> 3.295 took
+ * out 4.004 -> 7.299). A layer slid as a whole goes back to its start and is
+ * trimmed again. Returns a warning in Italian when the start still moved,
+ * else null.
+ */
+AE.keepTrim = function (layer, st, inP, outP, wantIn, wantOut) {
+    var EPS = 1e-6;
+    if (Math.abs(layer.startTime - st) > EPS) {
+        layer.startTime = st;
+        if (wantIn !== null) layer.inPoint = wantIn;
+        if (wantOut !== null) layer.outPoint = wantOut;
+    }
+    if (wantIn === null && Math.abs(layer.inPoint - inP) > EPS && inP < layer.outPoint) layer.inPoint = inP;
+    if (wantOut === null && Math.abs(layer.outPoint - outP) > EPS && outP > layer.inPoint) layer.outPoint = outP;
+    if (Math.abs(layer.startTime - st) > EPS) {
+        return "After Effects ha spostato anche l'inizio del livello (startTime da " + st + " a " +
+            layer.startTime + " s): le sue animazioni si sono spostate con lui, controllale.";
+    }
+    return null;
+};
+
 AE.safeGet = function (fn, fallback) {
     try { var v = fn(); return (v === undefined) ? fallback : v; } catch (e) { return fallback; }
 };

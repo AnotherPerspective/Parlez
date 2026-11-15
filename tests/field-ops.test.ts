@@ -157,11 +157,13 @@ describe("layer.set_timing", () => {
     const jsx = op.toJsx({ comp: "Main", layer: 1, shift: 1, inPoint: "comp", outPoint: "comp" });
     expect(jsx).toContain("_l.startTime = AE.snapTime(_comp, _l.startTime + 1);");
     expect(jsx).toContain(
-      '_l.inPoint = ("comp" === "comp") ? 0 : AE.timeIn(_comp, "comp", "position");',
+      '_wantIn = ("comp" === "comp") ? 0 : AE.timeIn(_comp, "comp", "position");',
     );
     expect(jsx).toContain(
-      '_l.outPoint = ("comp" === "comp") ? _comp.duration : AE.timeIn(_comp, "comp", "position");',
+      '_wantOut = ("comp" === "comp") ? _comp.duration : AE.timeIn(_comp, "comp", "position");',
     );
+    expect(jsx).toContain("_l.inPoint = _wantIn;");
+    expect(jsx).toContain("AE.keepTrim(_l, _keepSt, _keepIn, _keepOut, _wantIn, _wantOut)");
     expect(jsx.indexOf("_l.startTime")).toBeLessThan(jsx.indexOf("_l.inPoint"));
     expect(op.toJsx({ comp: "Main", layer: 1 })).toContain("give at least one of");
     expect(op.toJsx({ comp: "Main", layer: 1, outPoint: "end" })).toContain("seconds, or 'comp'");

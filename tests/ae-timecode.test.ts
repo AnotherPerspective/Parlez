@@ -217,3 +217,76 @@ describe("timecode in the answers of the reading tools", () => {
     expect(op.toJsx({ comp: "Main", times: ["1s"] })).toContain("timecodes HH:MM:SS:FF");
   });
 });
+
+describe("layer.set_timing: in and out are trims (AE 26.5, 2026-11-15)", () => {
+  type Model = "trim" | "outFollows" | "slides";
+  /** A text layer as After Effects may treat it: start 0, in 0, out 4.004. */
+  function layer(model: Model) {
+    const l = { index: 1, name: "Titolo", stretch: 100, st: 0, inP: 0, outP: 4.004 };
+    return Object.defineProperties(l, {
+      startTime: {
+        get: () => l.st,
+        set(v: number) {
+          const d = v - l.st;
+          l.st = v;
+          l.inP += d;
+          l.outP += d;
+        },
+      },
+      inPoint: {
+        get: () => l.inP,
+        set(v: number) {
+          const d = v - l.inP;
+          if (model === "slides") l.st += d;
+          if (model !== "trim") l.outP += d;
+          l.inP = v;
+        },
+      },
+      outPoint: {
+        get: () => l.outP,
+        set(v: number) {
+          l.outP = v;
+        },
+      },
+    }) as typeof l & { startTime: number; inPoint: number; outPoint: number };
+  }
+
+  function setTiming(model: Model, args: Record<string, unknown>) {
+    const ae = new Function(`${HELPERS}; return AE;`)() as Record<string, unknown>;
+    const c = comp(23.976);
+    const l = layer(model);
+    ae.findCompByNameOrId = () => c;
+    ae.resolveLayers = () => [l];
+    const jsx = getOp("layer.set_timing")!.toJsx({ comp: "Main", layer: 1, ...args });
+    const res = new Function("AE", jsx)(ae) as {
+      ok: boolean;
+      layers: Array<{ warning?: string }>;
+    };
+    return { res, l };
+  }
+
+  it.each(["trim", "outFollows", "slides"] as Model[])(
+    "only the in point (3.3 s): the out point stays at 4.004 (%s)",
+    (model) => {
+      const { res, l } = setTiming(model, { inPoint: 3.3 });
+      expect(res.ok).toBe(true);
+      expect(l.inPoint).toBeCloseTo(79 / (24000 / 1001), 6);
+      expect(l.outPoint).toBeCloseTo(4.004, 6);
+    },
+  );
+
+  it("says so when After Effects moved the whole layer and the start did not come back", () => {
+    expect(setTiming("outFollows", { inPoint: 3.3 }).res.layers[0]!.warning).toBeUndefined();
+    expect(setTiming("slides", { inPoint: 3.3 }).res.layers[0]!.warning).toContain(
+      "ha spostato anche l'inizio del livello",
+    );
+  });
+
+  it("only the out point leaves the in point alone; both given are both set", () => {
+    const out = setTiming("outFollows", { outPoint: 2 }).l;
+    expect(out.inPoint).toBe(0);
+    const both = setTiming("outFollows", { inPoint: 1, outPoint: 3 }).l;
+    expect(both.inPoint).toBeCloseTo(24 / (24000 / 1001), 6);
+    expect(both.outPoint).toBeCloseTo(72 / (24000 / 1001), 6);
+  });
+});

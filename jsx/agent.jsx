@@ -526,7 +526,14 @@
             var pr = state.pendingRestart;
             state.pendingRestart = null;
             var silentMs = (typeof pr.since === "number" && pr.since > 0) ? now - pr.since : 0;
-            var cause = restartCause(pr.project, projectInfo().project);
+            // The button is the cause when it was pressed: guessing from the
+            // project said "dopo una finestra di dialogo" for every press
+            // (2026-11-15).
+            var src = (typeof pr.source === "string") ? pr.source : "";
+            var cause;
+            if (src.indexOf("pulsante Riavvia (codice ricaricato)") === 0) cause = "con Riavvia, codice ricaricato";
+            else if (src.indexOf("pulsante Riavvia") === 0) cause = "con il pulsante Riavvia";
+            else cause = restartCause(pr.project, projectInfo().project);
             state.restarts++;
             state.lastRestart = { t: now, cause: cause, source: pr.source, silentMs: silentMs };
             var entry = {
@@ -694,12 +701,16 @@
             // more task to come due under a modal window.
             if (force !== true && isDriven(now)) return false;
             try { if (state.taskId !== null) app.cancelTask(state.taskId); } catch (eCancel) { /* already dropped */ }
+            var why = (typeof source === "string" && source.length > 0) ? source : "?";
             if (state.pendingRestart === null) {
                 state.pendingRestart = {
-                    source: (typeof source === "string" && source.length > 0) ? source : "?",
+                    source: why,
                     since: state.lastTickAt,
                     project: state.lastProject
                 };
+            } else if (force === true) {
+                // A press of Riavvia names the restart even when a stop was already noticed.
+                state.pendingRestart.source = why;
             }
             state.stopped = false;
             state.gen++;

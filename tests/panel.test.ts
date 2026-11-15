@@ -1414,6 +1414,8 @@ describe("«Riavvia» always ends with an outcome (2026-11-15: «tra un attimo»
     expect(panel.says()).not.toContain("Riavvio in corso");
     expect(panel.color()).toEqual(GREEN);
     expect(followTasks()).toHaveLength(0);
+    // The list names the button, with no seconds of silence (2026-11-15).
+    expect(historyRows(panel)[0]).toMatch(/^\d\d:\d\d {2}Riavviato con il pulsante Riavvia$/);
   });
 
   it("with the sveglia too: a pulse that comes first says it", () => {
