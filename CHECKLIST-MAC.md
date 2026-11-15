@@ -10,7 +10,7 @@ Ci vogliono circa 30–40 minuti.
 
 ## Prima di cominciare
 
-- Ti serve: un Mac con **After Effects 2024, 2025 o 2026** già aperto almeno una volta, **Claude Code** oppure **Claude Desktop**, e lo **zip scaricato dal sito** (dentro c'è il file `parlez-0.1.1.tgz`). Scompatta lo zip con doppio clic: ottieni una cartella con dentro `parlez-0.1.1.tgz`. In questa guida si suppone che sia in **Download**; se l'hai messo altrove, cambia i percorsi.
+- Ti serve: un Mac con **After Effects 2024, 2025 o 2026** già aperto almeno una volta, **Claude Code** oppure **Claude Desktop**, e lo **zip scaricato dal sito** (dentro c'è il file `parlez-0.2.0.tgz`). Scompatta lo zip con doppio clic: ottieni una cartella con dentro `parlez-0.2.0.tgz`. In questa guida si suppone che sia in **Download**; se l'hai messo altrove, cambia i percorsi.
 - Lavora su una **copia** di un progetto, mai sul lavoro di un cliente.
 - Il **Terminale** è in Applicazioni → Utility → Terminale. Ogni comando qui sotto va incollato lì.
 - Quando un percorso contiene spazi o `!` (per esempio `Parlez!.jsx`) è scritto tra apici singoli `'…'`: lasciali, servono.
@@ -62,7 +62,7 @@ source ~/.zprofile
 **Comando**
 
 ```bash
-shasum -a 256 ~/Downloads/parlez-0.1.1.tgz
+shasum -a 256 ~/Downloads/parlez-0.2.0.tgz
 ```
 
 **Cosa devi vedere**: una lunga sequenza di lettere e numeri. Deve essere **uguale** a quella scritta nel `README.md` della pagina di download (sezione «Scarica»).
@@ -78,7 +78,7 @@ cd ~/Downloads
 ```
 
 ```bash
-npm install -g ./parlez-0.1.1.tgz
+npm install -g ./parlez-0.2.0.tgz
 ```
 
 ```bash
@@ -106,6 +106,7 @@ parlez setup
 - `NOTA    After Effects 2026 trovato (cartella delle preferenze 26.5)` (anno e numero possono essere diversi);
 - `OK      installato lo script di avvio: /Users/<tu>/Library/Preferences/Adobe/After Effects/26.5/Scripts/Startup/mcp-aftereffects-agent.jsx`;
 - `OK      installato il pannello: /Users/<tu>/Library/Preferences/Adobe/After Effects/26.5/Scripts/ScriptUI Panels/Parlez!.jsx`;
+- `OK      installata la sveglia di Parlez! per After Effects (3 file): /Users/<tu>/Library/Application Support/Adobe/CEP/extensions/com.anotherperspective.parlez.sveglia` (dalla 0.2: un'estensione invisibile che tiene vivo Parlez! quando After Effects apre una finestra di attesa; sul Mac non è ancora provata). Una `NOTA` su `PlayerDebugMode` dice il comando `defaults write …` per accenderla: lancialo una volta, poi riavvia After Effects;
 - una parte «Collegare Parlez! a Claude» con un comando che inizia con `claude mcp add` e un blocco tra parentesi graffe `{ … }`. **Tienili**: servono al passo 9;
 - in fondo il «Controllo finale». È normale che ci sia ancora qualche riga `DA FARE` (la casella degli script, After Effects non acceso): le sistemiamo nei prossimi passi.
 

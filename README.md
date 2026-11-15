@@ -20,16 +20,16 @@ Free and open source (MIT). It grows out of [mcp-aftereffects](https://github.co
 
 **[⬇ Download Parlez! beta (zip file)](https://github.com/AnotherPerspective/Parlez/releases/latest/download/Parlez-beta.zip)** — always the latest beta. Every version is on the [Releases](https://github.com/AnotherPerspective/Parlez/releases) page.
 
-The zip holds the package `parlez-0.1.1.tgz`, the two step-by-step guides ([Windows](CHECKLIST-WINDOWS.md) and [Mac](CHECKLIST-MAC.md), in Italian) and a `LEGGIMI.txt` file.
+The zip holds the package `parlez-0.2.0.tgz`, the two step-by-step guides ([Windows](CHECKLIST-WINDOWS.md) and [Mac](CHECKLIST-MAC.md), in Italian) and a `LEGGIMI.txt` file.
 
-**Checking the file (optional).** To make sure the package was not changed on the way, compare the fingerprint of `parlez-0.1.1.tgz` with this one:
+**Checking the file (optional).** To make sure the package was not changed on the way, compare the fingerprint of `parlez-0.2.0.tgz` with this one:
 
 ```text
 20924bdbf6d5fa63324c10644d3c59c8d920c8484bde41a73c2aef956239b70f
 ```
 
-- Windows (PowerShell): `certutil -hashfile parlez-0.1.1.tgz SHA256`
-- Mac (Terminal): `shasum -a 256 parlez-0.1.1.tgz`
+- Windows (PowerShell): `certutil -hashfile parlez-0.2.0.tgz SHA256`
+- Mac (Terminal): `shasum -a 256 parlez-0.2.0.tgz`
 
 ## Requirements
 
@@ -44,13 +44,15 @@ npm install -g parlez
 parlez setup --lang en
 ```
 
-Until Parlez! is on npm, use the package from the [zip above](#download) instead, from the unzipped folder: `npm install -g ./parlez-0.1.1.tgz`. Installing downloads the libraries Parlez! needs once; after that the program never connects to the internet.
+Until Parlez! is on npm, use the package from the [zip above](#download) instead, from the unzipped folder: `npm install -g ./parlez-0.2.0.tgz`. Installing downloads the libraries Parlez! needs once; after that the program never connects to the internet.
 
 The first time, `parlez setup` shows a short version of the **[notices](AVVERTENZE.md#english)** and installs only after you type `I accept`; any other answer stops it without installing anything. It remembers this in `%APPDATA%\Parlez\avvertenze-accettate.json` (on macOS `~/Library/Application Support/Parlez/`), next to the panel's history, and does not ask again. Scripted installs can add `--accept`, which counts as accepting.
 
-Then it finds After Effects, installs the **startup script** (a small agent that stays inside After Effects and receives Claude's requests) and the **Parlez! panel**, checks the scripting checkbox, and prints the third command: the `claude mcp add …` line for Claude Code, or the block for Claude Desktop with where to paste it. It writes only into your user's After Effects folders. With several After Effects versions it asks which ones (or use `--version 26.5`).
+Then it finds After Effects, installs the **startup script** (a small agent that stays inside After Effects and receives Claude's requests), the **Parlez! panel** and the **sveglia** (an invisible extension, no window: it keeps the agent going while After Effects shows a modal window such as a project loading, the Home screen or Save As; it needs CEP's debug mode, `PlayerDebugMode`, which `parlez setup` reads and, when it is off, tells you how to switch on), checks the scripting checkbox, and prints the third command: the `claude mcp add …` line for Claude Code, or the block for Claude Desktop with where to paste it. It writes only into your user's After Effects folders. With several After Effects versions it asks which ones (or use `--version 26.5`).
 
 Then **restart After Effects**, open **Window → Parlez!** and switch it on.
+
+The sveglia (since 0.2) reads the agent's heartbeat file, runs one PowerShell line that reads whether After Effects' window is free (Windows only, read-only), and sends After Effects one fixed line; nothing else, no network. Tested on After Effects 2026 / Windows; on a Mac it is written to work but not tried yet.
 
 **One thing to do by hand in After Effects:** Edit → Preferences → Scripting & Expressions → turn on **"Allow Scripts to Write Files and Access Network"**, then close the dialog with OK. On macOS: After Effects → Settings → Scripting & Expressions (as Adobe documents it). With the startup script installed, macOS should not ask to let your terminal or Claude Desktop control After Effects (Automation): only the direct connection needs it. If it asks anyway, allow it.
 
@@ -70,7 +72,7 @@ What Claude reads from the project (names, text, file paths, frames) goes to the
 
 ## Troubleshooting
 
-Timeouts: is After Effects open, the panel ON, the scripting checkbox on, and no dialog open (sometimes hidden behind the main window)? Then run `parlez doctor`. After an After Effects update (e.g. 26.5 → 26.6) or a Parlez! update, run `parlez setup` again. Issues: [github.com/AnotherPerspective/Parlez/issues](https://github.com/AnotherPerspective/Parlez/issues).
+Timeouts: is After Effects open, the panel ON, the scripting checkbox on, and no dialog open (sometimes hidden behind the main window)? Then run `parlez doctor`. A grey panel usually comes back by itself once the open dialog closes; if it stays stopped, press **Riavvia** in the panel. After an After Effects update (e.g. 26.5 → 26.6) or a Parlez! update, run `parlez setup` again. Issues: [github.com/AnotherPerspective/Parlez/issues](https://github.com/AnotherPerspective/Parlez/issues).
 
 Developers: advanced options and architecture are in [`docs/TOOLS.md`](docs/TOOLS.md) and [`CONTRIBUTING.md`](CONTRIBUTING.md). **Default connection:** Parlez! talks to After Effects through the startup script; kumo's direct `AfterFX.exe -r` path remains as a fallback when the startup script is not installed (or with `AE_MCP_PULL_ONLY=0`).
 
@@ -95,16 +97,16 @@ Parlez! fa lavorare **Claude dentro After Effects**. Scrivi a Claude cosa vuoi, 
 
 **[⬇ Scarica Parlez! beta (file zip)](https://github.com/AnotherPerspective/Parlez/releases/latest/download/Parlez-beta.zip)**: è sempre l'ultima beta. Tutte le versioni sono nella pagina [Releases](https://github.com/AnotherPerspective/Parlez/releases).
 
-Dentro lo zip trovi il pacchetto `parlez-0.1.1.tgz`, le due guide passo passo ([Windows](CHECKLIST-WINDOWS.md) e [Mac](CHECKLIST-MAC.md)) e un file `LEGGIMI.txt`.
+Dentro lo zip trovi il pacchetto `parlez-0.2.0.tgz`, le due guide passo passo ([Windows](CHECKLIST-WINDOWS.md) e [Mac](CHECKLIST-MAC.md)) e un file `LEGGIMI.txt`.
 
-**Controllo del file (facoltativo).** Se vuoi essere sicuro che il pacchetto non sia stato cambiato, confronta l'impronta di `parlez-0.1.1.tgz` con questa:
+**Controllo del file (facoltativo).** Se vuoi essere sicuro che il pacchetto non sia stato cambiato, confronta l'impronta di `parlez-0.2.0.tgz` con questa:
 
 ```text
 20924bdbf6d5fa63324c10644d3c59c8d920c8484bde41a73c2aef956239b70f
 ```
 
-- Windows (PowerShell): `certutil -hashfile parlez-0.1.1.tgz SHA256`
-- Mac (Terminale): `shasum -a 256 parlez-0.1.1.tgz`
+- Windows (PowerShell): `certutil -hashfile parlez-0.2.0.tgz SHA256`
+- Mac (Terminale): `shasum -a 256 parlez-0.2.0.tgz`
 
 Le due sequenze di lettere e numeri devono essere uguali.
 
@@ -126,7 +128,7 @@ Il terminale su Windows è **PowerShell** (cercalo nel menu Start); sul Mac è *
 npm install -g parlez
 ```
 
-> Finché Parlez! non è pubblicato su npm, al posto di questo comando usa il pacchetto dello [zip qui sopra](#scarica), dalla cartella scompattata: `npm install -g ./parlez-0.1.1.tgz`. L'installazione scarica una volta le librerie di cui Parlez! ha bisogno; dopo, il programma non si collega più a internet.
+> Finché Parlez! non è pubblicato su npm, al posto di questo comando usa il pacchetto dello [zip qui sopra](#scarica), dalla cartella scompattata: `npm install -g ./parlez-0.2.0.tgz`. L'installazione scarica una volta le librerie di cui Parlez! ha bisogno; dopo, il programma non si collega più a internet.
 
 **2. Prepara After Effects**
 
@@ -136,7 +138,7 @@ parlez setup
 
 La prima volta ti mostra in breve le **[avvertenze](AVVERTENZE.md#italiano)** e installa solo dopo che hai scritto `accetto`; con qualsiasi altra risposta si ferma senza installare niente. Lo ricorda in `%APPDATA%\Parlez\avvertenze-accettate.json` (sul Mac `~/Library/Application Support/Parlez/`), accanto allo storico del pannello, e non te lo chiede più. Chi installa da uno script può aggiungere `--accept`, che vale come accettazione.
 
-Poi trova After Effects, installa lo **script di avvio** (il piccolo programma che resta dentro After Effects e riceve le richieste di Claude) e il **pannello Parlez!**, controlla la casella degli script e alla fine ti stampa il comando del punto 3. Scrive solo nelle cartelle di After Effects del tuo utente. Se hai più versioni di After Effects ti chiede in quali installare (oppure `parlez setup --version 26.5`). Messaggi in inglese: `parlez setup --lang en`.
+Poi trova After Effects, installa lo **script di avvio** (il piccolo programma che resta dentro After Effects e riceve le richieste di Claude), il **pannello Parlez!** e la **sveglia** (un'estensione invisibile, senza finestre: tiene in moto lo script di avvio mentre After Effects mostra una finestra di attesa, come il caricamento di un progetto, la Home o Salva con nome; le serve la «modalità debug» di CEP, `PlayerDebugMode`, che `parlez setup` controlla e, se è spenta, ti dice come accendere), controlla la casella degli script e alla fine ti stampa il comando del punto 3. Scrive solo nelle cartelle di After Effects del tuo utente. Se hai più versioni di After Effects ti chiede in quali installare (oppure `parlez setup --version 26.5`). Messaggi in inglese: `parlez setup --lang en`.
 
 **3. Collega Parlez! a Claude**
 
@@ -197,6 +199,8 @@ Dentro After Effects, **Finestra → Parlez!** apre un pannello con un grande in
 - **«Claude è in pausa»**: il pannello è su OFF. Portalo su ON.
 - **Dopo un aggiornamento di After Effects** (per esempio da 26.5 a 26.6) rilancia `parlez setup`: ogni versione ha la sua cartella.
 - **Dopo un aggiornamento di Parlez!** rilancia `parlez setup` per aggiornare il pannello.
+- **Il pannello è grigio o non risponde**: di solito riparte da solo appena si chiude la finestra di dialogo aperta. Se resta fermo, premi **Riavvia** nel pannello. Dalla 0.2 la **sveglia** evita i blocchi all'apertura dei progetti pesanti: se `parlez doctor` dice che manca, rilancia `parlez setup`.
+- **La sveglia** legge il file di battito dello script di avvio, usa una riga di PowerShell per leggere se la finestra di After Effects è libera (solo Windows, solo lettura) e manda ad After Effects sempre la stessa riga di codice. Nient'altro, niente rete. Provata su After Effects 2026 / Windows; sul Mac è scritta per funzionare ma non ancora provata.
 
 Per segnalare un problema: [github.com/AnotherPerspective/Parlez/issues](https://github.com/AnotherPerspective/Parlez/issues).
 

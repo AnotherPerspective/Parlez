@@ -10,7 +10,7 @@ Ci vogliono circa 20–30 minuti.
 
 ## Prima di cominciare
 
-- Ti serve: un PC con **Windows 10 o 11**, **After Effects 2024, 2025 o 2026** già aperto almeno una volta, **Claude Code** oppure **Claude Desktop**, e lo **zip scaricato dal sito** (dentro c'è `parlez-0.1.1.tgz`).
+- Ti serve: un PC con **Windows 10 o 11**, **After Effects 2024, 2025 o 2026** già aperto almeno una volta, **Claude Code** oppure **Claude Desktop**, e lo **zip scaricato dal sito** (dentro c'è `parlez-0.2.0.tgz`).
 - Lavora su una **copia** di un progetto, mai sul lavoro di un cliente.
 - **PowerShell** si apre dal menu Start: scrivi «PowerShell» e premi Invio. Ogni comando qui sotto va incollato lì (clic destro incolla).
 - Quando un percorso contiene spazi o `!` (per esempio `Parlez!.jsx`) è scritto tra virgolette `"…"`: lasciale, servono.
@@ -43,7 +43,7 @@ Per controllare che il file non sia stato cambiato:
 **Comando**
 
 ```powershell
-certutil -hashfile parlez-0.1.1.tgz SHA256
+certutil -hashfile parlez-0.2.0.tgz SHA256
 ```
 
 **Cosa devi vedere**: una lunga sequenza di lettere e numeri. Deve essere **uguale** a quella scritta nel `README.md` del sito di download (sezione «Scarica»).
@@ -52,19 +52,19 @@ certutil -hashfile parlez-0.1.1.tgz SHA256
 
 ## 3. Installare Parlez!
 
-Con PowerShell aperto nella cartella dove c'è `parlez-0.1.1.tgz`:
+Con PowerShell aperto nella cartella dove c'è `parlez-0.2.0.tgz`:
 
 **Comandi**
 
 ```powershell
-npm install -g ./parlez-0.1.1.tgz
+npm install -g ./parlez-0.2.0.tgz
 ```
 
 ```powershell
 npm list -g parlez
 ```
 
-**Cosa devi vedere**: dopo il primo comando qualcosa come `added 90 packages` (il numero può cambiare). Può comparire un avviso con `lefthook` o `install-scripts`: è innocuo. Il secondo comando deve mostrare una riga con `parlez@0.1.1`.
+**Cosa devi vedere**: dopo il primo comando qualcosa come `added 90 packages` (il numero può cambiare). Può comparire un avviso con `lefthook` o `install-scripts`: è innocuo. Il secondo comando deve mostrare una riga con `parlez@0.2.0`.
 
 Serve internet **solo adesso**, per scaricare due librerie. Dopo, Parlez! non si collega più a internet.
 
@@ -87,6 +87,7 @@ Se hai una sola versione di After Effects, non devi indicare niente. Se vuoi sce
 - `NOTA    After Effects 2026 trovato (cartella delle preferenze 26.5)` (anno e numero possono essere diversi);
 - `OK      installato lo script di avvio: C:\Users\<tu>\AppData\Roaming\Adobe\After Effects\26.5\Scripts\Startup\mcp-aftereffects-agent.jsx`;
 - `OK      installato il pannello: C:\Users\<tu>\AppData\Roaming\Adobe\After Effects\26.5\Scripts\ScriptUI Panels\Parlez!.jsx`;
+- `OK      installata la sveglia di Parlez! per After Effects (3 file): C:\Users\<tu>\AppData\Roaming\Adobe\CEP\extensions\com.anotherperspective.parlez.sveglia` (dalla 0.2: un'estensione invisibile che tiene vivo Parlez! quando After Effects apre una finestra di attesa). Se sotto compare una `NOTA` con `PlayerDebugMode spento`, lancia **una volta** il comando `reg add …` che ti mostra, poi riavvia After Effects;
 - una parte «Collegare Parlez! a Claude» con un comando che inizia con `claude mcp add` e un blocco tra parentesi graffe `{ … }`. **Tienili**: servono al passo 8;
 - in fondo il «Controllo finale». È normale che ci sia ancora qualche riga `DA FARE` (la casella degli script, After Effects non acceso): le sistemiamo nei prossimi passi.
 
@@ -94,7 +95,7 @@ Se hai più versioni di After Effects, ti chiede `Installo Parlez! in tutti? [s/
 
 **Se non va**: manda **tutto** quello che `parlez setup` ha scritto, dalla prima all'ultima riga. In particolare se dice `Non ho trovato After Effects` oppure `Apri After Effects … una volta` (vuol dire che After Effects non ha ancora creato la sua cartella: aprilo, chiudilo e rilancia).
 
-Nota: `parlez setup` scrive solo dentro `%APPDATA%\Adobe\After Effects\<versione>\Scripts\…`, cioè nelle cartelle del tuo utente. Non tocca il registro di Windows e non serve essere amministratore.
+Nota: `parlez setup` scrive solo dentro `%APPDATA%\Adobe\After Effects\<versione>\Scripts\…` e `%APPDATA%\Adobe\CEP\extensions\…`, cioè nelle cartelle del tuo utente. Il registro di Windows lo legge soltanto (per `PlayerDebugMode`), non lo cambia; non serve essere amministratore.
 
 ## 5. Accendere la casella degli script in After Effects
 
@@ -125,6 +126,7 @@ parlez doctor
 - `OK      Node.js 24…`
 - `OK      After Effects 26.5: script di avvio installato e aggiornato`
 - `OK      After Effects 26.5: pannello Parlez! installato e aggiornato`
+- `OK      sveglia di Parlez! installata e aggiornata` e `OK      la sveglia può caricarsi (CSXS.12 PlayerDebugMode = 1)`
 - `OK      After Effects 26.5: la casella «Consenti agli script di scrivere file e accedere alla rete» è accesa`
 - `OK      After Effects acceso con l'agente: …`
 - `NOTA    … il pannello è su OFF …` (è normale se non l'hai ancora acceso: lo accendi al passo 7);
