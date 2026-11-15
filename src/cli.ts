@@ -22,6 +22,7 @@ import {
   uninstallPremierePanel,
 } from "./premiere/install.js";
 import { detectLang, runDoctor, runSetup } from "./setup.js";
+import { installSveglia, svegliaStatus, uninstallSveglia } from "./sveglia-install.js";
 import { describeInstance, listInstances } from "./transport/instances.js";
 
 export const USAGE = `parlez — Parlez! for Adobe® After Effects® (MCP server)
@@ -43,6 +44,11 @@ export const USAGE = `parlez — Parlez! for Adobe® After Effects® (MCP server
   parlez uninstall-panel    remove it again
   parlez panel-status       show where the panel is installed and whether it is current
   parlez instances          list the After Effects instances whose agent is live
+  parlez install-sveglia    install only the "sveglia" (provisional name): an invisible extension
+                            that keeps the After Effects agent alive under modal windows (loading
+                            a project, Home, Save As); into the user-level CEP extensions folder
+  parlez uninstall-sveglia  remove it again
+  parlez sveglia-status     show where the sveglia is installed and whether it is current
   parlez install-premiere-panel    install only the Parlez! panel for Premiere Pro into the
                             user-level CEP extensions folder; it shows under Window > Extensions
                             after restarting Premiere
@@ -188,6 +194,36 @@ export async function runCli(
           for (const p of s.legacy) out(`old name still present: ${p} — install-panel removes it`);
         }
         return code;
+      }
+
+      case "install-sveglia": {
+        const report = await installSveglia({ dir: args.dir, dryRun: args.dryRun });
+        for (const p of report.written) out(`${args.dryRun ? "would write" : "wrote"}    ${p}`);
+        if (report.written.length === 0) out(`up to date  ${report.dir}`);
+        if (report.written.length > 0 && !args.dryRun) {
+          out("");
+          out("Restart After Effects: the sveglia starts with it, invisible.");
+        }
+        return 0;
+      }
+
+      case "uninstall-sveglia": {
+        const report = await uninstallSveglia({ dir: args.dir, dryRun: args.dryRun });
+        if (report.removed) out(`${args.dryRun ? "would remove" : "removed"}  ${report.dir}`);
+        else if (report.foreign) out(`left alone  ${report.dir} (not written by Parlez!)`);
+        else out("nothing to remove");
+        return 0;
+      }
+
+      case "sveglia-status": {
+        const status = await svegliaStatus({ dir: args.dir });
+        out(
+          `${status.current ? "current" : status.installed ? "stale  " : "missing"}  ${status.dir}` +
+            (status.installed && !status.current
+              ? ` — differs: ${status.stale.join(", ")}; run install-sveglia`
+              : ""),
+        );
+        return status.current ? 0 : 1;
       }
 
       case "install-premiere-panel": {

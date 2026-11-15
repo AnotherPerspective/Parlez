@@ -4,7 +4,7 @@ Tutte le modifiche importanti di Parlez! per Adobe® After Effects® sono scritt
 
 Il formato segue [Keep a Changelog](https://keepachangelog.com/it-IT/1.1.0/) e i numeri di versione seguono il [Semantic Versioning](https://semver.org/lang/it/). La storia di mcp-aftereffects di kumo.productions, da cui Parlez! deriva, è in [`docs/CHANGELOG-kumo.md`](docs/CHANGELOG-kumo.md).
 
-## [0.2.0] - in preparazione
+## [0.2.0] - 2026-11-15
 
 Il salto da 0.1 a 0.2 è voluto: questa versione cambia il modo in cui Parlez! resta vivo dentro After Effects. La 0.1.1 funziona; la 0.1.2 (solo locale, con Premiere Pro) ha lo stesso codice After Effects e con buona probabilità funzionava anche lei, ma non è stato verificato.
 
@@ -83,6 +83,7 @@ Prima versione di Parlez!. Parte da mcp-aftereffects 0.3.2 di kumo.productions (
 - Le guide create su After Effects 26.5 hanno di nuovo l'orientamento giusto.
 - La lettura dei metadati XMP del progetto è più robusta e dice che tipo di valore riceve.
 
+[0.2.0]: https://github.com/AnotherPerspective/Parlez-download/releases/tag/v0.2.0-beta
 [0.1.2]: https://github.com/AnotherPerspective/Parlez-download/releases/tag/v0.1.2-beta
 [0.1.1]: https://github.com/AnotherPerspective/Parlez-download/releases/tag/v0.1.1-beta
 [0.1.0]: https://github.com/AnotherPerspective/Parlez-download/releases/tag/v0.1.0-beta

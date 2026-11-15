@@ -41,6 +41,7 @@ import { INSTANCES_DIR, PACKAGE_ROOT, PULL_ONLY_ENV, pushPathName } from "./conf
 import { installPanel, panelInstallStatus } from "./panel-install.js";
 import type { CommandRunner } from "./premiere/install.js";
 import { premiereDoctorChecks, premiereSetupStep } from "./premiere/setup-steps.js";
+import { svegliaDoctorChecks, svegliaSetupStep } from "./sveglia-steps.js";
 import { isPaused, isReadOnly, instanceLabel, listInstances } from "./transport/instances.js";
 
 export type Lang = "it" | "en";
@@ -936,6 +937,12 @@ export async function runSetup(
     for (const p of panel.removedLegacy) out(`${t.ok}${t.removedOld(p, opts.dryRun === true)}`);
     changed ||= agent.written.length + panel.written.length + panel.removedLegacy.length > 0;
   }
+  // The sveglia: one per user, for every After Effects version.
+  changed =
+    (await svegliaSetupStep(machine, lang, opts.dryRun === true, out, {
+      ok: t.ok,
+      note: t.note,
+    })) || changed;
   out("");
   if (opts.dryRun) out(t.dryRun);
   else if (changed) out(t.restart);
@@ -1047,6 +1054,10 @@ async function runDoctorChecks(
   });
   const push = pushPathName(platform);
   const mac = platform === "darwin";
+  await svegliaDoctorChecks(machine, machine.lang ?? detectLang(), line, out, {
+    ok: t.ok,
+    note: t.note,
+  });
   await premiereDoctorChecks(machine, machine.lang ?? detectLang(), line, out, {
     ok: t.ok,
     note: t.note,
