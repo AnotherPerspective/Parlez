@@ -251,6 +251,7 @@ export const doTool = defineTool({
         details: { operation: op.name, result: opResult, context },
         logs: result.logs,
         durationMs: result.durationMs,
+        ...(result.panelReloads !== undefined ? { panelReloads: result.panelReloads } : {}),
         ...(isBatchShaped(opResult)
           ? {
               hint: "Inspect details.result.results — each entry matches the input order and carries its own error.",

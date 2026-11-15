@@ -267,8 +267,6 @@ parlez uninstall-sveglia
 parlez uninstall-premiere-panel
 ```
 
-Gli ultimi due tolgono la sveglia (After Effects) e il pannello di Premiere Pro; se non li avevi installati rispondono `nothing to remove`.
-
 Con Claude Code:
 
 ```powershell
@@ -283,7 +281,7 @@ Infine:
 npm uninstall -g parlez
 ```
 
-**Cosa devi vedere**: `removed …` per il pannello, lo script di avvio, la sveglia e il pannello di Premiere (se c'erano); `removed 1 package` (o simile) per l'ultimo.
+**Cosa devi vedere**: `removed …` per il pannello, lo script di avvio, la sveglia e il pannello di Premiere (`nothing to remove` se quella parte non era installata); `removed 1 package` (o simile) per l'ultimo.
 
 Rimangono, e puoi toglierli a mano da Esplora file (incolla il percorso nella barra degli indirizzi) se vuoi:
 

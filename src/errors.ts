@@ -81,6 +81,8 @@ export interface AeErrorExtra {
   durationMs?: number;
   /** Human-facing next step, when there is a concrete one. */
   hint?: string;
+  /** The panel in After Effects reloads Parlez!'s code with Riavvia (EvalResult.panelReloads). */
+  panelReloads?: boolean;
 }
 
 export interface AeErrorEnvelope {
@@ -122,7 +124,7 @@ export function errorEnvelope(
  */
 export function outdatedAgentMessage(message: string, panelReloads = false): string | null {
   if (message.includes(OUTDATED_MARK)) return null;
-  const m = /\b(AE|PR)\.([A-Za-z_]\w*) is (?:undefined|not a function)/.exec(message);
+  const m = OUTDATED_RE.exec(message);
   if (!m) return null;
   if (m[1] === "PR") {
     return (
@@ -142,6 +144,25 @@ export function outdatedAgentMessage(message: string, panelReloads = false): str
 }
 
 const OUTDATED_MARK = "usa ancora la versione vecchia di Parlez!";
+
+/** "Function AE.keepTrim is undefined", "PR.timeIn is not a function". */
+export const OUTDATED_RE = /\b(AE|PR)\.([A-Za-z_]\w*) is (?:undefined|not a function)/;
+
+/**
+ * The first such error anywhere in a result: an operation that works layer
+ * by layer reports it per layer, under a summary like "1 of 1 layers
+ * failed" (layer.set_timing, 2026-11-15).
+ */
+export function outdatedIn(value: unknown): string | null {
+  let text: string;
+  try {
+    text = JSON.stringify(value) ?? "";
+  } catch {
+    return null;
+  }
+  const m = OUTDATED_RE.exec(text);
+  return m ? m[0] : null;
+}
 
 const LOCKED_MARK = "un file di uscita è tenuto aperto da un altro programma";
 
@@ -170,7 +191,14 @@ export function errorResult(
   message: string,
   extra: AeErrorExtra = {},
 ): ToolResult {
-  message = outdatedAgentMessage(message) ?? lockedOutputMessage(message) ?? message;
+  const nested = extra.details !== undefined ? outdatedIn(extra.details) : null;
+  message =
+    outdatedAgentMessage(message, extra.panelReloads === true) ??
+    (nested !== null
+      ? outdatedAgentMessage(`${message} (${nested})`, extra.panelReloads === true)
+      : null) ??
+    lockedOutputMessage(message) ??
+    message;
   const envelope = errorEnvelope(code, message, extra);
   const lines = [`[${code}] ${message}`];
   if (envelope.error.hint) lines.push(`hint: ${envelope.error.hint}`);

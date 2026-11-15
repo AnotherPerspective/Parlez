@@ -97,6 +97,7 @@ export function toMcpResult(result: EvalResult): ToolResult {
       details: { result: result.result },
       logs: result.logs,
       durationMs: result.durationMs,
+      ...(result.panelReloads !== undefined ? { panelReloads: result.panelReloads } : {}),
     });
   }
   return jsonResult({

@@ -876,6 +876,31 @@ describe("history and counters", () => {
     expect(panel.says()).toContain("· shotA v4");
   });
 
+  it("a call that ran but reported ok: false is a ✗, and Annulla still reverts it (2026-11-15)", () => {
+    setEnabled("1");
+    const agent = startAgent();
+    const panel = openPanel();
+    serveOne(agent, "a", "layer.set_timing", {
+      title: "cambia i tempi del livello",
+      code: "return { ok: false, error: '1 of 1 layers failed' };",
+    });
+    serveOne(agent, "b", "ae_do", {
+      title: "cambia i tempi (ae_do)",
+      code: "return { result: { ok: false, error: 'no' }, context: null };",
+    });
+    refresh();
+    const rows = historyRows(panel);
+    expect(rows[0]).toMatch(/cambia i tempi \(ae_do\) {2}✗/);
+    expect(rows[1]).toMatch(/cambia i tempi del livello {2}✗/);
+    const recent = (
+      agent.state as unknown as { recent: Array<{ outcome: string; undoable: boolean }> }
+    ).recent;
+    expect(recent.map((e) => [e.outcome, e.undoable])).toEqual([
+      ["error", true],
+      ["error", true],
+    ]);
+  });
+
   it("marks refusals and shortens long titles", () => {
     setEnabled("0");
     const agent = startAgent();

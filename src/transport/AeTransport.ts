@@ -90,6 +90,12 @@ export interface EvalResult {
   /** Wall-clock duration in milliseconds for the transport round trip. */
   durationMs: number;
   /**
+   * The answer mentions a function of Parlez! the agent does not have (code
+   * from before an update): whether the panel there reloads it with Riavvia.
+   * Set by the pull transport only then (errors.ts outdatedAgentMessage).
+   */
+  panelReloads?: boolean;
+  /**
    * Modal dialogs After Effects was found showing when the call failed
    * (DIALOG_OPEN). Handles can be passed to `instance.dismiss_dialog`.
    */
