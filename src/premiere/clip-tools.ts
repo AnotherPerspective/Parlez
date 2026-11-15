@@ -30,9 +30,10 @@ const CLIP_EDIT_CODE = `
         c = p.clips[i];
         e = PR.trackItemByNodeId(seq, c.nodeId);
         if (!e) return { ok: false, error: "Clip non trovata nella sequenza: " + c.nodeId };
-        var newStart = (typeof c.start === "number") ? c.start : e.start;
-        var newEnd = (typeof c.end === "number") ? c.end : e.end;
+        var newStart = (typeof c.start === "number") ? PR.snap(seq, c.start) : e.start;
+        var newEnd = (typeof c.end === "number") ? PR.snap(seq, c.end) : e.end;
         if (newEnd <= newStart) return { ok: false, error: "La clip " + c.nodeId + " finirebbe prima di cominciare." };
+        if (typeof c.moveTo === "number") c.moveTo = PR.snap(seq, c.moveTo);
         if (typeof c.moveTo === "number") {
             // Premiere 26.3.2: a clip moved with move() across or onto another
             // clip on its track leaves the track out of order, and a clip then
@@ -67,9 +68,16 @@ const CLIP_EDIT_CODE = `
         }
         if (typeof c.start === "number" || typeof c.end === "number") {
             for (g = 0; g < group.length; g++) {
-                var before = { start: group[g].start, end: group[g].end };
-                if (typeof c.start === "number") PR.setSeconds(group[g].item, "start", c.start);
-                if (typeof c.end === "number") PR.setSeconds(group[g].item, "end", c.end);
+                var it = group[g].item;
+                var before = {
+                    start: group[g].start,
+                    end: group[g].end,
+                    inPoint: PR.seconds(PR.safe(function () { return it.inPoint; }, null)),
+                    outPoint: PR.seconds(PR.safe(function () { return it.outPoint; }, null))
+                };
+                PR.trimItem(seq, it,
+                    (typeof c.start === "number") ? PR.snap(seq, c.start) : group[g].start,
+                    (typeof c.end === "number") ? PR.snap(seq, c.end) : group[g].end);
                 steps.push({ kind: "trackitem.trimmed", sequenceID: sid, nodeId: group[g].nodeId, before: before });
             }
         }
@@ -78,7 +86,7 @@ const CLIP_EDIT_CODE = `
             var offset = c.moveTo - now.start;
             var ids = [];
             for (g = 0; g < group.length; g++) {
-                PR.moveBy(group[g].item, offset);
+                PR.moveBy(group[g].item, offset, seq);
                 ids.push(group[g].nodeId);
             }
             steps.push({ kind: "trackitems.moved", sequenceID: sid, nodeIds: ids, offset: offset });

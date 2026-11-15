@@ -68,6 +68,46 @@ PR.seconds = function (t) {
     }
 };
 
+/** Ticks per frame of a sequence (its timebase); null when unreadable. */
+PR.frameTicks = function (seq) {
+    var tb = PR.safe(function () { return Number(seq.timebase); }, NaN);
+    return (typeof tb === "number" && tb > 0) ? tb : null;
+};
+
+/**
+ * `seconds` moved onto the sequence's frame grid, as ticks; null without a
+ * timebase. Times from the server are seconds with three decimals: 2.002 at
+ * 23.976 is a hair short of frame 48, and Premiere cut the clip one frame
+ * short, or left a black frame between two clips (2026-11-15).
+ */
+PR.snapTicks = function (seq, seconds) {
+    var tpf = PR.frameTicks(seq);
+    if (tpf === null || typeof seconds !== "number") return null;
+    return Math.round(seconds * PR.TICKS_PER_SECOND / tpf) * tpf;
+};
+
+/** `seconds` on the frame grid (unchanged without a timebase). */
+PR.snap = function (seq, seconds) {
+    var ticks = PR.snapTicks(seq, seconds);
+    return (ticks === null) ? seconds : ticks / PR.TICKS_PER_SECOND;
+};
+
+/**
+ * A Premiere Time exactly on the frame grid (set by ticks, not by a
+ * floating-point number of seconds); null where Time does not exist.
+ */
+PR.timeAt = function (seq, seconds) {
+    var ticks = PR.snapTicks(seq, seconds);
+    try {
+        var t = new Time();
+        if (ticks !== null) t.ticks = String(ticks);
+        else t.seconds = seconds;
+        return t;
+    } catch (eTime) {
+        return null;
+    }
+};
+
 /** Frames per second of a sequence, from its timebase (ticks per frame). */
 PR.fps = function (seq) {
     var timebase = PR.safe(function () { return Number(seq.timebase); }, NaN);
@@ -338,11 +378,20 @@ PR.markerState = function (m) {
  * Premiere accepts a number of seconds on most builds; when the value does
  * not stick, a Time object is tried. Returns true when it reads back right.
  */
-PR.setSeconds = function (obj, prop, seconds) {
+PR.setSeconds = function (obj, prop, seconds, seq) {
+    // With a sequence: onto its frame grid, set by ticks first.
+    if (seq) {
+        seconds = PR.snap(seq, seconds);
+        var exact = PR.timeAt(seq, seconds);
+        if (exact !== null) {
+            try { obj[prop] = exact; } catch (eExact) { /* the number below */ }
+        }
+    }
     function sticks() {
         var v = PR.seconds(PR.safe(function () { return obj[prop]; }, null));
         return typeof v === "number" && Math.abs(v - seconds) < 0.0005;
     }
+    if (sticks()) return true;
     try { obj[prop] = seconds; } catch (eNum) { /* try a Time below */ }
     if (sticks()) return true;
     try {
@@ -457,14 +506,11 @@ PR.undoStep = function (step) {
         if (!seq) return "sequenza non trovata";
         var tr = PR.trackItemByNodeId(seq, step.nodeId);
         if (!tr) return "clip non trovata";
-        // Growing back to the left first, so start never passes end on the way.
-        if (step.before.start < tr.start) {
-            PR.setSeconds(tr.item, "start", step.before.start);
-            PR.setSeconds(tr.item, "end", step.before.end);
-        } else {
-            PR.setSeconds(tr.item, "end", step.before.end);
-            PR.setSeconds(tr.item, "start", step.before.start);
-        }
+        PR.trimItem(seq, tr.item, step.before.start, step.before.end);
+        // The source as it was (trimItem keeps it under the clip; this puts
+        // back exactly what was there, stale values included).
+        if (typeof step.before.inPoint === "number") PR.setSeconds(tr.item, "inPoint", step.before.inPoint, seq);
+        if (typeof step.before.outPoint === "number") PR.setSeconds(tr.item, "outPoint", step.before.outPoint, seq);
         return null;
     }
     if (step.kind === "trackitems.moved") {
@@ -754,16 +800,48 @@ PR.overlapping = function (seq, e, from, to) {
     return null;
 };
 
-/** Shift a track item by `seconds` (Premiere's move takes a Time offset). */
-PR.moveBy = function (item, seconds) {
-    var t;
-    try {
-        t = new Time();
-        t.seconds = seconds;
-    } catch (eTime) {
-        t = seconds;
+/**
+ * Shift a track item by `seconds` (Premiere's move takes a Time offset). With
+ * a sequence, the offset is a whole number of frames, set by ticks.
+ */
+PR.moveBy = function (item, seconds, seq) {
+    var t = seq ? PR.timeAt(seq, seconds) : null;
+    if (t === null) {
+        try {
+            t = new Time();
+            t.seconds = seq ? PR.snap(seq, seconds) : seconds;
+        } catch (eTime) {
+            t = seq ? PR.snap(seq, seconds) : seconds;
+        }
     }
     item.move(t);
+};
+
+/**
+ * Trim a track item to [start, end] on the timeline, keeping the source
+ * under it where it was. Premiere 26.3.2 moved the edge but not the source:
+ * a later start cut the END of the source, and inPoint / outPoint went stale
+ * (2026-11-15). So the source in and out are set too.
+ */
+PR.trimItem = function (seq, item, start, end) {
+    var oldStart = PR.seconds(PR.safe(function () { return item.start; }, null));
+    var oldIn = PR.seconds(PR.safe(function () { return item.inPoint; }, null));
+    start = PR.snap(seq, start);
+    end = PR.snap(seq, end);
+    // Growing to the left first, so start never passes end on the way.
+    if (typeof oldStart === "number" && start < oldStart) {
+        PR.setSeconds(item, "start", start, seq);
+        PR.setSeconds(item, "end", end, seq);
+    } else {
+        PR.setSeconds(item, "end", end, seq);
+        PR.setSeconds(item, "start", start, seq);
+    }
+    if (typeof oldStart === "number" && typeof oldIn === "number") {
+        var newIn = PR.snap(seq, oldIn + (start - oldStart));
+        if (newIn < 0) newIn = 0;
+        PR.setSeconds(item, "inPoint", newIn, seq);
+        PR.setSeconds(item, "outPoint", PR.snap(seq, newIn + (end - start)), seq);
+    }
 };
 
 /**

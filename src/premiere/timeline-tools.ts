@@ -126,7 +126,7 @@ const TIMELINE_ADD_CODE = `
         var t = (typeof c.track === "number") ? c.track : 1;
         var track = seq.videoTracks[t - 1];
         var source = PR.itemByNodeId(c.nodeId).item;
-        var at = (typeof c.time === "number") ? c.time : PR.trackEnd(seq, t);
+        var at = PR.snap(seq, (typeof c.time === "number") ? c.time : PR.trackEnd(seq, t));
         if (c.mode !== "insert" && at < PR.trackEnd(seq, t)) covered = true;
         // A piece of the source: in/out on the project item for the placing,
         // put back right after (an item with none reads as 0 / full length).
@@ -136,17 +136,15 @@ const TIMELINE_ADD_CODE = `
         if (usePiece) {
             srcIn = PR.seconds(source.getInPoint());
             srcOut = PR.seconds(source.getOutPoint());
-            if (typeof c.sourceIn === "number") source.setInPoint(c.sourceIn, 4);
-            if (typeof c.sourceOut === "number") source.setOutPoint(c.sourceOut, 4);
+            // On the frame grid: 2.002 at 23.976 made the clip a frame short.
+            if (typeof c.sourceIn === "number") source.setInPoint(PR.snap(seq, c.sourceIn), 4);
+            if (typeof c.sourceOut === "number") source.setOutPoint(PR.snap(seq, c.sourceOut), 4);
         }
         var before = PR.timelineItems(seq);
         // Seconds first; some Premiere builds want a Time object instead.
         var tries = [at];
-        try {
-            var tm = new Time();
-            tm.seconds = at;
-            tries.push(tm);
-        } catch (eTime) { /* numbers only */ }
+        var tm = PR.timeAt(seq, at);
+        if (tm !== null) tries.push(tm);
         var added = [];
         var lastError = null;
         for (var k = 0; k < tries.length && added.length === 0; k++) {

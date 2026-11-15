@@ -164,7 +164,8 @@ describe("a piece of a clip", () => {
     const placed = (
       result(res).placed as Array<{ kind: string; start: number; end: number }>
     ).filter((p) => p.kind === "video");
-    expect(placed).toMatchObject([{ start: 8, end: 9.5 }]);
+    // On the 25 fps grid of the fake: 2.5 s is half a frame, rounded to 2.52.
+    expect(placed).toMatchObject([{ start: 8, end: 9.52 }]);
     expect([project.items.clip.srcIn, project.items.clip.srcOut]).toEqual([null, null]);
   });
 });

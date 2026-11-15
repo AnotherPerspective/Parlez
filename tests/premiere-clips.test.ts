@@ -145,6 +145,43 @@ describe("pr_clip_edit", () => {
     ]);
   });
 
+  it("a later start trims the head: the source moves with it, in and out stay true; undo puts them back (2026-11-15)", async () => {
+    const drone = seq.video[0]!.items.find((i) => i.startS === 4)!;
+    const droneAudio = seq.audio[0]!.items.find((i) => i.startS === 4)!;
+    await run(() =>
+      prClipEditTool.handler(
+        { sequence: "Bozza", clips: [{ nodeId: drone.nodeId, start: 5 }] },
+        transport,
+      ),
+    );
+    expect([drone.startS, drone.endS, drone.inS, drone.outS]).toEqual([5, 8, 1, 4]);
+    expect([droneAudio.startS, droneAudio.inS, droneAudio.outS]).toEqual([5, 1, 4]);
+    await run(() => prUndoLastTool.handler({}, transport));
+    expect([drone.startS, drone.endS, drone.inS, drone.outS]).toEqual([4, 8, 0, 4]);
+  });
+
+  it("times land on the sequence's frames, so no clip comes out a frame short or leaves a black frame", async () => {
+    // The fake runs at 25 fps: 20.01 s is a quarter of a frame past frame 500.
+    const res = await run(() =>
+      prClipEditTool.handler(
+        {
+          sequence: "Bozza",
+          clips: [
+            { nodeId: id(8), moveTo: 20.01 },
+            { nodeId: id(4), end: 7.002 },
+          ],
+        },
+        transport,
+      ),
+    );
+    expect(res.isError).toBe(false);
+    expect(v1().map((x) => [x[1], x[2]])).toEqual([
+      [0, 4],
+      [4, 7],
+      [20, 24],
+    ]);
+  });
+
   it("refuses a move across or onto another clip, confirm or not (Premiere 26.3.2 breaks the track)", async () => {
     for (const moveTo of [2, 20]) {
       const res = await run(() =>

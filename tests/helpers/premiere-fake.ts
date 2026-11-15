@@ -27,6 +27,9 @@ function toSeconds(v: unknown): number {
   if (v && typeof v === "object" && typeof (v as { seconds?: unknown }).seconds === "number") {
     return (v as { seconds: number }).seconds;
   }
+  if (v && typeof v === "object" && typeof (v as { ticks?: unknown }).ticks === "string") {
+    return Number((v as { ticks: string }).ticks) / 254016000000;
+  }
   throw new Error("bad time");
 }
 
@@ -368,7 +371,9 @@ export class FakeTrackItem {
     this.outS = this.inS + FAKE_CLIP_SECONDS;
   }
   // Like Premiere 26.3.2: start/end trim the clip on the timeline (the other
-  // end stays put); move(Time) shifts only this item, not its audio.
+  // end stays put) but leave the source alone - a later start shows the
+  // source from the same in point, and inPoint / outPoint go stale (seen on
+  // 2026-11-15); move(Time) shifts only this item, not its audio.
   get start(): { seconds: number } {
     return { seconds: this.startS };
   }
@@ -384,8 +389,14 @@ export class FakeTrackItem {
   get inPoint(): { seconds: number } {
     return { seconds: this.inS };
   }
+  set inPoint(v: unknown) {
+    this.inS = toSeconds(v);
+  }
   get outPoint(): { seconds: number } {
     return { seconds: this.outS };
+  }
+  set outPoint(v: unknown) {
+    this.outS = toSeconds(v);
   }
   isSelected(): boolean {
     return this.selected;
