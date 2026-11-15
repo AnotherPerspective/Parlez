@@ -493,13 +493,13 @@ describe("the look (2026-10-26 screenshot)", () => {
     expect(panel.children[panel.children.length - 1]).toBe(foot);
   });
 
-  it("buttons: two rows of three, same width", () => {
+  it("buttons: three rows of two, same width (2026-11-15: narrower)", () => {
     const panel = openPanel();
     const names = ["Annulla", "Ripristino", "Elenco", "Storico", "Cassetta", "Vista"];
     const buttons = names.map((n) => panel.find("button", new RegExp(`^${n}$`)));
     const rows = new Set(buttons.map((b) => panel.all().find((c) => c.children.includes(b))));
-    expect(rows.size).toBe(2);
-    for (const r of rows) expect(r!.children.filter((c) => c.type === "button")).toHaveLength(3);
+    expect(rows.size).toBe(3);
+    for (const r of rows) expect(r!.children.filter((c) => c.type === "button")).toHaveLength(2);
     expect(new Set(buttons.map((b) => b.preferredSize.width)).size).toBe(1);
     expect(() => panel.find("button", "Ripristini")).toThrow();
   });
@@ -1146,7 +1146,7 @@ describe("the watchdog: the panel brings the agent back", () => {
     setEnabled("1");
     const agent = startAgent() as LiveAgent;
     const panel = openPanel();
-    stopAgent(agent, 6000);
+    stopAgent(agent, 12_000);
     keepPanelTimer();
     runPanel();
     expect(agentSteps()).toHaveLength(1);
@@ -1266,24 +1266,14 @@ describe("the watchdog: when After Effects dropped both timers, the next click",
 });
 
 describe("«Riavvia», the last resort", () => {
-  it("is hidden while the agent answers, and shows when it does not", () => {
+  it("is always there: a stopped panel cannot make it appear", () => {
     setEnabled("1");
     const agent = startAgent() as LiveAgent;
     const panel = openPanel();
-    expect(restartButton(panel).visible).toBe(false);
-    silenceHeartbeat(agent);
-    refresh();
-    expect(panel.says()).toContain("non risponde");
     expect(restartButton(panel).visible).toBe(true);
-  });
-
-  it("is hidden with Claude OFF: nothing to restart for", () => {
-    setEnabled("0");
-    const agent = startAgent() as LiveAgent;
-    const panel = openPanel();
     silenceHeartbeat(agent);
     refresh();
-    expect(restartButton(panel).visible).toBe(false);
+    expect(restartButton(panel).visible).toBe(true);
   });
 
   it("forces a restart of an agent that can restart itself", () => {

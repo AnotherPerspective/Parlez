@@ -101,6 +101,8 @@
     var TITLE_CHARS = 30;
     // A restart line has no outcome mark, so its text may run longer.
     var RESTART_CHARS = 40;
+    // Restarts after a shorter silence are left out of the list.
+    var RESTART_LIST_MS = 10000;
     // The signature at the bottom right opens this page in the user's own
     // browser when clicked. That is the user opening a page, not this program going on
     // the internet: nothing here connects anywhere, the click hands the
@@ -297,6 +299,10 @@
             var e = recent[i];
             if (!e || typeof e.t !== "number") continue;
             var what = (typeof e.title === "string") ? e.title : String(e.label);
+            // A short silence (the user dragging the panel's edge stops the
+            // timers for a moment) is no news: only real stops are listed.
+            // The history file keeps every one.
+            if (e.outcome === "restart" && !(typeof e.ms === "number" && e.ms >= RESTART_LIST_MS)) continue;
             if (e.outcome === "restart") {
                 // "Riavviato dopo apertura progetto  12 s": how long it was silent.
                 lines.push(clock(e.t).substring(0, 5) + "  " + shorten(what.replace(/^Agente riavviato/, "Riavviato"), RESTART_CHARS) +
@@ -539,11 +545,14 @@
         head.orientation = "column";
         head.alignChildren = ["fill", "top"];
         head.spacing = 6;
+        // A few pixels above the block: the blue outline After Effects draws
+        // around a clicked button was cut off at the top (AE 26.5, 2026-11-15).
+        head.margins = [0, 4, 0, 0];
         // Every top-level group says how big it needs to be: when After Effects
         // undocks the panel it sizes the floating window from what the content
         // asks for, and groups that only say "fill" ask for nothing.
-        head.minimumSize = [BLOCK_SIZE[0], BLOCK_SIZE[1] + 52];
-        head.preferredSize = [compact ? BLOCK_SIZE[0] + 10 : BLOCK_SIZE[0], BLOCK_SIZE[1] + 52];
+        head.minimumSize = [BLOCK_SIZE[0], BLOCK_SIZE[1] + 60];
+        head.preferredSize = [compact ? BLOCK_SIZE[0] + 10 : BLOCK_SIZE[0], BLOCK_SIZE[1] + 60];
 
         // The block: a picture button (see STABILITY FIRST above).
         var sizeSuffix = compact ? "-small" : "";
@@ -568,7 +577,6 @@
         ui.status.alignment = ["fill", "center"];
         setFont(ui.status, "REGULAR", 11);
         setTextColor(ui.status, [0.70, 0.70, 0.70]);
-        // The last resort, shown only while the agent does not answer.
         // In a group with margins: flush with the panel's edge, the blue
         // focus outline of a pressed checkbox was cut off on the left (AE
         // 26.5, 2026-10-28). 10 px lines it up with the history's text.
@@ -579,15 +587,15 @@
         readOnlyRow.margins = [10, 2, 10, 2];
         ui.readOnly = readOnlyRow.add("checkbox", undefined, "Sola lettura");
         ui.readOnly.helpTip = "Claude pu\u00f2 guardare il progetto ma non modificarlo: le richieste che cambierebbero qualcosa vengono rifiutate.";
-        // The last resort, shown only while the agent does not answer: on the
+        // The last resort, always there: when After Effects has stopped the
+        // timers the panel cannot update itself, so a button that appeared
+        // only on "non risponde" never appeared (AE 26.5, 2026-11-15). On the
         // read-only line, at the right, so the block keeps its height.
         ui.restart = readOnlyRow.add("button", undefined, "Riavvia");
         ui.restart.alignment = ["right", "center"];
         ui.restart.preferredSize.width = BUTTON_WIDTH;
         ui.restart.helpTip = "Fa ripartire Parlez! in questo After Effects, senza toccare il progetto. " +
-            "Di solito riparte da solo: serve solo se resta fermo.";
-        ui.restart.visible = false;
-        ui.restartShown = false;
+            "Di solito riparte da solo: serve se resta fermo.";
     });
 
     guard("storico", function () {
@@ -608,7 +616,8 @@
     });
 
     guard("bottoni", function () {
-        // Buttons: two rows of three, one word each, the same width, as wide as
+        // Buttons: three rows of two (narrower than two rows of three, asked for
+        // on 2026-11-15), one word each, the same width, as wide as
         // the block. Then the counters on one grey line, and the signature.
         var tail = win.add("group");
         ui.tail = tail;
@@ -616,19 +625,21 @@
         tail.alignChildren = ["fill", "top"];
         tail.alignment = ["fill", "top"];
         tail.spacing = 6;
-        var ROW_SIZE = [3 * BUTTON_WIDTH + 8, 26];
-        tail.minimumSize = [ROW_SIZE[0], 2 * ROW_SIZE[1] + 50];
-        tail.preferredSize = [ROW_SIZE[0], 2 * ROW_SIZE[1] + 50];
+        var ROW_SIZE = [2 * BUTTON_WIDTH + 4, 26];
+        tail.minimumSize = [ROW_SIZE[0], 3 * ROW_SIZE[1] + 56];
+        tail.preferredSize = [ROW_SIZE[0], 3 * ROW_SIZE[1] + 56];
         var rowA = row(tail);
         rowA.minimumSize = ROW_SIZE;
         ui.undo = button(rowA, "Annulla", "Annulla l'ultima modifica di Claude (Modifica \u203a Annulla, una volta). Chiede conferma.", BUTTON_WIDTH);
         ui.checkpoint = button(rowA, "Ripristino", "Crea un punto di ripristino adesso: salva il progetto e ne fa una copia in " + CHECKPOINT_SUBDIR + ", accanto al progetto.", BUTTON_WIDTH);
-        ui.checkpointFolder = button(rowA, "Elenco", "Apre la cartella con l'elenco dei punti di ripristino di questo progetto.", BUTTON_WIDTH);
         var rowB = row(tail);
         rowB.minimumSize = ROW_SIZE;
+        ui.checkpointFolder = button(rowB, "Elenco", "Apre la cartella con l'elenco dei punti di ripristino di questo progetto.", BUTTON_WIDTH);
         ui.history = button(rowB, "Storico", "Apre lo storico completo delle richieste di questa sessione (file di testo).", BUTTON_WIDTH);
-        ui.mailbox = button(rowB, "Cassetta", "Apre la cartella dove Claude e After Effects si scambiano le richieste.", BUTTON_WIDTH);
-        ui.layout = button(rowB, "Vista", "Passa alla vista " + (compact ? "verticale (colonna laterale)" : "compatta (sotto la timeline)") +
+        var rowC = row(tail);
+        rowC.minimumSize = ROW_SIZE;
+        ui.mailbox = button(rowC, "Cassetta", "Apre la cartella dove Claude e After Effects si scambiano le richieste.", BUTTON_WIDTH);
+        ui.layout = button(rowC, "Vista", "Passa alla vista " + (compact ? "verticale (colonna laterale)" : "compatta (sotto la timeline)") +
             ". La nuova vista arriva alla prossima apertura del pannello.", BUTTON_WIDTH);
         ui.notice = text(tail, notice, 10, DIM);
         ui.counts = text(tail, "", 9, DIM);
@@ -701,16 +712,6 @@
         }
     }
 
-    /** The Riavvia button: like the empty history, laid out again only when it appears or goes. */
-    function showRestart(show) {
-        if (!ui.restart || show === ui.restartShown) return;
-        ui.restart.visible = show;
-        ui.restartShown = show;
-        if (ui.ready) {
-            try { win.layout.layout(true); } catch (eLay) { /* next resize lays it out */ }
-        }
-    }
-
     function refresh() {
         var now = new Date().getTime();
         var enabled = readEnabled();
@@ -741,8 +742,6 @@
             put("counts.text", ui.counts, "text", "eseguite " + agent.served + " \u00b7 rifiutate " + agent.refused + " \u00b7 " + since +
                 " \u00b7 " + agent.id + " v" + agent.version);
         }
-
-        showRestart(enabled === true && state.look === "idle");
 
         current.target = undoTarget(recent);
         put("undo.enabled", ui.undo, "enabled", current.target !== null);
@@ -1068,7 +1067,6 @@
         } catch (eResize) {
             try { win.layout.resize(); } catch (eResize2) { /* ignore */ }
         }
-        try { wake("pannello ridimensionato"); } catch (eWake) { /* ignore */ }
     };
     win.onShow = function () {
         ensureSize();

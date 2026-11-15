@@ -105,9 +105,9 @@
     var TITLE_MAX = 120;
     var TICK_MS = 250;
     var HEARTBEAT_MS = 1000;
-    // Four missed steps. A false alarm costs nothing but a re-booked step:
+    // Eight missed steps. A false alarm costs nothing but a re-booked step:
     // the old chain, if it was only late, ends on arrival.
-    var STALE_TICK_MS = 1000;
+    var STALE_TICK_MS = 2000;
     // An agent of an earlier build (no revive) silent this long is replaced by
     // a second evaluation of this file; the server gives up on it after 5 s.
     var TAKEOVER_STALE_MS = 3000;
@@ -416,6 +416,8 @@
                 lastError: state.lastError,
                 restarts: state.restarts,
                 lastRestart: state.lastRestart,
+                modalErrors: state.modalErrors,
+                lastModalErrorAt: state.lastModalErrorAt,
                 ts: now
             };
             writeAtomic(state.dir + "/heartbeat.json", JSON.stringify(hb));
@@ -666,6 +668,39 @@
                 state.taskId = null;
             }
         };
+        /**
+         * After Effects hands script errors to app.onError when one is set.
+         * The one error that is ours to expect - a step that came due under a
+         * modal window, "Cannot run a script while a modal dialog is waiting
+         * for response" - is noted and kept quiet: it is no news to the user,
+         * who saw a popup at every heavy project opened, and the sveglia
+         * (cep/sveglia) restarts the chain once the window is gone. Every
+         * other error goes on as before: to the handler that was there, or,
+         * with none, to an alert, which is what After Effects shows by default.
+         */
+        function installErrorGuard() {
+            try {
+                var previous = app.onError;
+                if (previous && previous.parlez === true) return;
+                var guard = function (errString) {
+                    var text = "";
+                    try { text = String(errString); } catch (eText) { text = ""; }
+                    if (text.indexOf("modal dialog is waiting") >= 0) {
+                        state.modalErrors++;
+                        state.lastModalErrorAt = new Date().getTime();
+                        return;
+                    }
+                    if (typeof previous === "function") return previous(errString);
+                    alert(text);
+                };
+                guard.parlez = true;
+                app.onError = guard;
+            } catch (eGuard) { /* this After Effects has no app.onError */ }
+        }
+        state.modalErrors = 0;
+        state.lastModalErrorAt = null;
+        installErrorGuard();
+
         // Run once now so the instance is registered before the first
         // scheduled step, then keep going for the life of the process.
         tick();
