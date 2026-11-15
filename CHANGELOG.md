@@ -4,18 +4,35 @@ Tutte le modifiche importanti di Parlez! per Adobe® After Effects® sono scritt
 
 Il formato segue [Keep a Changelog](https://keepachangelog.com/it-IT/1.1.0/) e i numeri di versione seguono il [Semantic Versioning](https://semver.org/lang/it/). La storia di mcp-aftereffects di kumo.productions, da cui Parlez! deriva, è in [`docs/CHANGELOG-kumo.md`](docs/CHANGELOG-kumo.md).
 
-## [0.2] - in preparazione
+## [0.2.0] - in preparazione
 
-Il salto da 0.1 a 0.2 è voluto: questa versione cambia il modo in cui Parlez! resta vivo dentro After Effects. La 0.1.1 funziona; la 0.1.2 (solo locale, con Premiere Pro) ha lo stesso codice After Effects e con buona probabilità funziona anche lei, ma va verificato.
+Il salto da 0.1 a 0.2 è voluto: questa versione cambia il modo in cui Parlez! resta vivo dentro After Effects. La 0.1.1 funziona; la 0.1.2 (solo locale, con Premiere Pro) ha lo stesso codice After Effects e con buona probabilità funzionava anche lei, ma non è stato verificato.
 
 ### Corretto
 
-- **Parlez! non resta più fermo dopo l'apertura di un progetto.** Su After Effects 26.5 / Windows un timer di script che scatta sotto certe finestre modali (apertura di un progetto, Import File) fa cadere tutti i timer di script della sessione, in silenzio. Agente e pannello smettevano di funzionare fino al riavvio di After Effects. Ora:
-  - l'agente non usa più un timer ripetuto: ogni passo prenota il successivo, e un riavvio non crea mai due giri;
-  - agente e pannello si fanno da guardia a vicenda: se uno si ferma, l'altro lo fa ripartire entro un paio di secondi, anche con il pannello nascosto;
-  - se After Effects li ferma tutti e due, il primo clic nel pannello li fa ripartire (e non fa altro: il pannello lo dice);
-  - ogni riavvio compare tra le ultime richieste e nello storico, con il tempo di silenzio e la causa probabile («dopo apertura progetto», «dopo una finestra di dialogo»);
-  - bottone «Riavvia» nel pannello, visibile solo quando l'agente non risponde.
+- **Parlez! non si blocca più all'apertura dei progetti pesanti, e niente più popup d'errore.** Su After Effects 26.5 / Windows un timer di script (`app.scheduleTask`) che scade mentre è aperta una finestra modale (caricamento di un progetto, schermata Home all'avvio, Apri, Importa, Salva con nome) fa comparire l'errore «Cannot run a script while a modal dialog is waiting for response» e After Effects butta via tutti i timer di script della sessione: agente e pannello si fermavano fino al riavvio di After Effects. Il blocco «seguiva il progetto» solo perché i progetti pesanti si caricano per qualche secondo. Ora:
+  - **la sveglia** (nome provvisorio): una piccola estensione CEP invisibile, senza finestre, dà il ritmo all'agente da fuori, quattro volte al secondo, e solo quando la finestra di After Effects è libera da finestre modali. Dentro After Effects non resta prenotato nessun timer, quindi nessuno può scadere sotto una finestra modale. `parlez setup` la installa nella cartella CEP dell'utente; serve la stessa impostazione di CEP (`PlayerDebugMode`) del pannello di Premiere;
+  - senza la sveglia (per esempio sul Mac, non ancora provato) l'agente usa la sua catena di passi, con agente e pannello che si fanno da guardia a vicenda; se After Effects li ferma tutti e due, il primo clic nel pannello li fa ripartire;
+  - ogni ripartenza dopo un silenzio lungo compare tra le ultime richieste del pannello e nello storico, con la causa probabile («dopo apertura progetto», «dopo una finestra di dialogo»);
+  - bottone **Riavvia** nel pannello, sempre visibile, come ultima risorsa.
+- **Premiere Pro**: se una risposta di Premiere al pannello va persa, il giro del pannello riparte da solo invece di fermarsi.
+
+### Cambiato
+
+- **Pannello di After Effects più stretto**: bottoni su tre righe da due, riquadro ON/OFF piccolo anche nella vista verticale; il pannello scende fino a circa 224 pixel di larghezza. Angoli del riquadro arrotondati come il contorno blu che After Effects disegna dopo un clic.
+
+## [0.1.2] - 2026-11-13
+
+### Aggiunto
+
+- **Parlez! per Adobe® Premiere Pro®** (prima versione, provata solo su Premiere Pro 2026 / Windows). Lo stesso programma `parlez` fa lavorare Claude anche dentro Premiere, con le stesse regole di After Effects: interruttore ON/OFF, «Sola lettura», conferma prima di cancellare o sovrascrivere, niente rete.
+  - **Pannello Parlez!** per Premiere (Finestra › Estensioni (versione precedente) › Parlez!), con lo stesso aspetto di quello di After Effects. È anche il collegamento: se il pannello è chiuso o su OFF, Claude è fermo. `parlez setup` lo installa nella cartella CEP dell'utente, senza permessi da amministratore; `parlez doctor` lo controlla. Nuovi comandi: `install-premiere-panel`, `uninstall-premiere-panel`, `premiere-status`.
+  - **26 strumenti `pr_*`**: leggere progetto e sequenze (`pr_context`, `pr_project_info`, `pr_sequence_info`), controllare il progetto (`pr_project_check`), vedere un fotogramma (`pr_frame`), importare file e composizioni di After Effects (`pr_import`), marker (`pr_markers`), bin (`pr_bins`), nomi ed etichette (`pr_rename_items`), creare, duplicare e aprire sequenze (`pr_sequence_create`, `pr_sequence_duplicate`, `pr_sequence_open`), clip in timeline, anche solo un pezzo (`pr_timeline_add`), rifilare e spostare (`pr_clip_edit`), togliere (`pr_clip_remove`), lametta (`pr_razor`), transizioni (`pr_transition`), volume (`pr_audio_level`), tracce mute, bloccate o di destinazione (`pr_tracks`), titoli .mogrt (`pr_mogrt_add`), sottotitoli da un file .srt (`pr_captions`), copia riformattata 9:16, 1:1 o 4:5 (`pr_auto_reframe`), esportazione (`pr_export`), XML, AAF e OMF per altri programmi (`pr_export_interchange`), salvataggio su richiesta (`pr_save_project`).
+  - **Annulla di Parlez!**: in Premiere Ctrl+Z non annulla le modifiche fatte da script, quindi ogni modifica registra come si disfa; `pr_undo_last`, o il bottone «Annulla» del pannello, disfa tutta l'ultima richiesta. Prima di ogni modifica il progetto salvato viene copiato in `_parlez-checkpoints`, accanto al progetto.
+
+### Cambiato
+
+- After Effects funziona come prima: il suo collegamento e i suoi strumenti non sono cambiati.
 
 ## [0.1.1] - 2026-11-11
 
@@ -66,5 +83,6 @@ Prima versione di Parlez!. Parte da mcp-aftereffects 0.3.2 di kumo.productions (
 - Le guide create su After Effects 26.5 hanno di nuovo l'orientamento giusto.
 - La lettura dei metadati XMP del progetto è più robusta e dice che tipo di valore riceve.
 
+[0.1.2]: https://github.com/AnotherPerspective/Parlez-download/releases/tag/v0.1.2-beta
 [0.1.1]: https://github.com/AnotherPerspective/Parlez-download/releases/tag/v0.1.1-beta
 [0.1.0]: https://github.com/AnotherPerspective/Parlez-download/releases/tag/v0.1.0-beta

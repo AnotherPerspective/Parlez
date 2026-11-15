@@ -39,6 +39,8 @@ import {
 } from "./agent-install.js";
 import { INSTANCES_DIR, PACKAGE_ROOT, PULL_ONLY_ENV, pushPathName } from "./config.js";
 import { installPanel, panelInstallStatus } from "./panel-install.js";
+import type { CommandRunner } from "./premiere/install.js";
+import { premiereDoctorChecks, premiereSetupStep } from "./premiere/setup-steps.js";
 import { isPaused, isReadOnly, instanceLabel, listInstances } from "./transport/instances.js";
 
 export type Lang = "it" | "en";
@@ -68,6 +70,10 @@ export interface SetupEnvironment {
   confirm?: (question: string) => Promise<boolean>;
   /** Asks for a typed answer. Default: on a terminal, ask; otherwise null (nobody to ask). */
   askLine?: (question: string) => Promise<string | null>;
+  /** Where Premiere Pro instances heartbeat (default <mailbox>/premiere). */
+  premiereInstancesDir?: string;
+  /** Runs `reg` / `defaults` to read CEP's debug mode for Premiere; tests pass a fake. */
+  runCommand?: CommandRunner;
 }
 
 export interface SetupOptions {
@@ -933,6 +939,9 @@ export async function runSetup(
   out("");
   if (opts.dryRun) out(t.dryRun);
   else if (changed) out(t.restart);
+  // Premiere Pro, when installed: its panel goes to the user's CEP folder.
+  // Prints nothing on a machine without Premiere.
+  await premiereSetupStep(machine, lang, opts.dryRun === true, out, { ok: t.ok, note: t.note });
 
   // The scripting checkbox is reported by the final check below, with the
   // way to switch it on: printing it here too would only say it twice.
@@ -1038,6 +1047,11 @@ async function runDoctorChecks(
   });
   const push = pushPathName(platform);
   const mac = platform === "darwin";
+  await premiereDoctorChecks(machine, machine.lang ?? detectLang(), line, out, {
+    ok: t.ok,
+    note: t.note,
+  });
+
   out(`${t.note}${agentInstalled ? t.pullAuto(push, mac) : t.pullNone(push, mac)}`);
   out(`${t.note}${t.mailbox(path.dirname(machine.instancesDir ?? INSTANCES_DIR))}`);
   out("");

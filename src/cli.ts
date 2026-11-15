@@ -15,6 +15,12 @@ import {
   uninstallAgent,
 } from "./agent-install.js";
 import { installPanel, panelInstallStatus, uninstallPanel } from "./panel-install.js";
+import { PREMIERE_INSTANCES_DIR } from "./premiere/config.js";
+import {
+  installPremierePanel,
+  premierePanelStatus,
+  uninstallPremierePanel,
+} from "./premiere/install.js";
 import { detectLang, runDoctor, runSetup } from "./setup.js";
 import { describeInstance, listInstances } from "./transport/instances.js";
 
@@ -37,6 +43,12 @@ export const USAGE = `parlez — Parlez! for Adobe® After Effects® (MCP server
   parlez uninstall-panel    remove it again
   parlez panel-status       show where the panel is installed and whether it is current
   parlez instances          list the After Effects instances whose agent is live
+  parlez install-premiere-panel    install only the Parlez! panel for Premiere Pro into the
+                            user-level CEP extensions folder; it shows under Window > Extensions
+                            after restarting Premiere
+  parlez uninstall-premiere-panel  remove it again
+  parlez premiere-status    show where the Premiere panel is installed, whether it is current,
+                            and which Premiere Pro instances are connected
   parlez help               this text
 
 Options for setup and doctor:
@@ -176,6 +188,42 @@ export async function runCli(
           for (const p of s.legacy) out(`old name still present: ${p} — install-panel removes it`);
         }
         return code;
+      }
+
+      case "install-premiere-panel": {
+        const report = await installPremierePanel({ dir: args.dir, dryRun: args.dryRun });
+        for (const p of report.written) out(`${args.dryRun ? "would write" : "wrote"}    ${p}`);
+        if (report.written.length === 0) out(`up to date  ${report.dir}`);
+        if (report.written.length > 0 && !args.dryRun) {
+          out("");
+          out(
+            "Restart Premiere Pro, then open the panel from Window > Extensions > Parlez! " +
+              "(Premiere 2026: Window > Extensions (Legacy) > Parlez!). It starts OFF.",
+          );
+        }
+        return 0;
+      }
+
+      case "uninstall-premiere-panel": {
+        const report = await uninstallPremierePanel({ dir: args.dir, dryRun: args.dryRun });
+        if (report.removed) out(`${args.dryRun ? "would remove" : "removed"}  ${report.dir}`);
+        else if (report.foreign) out(`left alone  ${report.dir} (not written by Parlez!)`);
+        else out("nothing to remove");
+        return 0;
+      }
+
+      case "premiere-status": {
+        const status = await premierePanelStatus({ dir: args.dir });
+        out(
+          `${status.current ? "current" : status.installed ? "stale  " : "missing"}  ${status.dir}` +
+            (status.installed && !status.current
+              ? ` — differs: ${status.stale.join(", ")}; run install-premiere-panel`
+              : ""),
+        );
+        const instances = await listInstances(PREMIERE_INSTANCES_DIR);
+        for (const i of instances) out(`${i.alive ? "live " : "stale"}  ${describeInstance(i)}`);
+        if (instances.length === 0) out("no Premiere Pro connected (is the Parlez! panel open?)");
+        return status.current ? 0 : 1;
       }
 
       case "instances": {

@@ -18,6 +18,33 @@ const EXPECTED_TOOLS = [
   "ae_render_frame",
   "ae_save_project",
   "ae_version_info",
+  // Premiere Pro, read-only for now (src/premiere/tools.ts).
+  "pr_audio_level",
+  "pr_auto_reframe",
+  "pr_bins",
+  "pr_captions",
+  "pr_clip_edit",
+  "pr_clip_remove",
+  "pr_context",
+  "pr_export",
+  "pr_export_interchange",
+  "pr_frame",
+  "pr_import",
+  "pr_markers",
+  "pr_mogrt_add",
+  "pr_project_check",
+  "pr_project_info",
+  "pr_razor",
+  "pr_rename_items",
+  "pr_save_project",
+  "pr_sequence_create",
+  "pr_sequence_duplicate",
+  "pr_sequence_info",
+  "pr_sequence_open",
+  "pr_timeline_add",
+  "pr_tracks",
+  "pr_transition",
+  "pr_undo_last",
 ];
 
 describe("mcp server over stdio (offline)", () => {
@@ -31,7 +58,7 @@ describe("mcp server over stdio (offline)", () => {
     await client.close();
   });
 
-  it("tools/list returns exactly the 11 ae_* tools", async () => {
+  it("tools/list returns exactly the 11 ae_* tools and the pr_* tools", async () => {
     const res = await client.listTools();
     const names = res.tools.map((t) => t.name).toSorted();
     expect(names).toEqual(EXPECTED_TOOLS.toSorted());

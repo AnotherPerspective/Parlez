@@ -18,11 +18,14 @@ import { errorResult } from "./errors.js";
 import { denyTool, policySummary, readOnlyMode } from "./policy.js";
 import { guardToolCall } from "./privacy.js";
 import { FileIpcTransport } from "./transport/FileIpcTransport.js";
+import { PREMIERE_TOOLS } from "./premiere/tools.js";
+import { PremiereTransport } from "./premiere/transport.js";
 
 // Load all operations into the registry (must run before catalog/do handle calls).
 import "./operations/index.js";
 import { transportForTool } from "./tools/define-tool.js";
 import { ALL_TOOLS, type AnyTool } from "./tools/index.js";
+import type { AeTransport } from "./transport/AeTransport.js";
 
 // Read the real package version at runtime so the server never self-reports a
 // stale literal. dist/index.js sits one level below package.json in both the
@@ -31,6 +34,9 @@ const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
 
 const transport = new FileIpcTransport();
+// Premiere Pro has its own transport (pull only, its own instance folder), so
+// nothing it does can change where an After Effects call goes.
+const premiereTransport = new PremiereTransport();
 
 const server = new McpServer({
   name: "parlez",
@@ -54,8 +60,8 @@ function annotationsFor(tool: AnyTool): { readOnlyHint?: boolean; destructiveHin
   }
 }
 
-function register(tool: AnyTool): void {
-  const toolTransport = transportForTool(tool, transport);
+function register(tool: AnyTool, hostTransport: AeTransport = transport): void {
+  const toolTransport = transportForTool(tool, hostTransport);
   server.registerTool(
     tool.name,
     {
@@ -88,6 +94,14 @@ for (const tool of ALL_TOOLS) {
     continue;
   }
   register(tool);
+}
+for (const tool of PREMIERE_TOOLS) {
+  const denial = denyTool(tool.name, tool.blockedInReadOnly);
+  if (denial) {
+    skipped.push(tool.name);
+    continue;
+  }
+  register(tool, premiereTransport);
 }
 
 /** One line on where calls will go, so a misrouted session is visible in the client's server log. */
