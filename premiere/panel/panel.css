@@ -83,10 +83,23 @@ body {
   color: var(--dim);
 }
 
+/* About nine lines, like After Effects' list; the rest of the session
+   scrolls (Anthony, 2026-11-15). */
 .history ol {
   margin: 0;
   padding: 0;
   list-style: none;
+  height: 144px;
+  overflow-y: auto;
+}
+
+.history ol::-webkit-scrollbar {
+  width: 8px;
+}
+
+.history ol::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 4px;
 }
 
 .history li {
@@ -115,17 +128,25 @@ body {
   grid-column: 1 / -1;
 }
 
+/* After Effects' buttons (AE 26.5, measured on a screenshot): almost black,
+   a faint lighter edge, light text; disabled ones lose the fill. */
 .buttons button {
   height: 26px;
-  border: 1px solid #555;
+  border: 1px solid #1a1a1a;
   border-radius: 3px;
-  background: #3a3a3a;
+  background: #0e0e0e;
   color: var(--text);
   font: inherit;
   cursor: pointer;
 }
 
+.buttons button:hover:not(:disabled) {
+  background: #1a1a1a;
+}
+
 .buttons button:disabled {
+  background: transparent;
+  border-color: #3a3a3a;
   color: #666;
   cursor: default;
 }

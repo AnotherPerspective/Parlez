@@ -29,7 +29,6 @@
   // "lost". The giro used to restart only from the answer, so one lost answer
   // stopped it for good.
   var LOST_AFTER_MS = 5000;
-  var ROWS = 8;
   var TITLE_CHARS = 30;
   var KEY_ENABLED = "parlez.claudeEnabled";
   var KEY_READ_ONLY = "parlez.readOnly";
@@ -141,7 +140,7 @@
 
   function historyLines(recent) {
     var lines = [];
-    for (var i = recent.length - 1; i >= 0 && lines.length < ROWS; i--) {
+    for (var i = recent.length - 1; i >= 0; i--) {
       var e = recent[i];
       if (!e || typeof e.t !== "number") continue;
       var what = typeof e.title === "string" ? e.title : String(e.label);

@@ -49,7 +49,9 @@
     var CHECKPOINT_SUBDIR = "_parlez-checkpoints";
     var CHECKPOINT_LABEL = "pannello";
     var CHECKPOINT_MAX_COPY = 999;
-    var RECENT_MAX = 8;
+    // The panel shows the whole session in a scrolling box (2026-11-15), so
+    // the list keeps more than After Effects' eight; bounded all the same.
+    var RECENT_MAX = 100;
     var LABEL_MAX = 60;
     var TITLE_MAX = 120;
     var HEARTBEAT_MS = 1000;
