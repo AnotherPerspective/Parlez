@@ -26,6 +26,7 @@ import { promises as fs, closeSync, openSync, writeSync } from "node:fs";
 import * as path from "node:path";
 
 import { AGENT_DISABLE_ENV, rejectedOutputPath, resolveAfterFxPath } from "../config.js";
+import { lockedOutputMessage, mentionsLockedOutput } from "../errors.js";
 import { jsxFail, jsxVal, registerOp } from "../registry.js";
 import type { AeTransport } from "../transport/AeTransport.js";
 import {
@@ -441,6 +442,12 @@ async function report(job: Job): Promise<Record<string, unknown>> {
         `aerender ha scritto l'avanzamento fino al fotogramma ${frame} di ${total}: il file potrebbe essere incompleto. Controllalo prima di consegnarlo.`,
       );
     }
+  }
+  // Error 793: an output file another program keeps open. The files of an
+  // earlier render are still there, so the checks above can read success.
+  if (!job.running && !job.cancelled && mentionsLockedOutput(text)) {
+    status = "fallito";
+    message = lockedOutputMessage(lastError ?? "aerender: Error Code: 793")!;
   }
   if (progress.errors.length > 0 && status !== "fallito") {
     warnings.push(`Il log contiene ${progress.errors.length} righe di errore: guardale nel log.`);

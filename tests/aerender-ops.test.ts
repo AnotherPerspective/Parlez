@@ -714,6 +714,15 @@ describe("aerender failures and cancel", () => {
     expect(String(st.message)).toContain("An existing connection was forcibly closed");
   });
 
+  it("error 793 with the earlier output still there: failed, and says Premiere may hold it (2026-11-15)", async () => {
+    fakeEnv = { FAKE_AERENDER_LOCKED: "1" };
+    const r = await ok("aerender.start", { comp: "Principale", output: out(), confirm: true });
+    const st = await waitDone(String(r.id));
+    expect(st.status).toBe("fallito");
+    expect(String(st.message)).toContain("un file di uscita è tenuto aperto da un altro programma");
+    expect(String(st.message)).toContain("pr_media_release");
+  });
+
   it("stops a running render, keeps the partial file, and leaves an ended one alone", async () => {
     fakeEnv = {
       FAKE_AERENDER_FRAMES: "2",

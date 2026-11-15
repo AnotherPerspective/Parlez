@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { errorResult } from "../errors.js";
 import { defineTool, toMcpResult } from "../tools/define-tool.js";
+import type { ToolResult } from "../tools/types.js";
 import { runWithCheckpoint } from "./edit-tools.js";
 import { prLength } from "./timecode.js";
 
@@ -48,6 +49,15 @@ export async function numberedSeries(first: string): Promise<number | null> {
   return frames;
 }
 
+/** 23.976, 29.97, 59.94 as the NTSC rates they stand for (24000/1001 ...); others as given. */
+export function exactRate(fps: number): number {
+  for (const base of [24, 30, 48, 60, 120]) {
+    const ntsc = (base * 1000) / 1001;
+    if (Math.abs(fps - ntsc) < 0.005) return ntsc;
+  }
+  return fps;
+}
+
 const IMPORT_CODE = `
     var p = payload;
     var before = PR.projectItemIds();
@@ -61,7 +71,31 @@ const IMPORT_CODE = `
     // importAsNumberedStills: the first file of a numbered series becomes one
     // clip with every frame (After Effects renders PNG sequences; Premiere
     // follows when they are written again).
-    if (p.files.length > 0) results.files = String(app.project.importFiles(p.files, true, bin, p.numbered === true));
+    if (p.files.length > 0 && p.numbered === true) {
+        // One call per series: given several, Premiere imported only the
+        // first series (26.3.2, 2026-11-15).
+        var each = [];
+        for (var fi = 0; fi < p.files.length; fi++) each.push(String(app.project.importFiles([p.files[fi]], true, bin, true)));
+        results.files = each.join(",");
+    } else if (p.files.length > 0) {
+        results.files = String(app.project.importFiles(p.files, true, bin, false));
+    }
+    // The series' rate: the one asked, else the active sequence's. Premiere
+    // otherwise uses its "Indeterminate Media Timebase" preference (29.97
+    // on the test machine, for a 23.976 render of After Effects).
+    var wantRate = null;
+    var rateFrom = null;
+    if (p.numbered === true && typeof p.frameRate === "number" && p.frameRate > 0) {
+        wantRate = p.frameRate;
+        rateFrom = "richiesto";
+    } else if (p.numbered === true) {
+        var act = PR.safe(function () { return app.project.activeSequence; }, null);
+        var actTicks = act ? PR.frameTicks(act) : null;
+        if (actTicks !== null) {
+            wantRate = PR.TICKS_PER_SECOND / actTicks;
+            rateFrom = "sequenza attiva";
+        }
+    }
     if (p.aep !== null) {
         results.afterEffects = (p.comps.length > 0)
             ? String(app.project.importAEComps(p.aep, p.comps, bin))
@@ -80,11 +114,20 @@ const IMPORT_CODE = `
         }
         if (hit === null && p.series.length === 1) hit = p.series[0];
         if (hit === null) return;
+        if (wantRate !== null) {
+            entry.frameRateFrom = PR.safe(function () { item.setOverrideFrameRate(wantRate); return rateFrom; }, null);
+            if (entry.frameRateFrom === null) entry.warning = "Premiere non ha accettato il frame rate " + PR.round(wantRate, 3) + ".";
+        }
         var fps = PR.safe(function () { return Number(item.getFootageInterpretation().frameRate); }, NaN);
         entry.frames = hit.frames;
         entry.frameRate = (typeof fps === "number" && !isNaN(fps) && fps > 0) ? PR.round(fps, 3) : null;
         entry.durationTC = (entry.frameRate !== null) ? PR.framesToTc(hit.frames, { base: Math.round(fps), drop: false }) : null;
         entry.durationSeconds = (entry.frameRate !== null) ? PR.round(hit.frames / fps, 3) : null;
+        if (wantRate === null) {
+            entry.frameRateFrom = "preferenza di Premiere";
+            entry.warning = "Nessuna sequenza attiva e nessun frameRate: la clip usa il frame rate predefinito di Premiere" +
+                ((entry.frameRate !== null) ? " (" + entry.frameRate + " fps)" : "") + ". Passa frameRate (per esempio 23.976) per scegliere.";
+        }
     }
     var items = [];
     for (var i = 0; i < ids.length && i < 300; i++) {
@@ -106,7 +149,9 @@ export const prImportTool = defineTool({
     "them, linked through Dynamic Link). Into `bin` (created when missing) or the project root. A restore " +
     "point is taken first; pr_undo_last removes everything this call imported. `numberedStills: true`: each " +
     'file is the first image of a numbered series (e.g. "Clip B_0000.png"), imported as one clip with all its ' +
-    "frames; the answer gives its frames and duration in timecode.",
+    "frames, at `frameRate` (default: the active sequence's); the answer gives its frames and duration in " +
+    "timecode. To re-render part of a series After Effects writes into: pr_media_release first (Premiere " +
+    "keeps the first image open), render, then pr_media_refresh.",
   group: "premiere",
   blockedInReadOnly: true,
   effect: "write",
@@ -128,6 +173,15 @@ export const prImportTool = defineTool({
       .optional()
       .describe(
         "Each file is the first image of a numbered series (Clip B_0000.png, _0001, ...): one clip per series.",
+      ),
+    frameRate: z
+      .number()
+      .positive()
+      .max(240)
+      .optional()
+      .describe(
+        "With numberedStills: frames per second of the series (e.g. 23.976, the After Effects comp's). " +
+          "Default: the active sequence's.",
       ),
   },
   handler: async (args, transport) => {
@@ -169,10 +223,186 @@ export const prImportTool = defineTool({
         comps: args.aeComps ?? [],
         bin: args.bin ?? null,
         numbered: args.numberedStills === true,
+        frameRate: args.frameRate === undefined ? null : exactRate(args.frameRate),
         series,
       },
       label: "pr_import",
       timeoutMs: 300_000,
+    });
+  },
+});
+
+// --- Media that After Effects writes again --------------------------------
+// The flow Anthony wants (2026-11-15): After Effects renders PNG sequences,
+// Premiere edits them, and only the changed stretch is rendered again.
+// Premiere keeps the first image of each series open (After Effects' render
+// stops with error 793) and shows frames it has already shown from its
+// cache: release -> render the changed stretch -> refresh.
+
+const MEDIA_FLOW =
+  "Flow for media that After Effects renders again (e.g. a PNG sequence already in the edit): " +
+  "pr_media_release on those clips, render the changed stretch in After Effects, then pr_media_refresh.";
+
+const mediaShape = {
+  items: z
+    .array(z.string().min(1))
+    .max(500)
+    .optional()
+    .describe("nodeId of project clips (from pr_project_info or pr_import)."),
+  folder: z
+    .string()
+    .optional()
+    .describe("Every project clip whose media is in this folder (sub-folders too), full path."),
+};
+
+interface MediaPayload {
+  items: string[];
+  folder: string | null;
+}
+
+async function mediaPayload(args: {
+  items?: string[] | undefined;
+  folder?: string | undefined;
+}): Promise<MediaPayload | ToolResult> {
+  const items = args.items ?? [];
+  if (items.length === 0 && !args.folder) {
+    return errorResult(
+      "INVALID_ARGS",
+      "Indica le clip: items (nodeId) o folder (la cartella dei file).",
+    );
+  }
+  if (args.folder) {
+    try {
+      if (!(await fs.stat(args.folder)).isDirectory()) throw new Error("not a folder");
+    } catch {
+      return errorResult("IO", `Non trovo la cartella: ${args.folder}.`, {
+        hint: "Usa il percorso completo.",
+      });
+    }
+  }
+  return { items, folder: args.folder ? forPremiere(args.folder) : null };
+}
+
+const RELEASE_CODE = `
+    var p = payload;
+    var targets = PR.mediaTargets(p.items, p.folder);
+    if (targets.length === 0) return { ok: false, error: "Nessuna clip del progetto corrisponde a items/folder." };
+    var steps = [];
+    var released = [];
+    var failed = [];
+    for (var i = 0; i < targets.length; i++) {
+        var t = targets[i];
+        var name = PR.safe(function () { return String(t.item.name); }, null);
+        if (PR.safe(function () { return t.item.isOffline() === true; }, false)) {
+            released.push({ nodeId: t.nodeId, name: name, path: t.path, already: true });
+            continue;
+        }
+        var ok = PR.safe(function () { return t.item.setOffline() !== false; }, false);
+        if (!ok) {
+            failed.push({ nodeId: t.nodeId, error: "Premiere non l'ha messa offline" });
+            continue;
+        }
+        PR.releasedMedia()[t.nodeId] = t.path;
+        steps.push({ kind: "media.released", nodeId: t.nodeId, path: t.path });
+        released.push({ nodeId: t.nodeId, name: name, path: t.path });
+    }
+    PR.pushUndo("pr_media_release", steps);
+    return {
+        released: released,
+        failed: failed,
+        count: released.length,
+        next: "Ora fai il render in After Effects, poi pr_media_refresh sulle stesse clip.",
+        undo: steps.length > 0 ? "${UNDO_NOTE}" : null
+    };
+`;
+
+export const prMediaReleaseTool = defineTool({
+  name: "pr_media_release",
+  title: "Premiere: let go of media files (offline) before After Effects writes them again",
+  description:
+    "Set project clips offline so Premiere closes their files: Premiere keeps the first image of an image " +
+    "series open, and an After Effects render that rewrites it stops (error 793). Clips stay in the " +
+    "timeline, shown as offline until pr_media_refresh links them again. " +
+    MEDIA_FLOW,
+  group: "premiere",
+  blockedInReadOnly: true,
+  effect: "write",
+  inputShape: mediaShape,
+  handler: async (args, transport) => {
+    const payload = await mediaPayload(args);
+    if ("content" in payload) return payload;
+    return runWithCheckpoint(transport, {
+      code: RELEASE_CODE,
+      payload,
+      label: "pr_media_release",
+      timeoutMs: 120_000,
+    });
+  },
+});
+
+const REFRESH_CODE = `
+    var p = payload;
+    var targets = PR.mediaTargets(p.items, p.folder);
+    var known = PR.releasedMedia();
+    // A released clip whose path Premiere no longer gives (offline): found
+    // through what pr_media_release remembered.
+    for (var id in known) {
+        if (!known.hasOwnProperty(id)) continue;
+        var listed = false;
+        for (var k = 0; k < targets.length; k++) if (targets[k].nodeId === id) listed = true;
+        if (listed) continue;
+        var wanted = false;
+        for (var w = 0; w < p.items.length; w++) if (String(p.items[w]) === id) wanted = true;
+        if (!wanted && p.folder !== null) {
+            var dir = PR.pathKey(p.folder);
+            if (dir.charAt(dir.length - 1) !== "/") dir += "/";
+            var key = PR.pathKey(known[id]);
+            wanted = key.length > dir.length && key.substring(0, dir.length) === dir;
+        }
+        var f = wanted ? PR.itemByNodeId(id) : null;
+        if (f) targets.push({ item: f.item, nodeId: id, path: known[id], bin: f.bin });
+    }
+    if (targets.length === 0) return { ok: false, error: "Nessuna clip del progetto corrisponde a items/folder." };
+    var refreshed = [];
+    var relinked = 0;
+    var failed = [];
+    for (var i = 0; i < targets.length; i++) {
+        var t = targets[i];
+        var wasOffline = PR.safe(function () { return t.item.isOffline() === true; }, false);
+        var path = (known.hasOwnProperty(t.nodeId) && typeof known[t.nodeId] === "string") ? known[t.nodeId] : t.path;
+        var err = PR.relinkMedia(t.item, path);
+        if (err !== null) {
+            failed.push({ nodeId: t.nodeId, error: err });
+            continue;
+        }
+        if (wasOffline) relinked++;
+        if (known.hasOwnProperty(t.nodeId)) delete known[t.nodeId];
+        refreshed.push({ nodeId: t.nodeId, name: PR.safe(function () { return String(t.item.name); }, null), relinked: wasOffline });
+    }
+    PR.pushUndo("pr_media_refresh", []);
+    return { refreshed: refreshed, count: refreshed.length, relinked: relinked, failed: failed };
+`;
+
+export const prMediaRefreshTool = defineTool({
+  name: "pr_media_refresh",
+  title: "Premiere: read media files again (and link released ones back)",
+  description:
+    "Make Premiere read the files of project clips again, after After Effects rewrote them: Premiere " +
+    "otherwise keeps showing frames it has already shown. Clips set offline by pr_media_release are linked " +
+    "back to their files first; the timeline is not touched. " +
+    MEDIA_FLOW,
+  group: "premiere",
+  blockedInReadOnly: true,
+  effect: "write",
+  inputShape: mediaShape,
+  handler: async (args, transport) => {
+    const payload = await mediaPayload(args);
+    if ("content" in payload) return payload;
+    return runWithCheckpoint(transport, {
+      code: REFRESH_CODE,
+      payload,
+      label: "pr_media_refresh",
+      timeoutMs: 120_000,
     });
   },
 });

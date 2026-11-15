@@ -67,6 +67,8 @@ const PREMIERE_TITLES: Record<string, string> = {
   pr_export: "esporta la sequenza",
   pr_save_project: "salva il progetto",
   pr_import: "importa nel progetto",
+  pr_media_release: "libera i file (offline) per il render",
+  pr_media_refresh: "rilegge i file dopo il render",
   pr_sequence_duplicate: "duplica la sequenza",
   pr_sequence_open: "apre la sequenza",
   pr_tracks: "tracce: muto, blocco, destinazione",

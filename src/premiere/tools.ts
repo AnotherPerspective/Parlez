@@ -37,6 +37,8 @@ import { prExportTool, prFrameTool } from "./export-tools.js";
 import {
   prAudioLevelTool,
   prImportTool,
+  prMediaRefreshTool,
+  prMediaReleaseTool,
   prSequenceDuplicateTool,
   prSequenceOpenTool,
   prTracksTool,
@@ -247,6 +249,8 @@ export const PREMIERE_TOOLS: AnyTool[] = [
   prExportTool,
   prSaveProjectTool,
   prImportTool,
+  prMediaReleaseTool,
+  prMediaRefreshTool,
   prSequenceDuplicateTool,
   prSequenceOpenTool,
   prTracksTool,

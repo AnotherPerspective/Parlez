@@ -31,6 +31,8 @@ const EXPECTED_TOOLS = [
   "pr_frame",
   "pr_import",
   "pr_markers",
+  "pr_media_refresh",
+  "pr_media_release",
   "pr_mogrt_add",
   "pr_project_check",
   "pr_project_info",

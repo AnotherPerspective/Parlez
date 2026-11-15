@@ -171,6 +171,28 @@ export class FakeItem {
   isOffline(): boolean {
     return this.offline;
   }
+  /** Calls of refreshMedia, to see the cache emptied. */
+  refreshed = 0;
+  setOffline(): boolean {
+    this.offline = true;
+    return true;
+  }
+  canChangeMediaPath(): boolean {
+    return true;
+  }
+  changeMediaPath(p: string, _overrideChecks?: boolean): boolean {
+    this.media = p;
+    this.offline = false;
+    return true;
+  }
+  refreshMedia(): string {
+    this.refreshed++;
+    return "";
+  }
+  setOverrideFrameRate(fps: number): boolean {
+    this.frameRate = fps;
+    return true;
+  }
   getColorLabel(): number {
     return this.label;
   }

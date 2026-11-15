@@ -775,6 +775,23 @@ describe("Premiere Pro in setup and doctor", () => {
     expect(c.text()).not.toContain("Premiere");
   });
 
+  it("setup run again after an update rewrites both old panels (2026-11-15: an old panel stayed loaded)", async () => {
+    const m = premiereMachine("1");
+    await addWindowsApp(m, 2026);
+    await addProfile(m, "26.5", "1");
+    await addPremiere(m, 2026);
+    await runSetup({}, collect().out, m.env);
+    const aePanel = path.join(m.profileRoot, "26.5", "Scripts", "ScriptUI Panels", PANEL_FILENAME);
+    await fs.writeFile(aePanel, "// pannello 0.1", "utf8");
+    await fs.writeFile(path.join(cepDir(), "panel.js"), "// old", "utf8");
+    const c = collect();
+    expect(await runSetup({}, c.out, m.env)).toBe(0);
+    expect(await fs.readFile(aePanel, "utf8")).toBe(await panelSource());
+    expect(await fs.readFile(path.join(cepDir(), "panel.js"), "utf8")).not.toBe("// old");
+    expect(c.text()).toContain("Riavvia After Effects");
+    expect(c.text()).toContain("Riavvia Premiere Pro");
+  });
+
   it("the doctor reports a stale Premiere panel without changing it", async () => {
     const m = premiereMachine("1");
     await addWindowsApp(m, 2026);

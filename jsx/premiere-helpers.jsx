@@ -637,6 +637,12 @@ PR.undoStep = function (step) {
         found.item.moveBin(back.item);
         return null;
     }
+    if (step.kind === "media.released") {
+        found = PR.itemByNodeId(step.nodeId);
+        if (!found) return "clip non trovata";
+        delete PR.releasedMedia()[String(step.nodeId)];
+        return PR.relinkMedia(found.item, step.path);
+    }
     if (step.kind === "bin.created") {
         found = PR.itemByNodeId(step.nodeId);
         if (!found) return "bin gi\u00e0 tolto";
@@ -782,6 +788,62 @@ PR.walkItems = function (fn) {
         return false;
     }
     walk(app.project.rootItem, "");
+};
+
+/** nodeId -> media path of the clips pr_media_release set offline, for pr_media_refresh. */
+PR.releasedMedia = function () {
+    if (!$.global.PARLEZ_PR_RELEASED || typeof $.global.PARLEZ_PR_RELEASED !== "object") $.global.PARLEZ_PR_RELEASED = {};
+    return $.global.PARLEZ_PR_RELEASED;
+};
+
+/** A media path with forward slashes, lower case: for comparing paths only. */
+PR.pathKey = function (p) {
+    return String(p).split(String.fromCharCode(92)).join("/").toLowerCase();
+};
+
+/**
+ * Media clips of the project picked by nodeId and/or by the folder their
+ * media sits in (sub-folders too): [{ item, nodeId, path, bin }]. Bins and
+ * sequences are never picked.
+ */
+PR.mediaTargets = function (nodeIds, folder) {
+    var out = [];
+    var want = {};
+    for (var i = 0; i < nodeIds.length; i++) want[String(nodeIds[i])] = true;
+    var dir = null;
+    if (typeof folder === "string" && folder.length > 0) {
+        dir = PR.pathKey(folder);
+        if (dir.charAt(dir.length - 1) !== "/") dir += "/";
+    }
+    PR.walkItems(function (item, parent, binPath) {
+        if (PR.itemKind(item) !== "clip") return false;
+        var id = String(PR.safe(function () { return item.nodeId; }, ""));
+        var media = PR.safe(function () { return String(item.getMediaPath()); }, null);
+        var hit = want.hasOwnProperty(id) && want[id] === true;
+        if (!hit && dir !== null && media !== null && media.length > 0) {
+            var key = PR.pathKey(media);
+            hit = key.length > dir.length && key.substring(0, dir.length) === dir;
+        }
+        if (hit) out.push({ item: item, nodeId: id, path: media, bin: binPath });
+        return false;
+    });
+    return out;
+};
+
+/**
+ * Put a released clip back on its file and read the file again: Premiere
+ * keeps showing frames it has already shown until refreshMedia (2026-11-15).
+ * Returns null, or what went wrong in Italian.
+ */
+PR.relinkMedia = function (item, path) {
+    var offline = PR.safe(function () { return item.isOffline() === true; }, false);
+    if (offline) {
+        if (typeof path !== "string" || path.length === 0) return "non so a quale file ricollegarla";
+        var linked = PR.safe(function () { return item.changeMediaPath(path, true); }, false);
+        if (linked === false) return "Premiere non l'ha ricollegata a " + path;
+    }
+    var fresh = PR.safe(function () { item.refreshMedia(); return true; }, false);
+    return fresh ? null : "Premiere non ha riletto il file";
 };
 
 /** { item, parent, bin } for the item with this nodeId, or null. */

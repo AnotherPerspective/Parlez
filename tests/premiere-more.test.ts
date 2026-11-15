@@ -14,6 +14,8 @@ import { prUndoLastTool } from "../src/premiere/edit-tools.js";
 import {
   prAudioLevelTool,
   prImportTool,
+  prMediaRefreshTool,
+  prMediaReleaseTool,
   prSequenceDuplicateTool,
   prSequenceOpenTool,
   prTracksTool,
@@ -364,5 +366,145 @@ describe("pr_captions", () => {
     );
     expect(String(result(res).undo)).toContain("punto di ritorno");
     expect(seq.captions).toEqual(["sub.srt"]);
+  });
+});
+
+describe("pr_import of numbered series: one call each, at the right rate (2026-11-15)", () => {
+  function series(name: string, frames: number): string {
+    const dir = path.join(tmp, `render-${name}`);
+    mkdirSync(dir, { recursive: true });
+    for (let n = 0; n < frames; n++) {
+      writeFileSync(path.join(dir, `${name}_${String(n).padStart(4, "0")}.png`), "x");
+    }
+    return path.join(dir, `${name}_0000.png`);
+  }
+  type Imported = Array<{
+    name: string;
+    frames: number;
+    frameRate: number;
+    durationTC: string;
+    frameRateFrom: string;
+    warning?: string;
+  }>;
+
+  it("three series in one call: three importFiles calls, three clips", async () => {
+    const files = [series("Clip A", 96), series("Clip B", 96), series("Clip C", 48)];
+    const calls = project.importedAsNumbered.length;
+    const res = await run(() =>
+      prImportTool.handler({ files, numberedStills: true, frameRate: 23.976 }, transport),
+    );
+    expect(project.importedAsNumbered.slice(calls)).toEqual([true, true, true]);
+    const items = result(res).imported as Imported;
+    expect(items.map((i) => [i.name, i.frames, i.durationTC])).toEqual([
+      ["Clip A_0000.png", 96, "00:00:04:00"],
+      ["Clip B_0000.png", 96, "00:00:04:00"],
+      ["Clip C_0000.png", 48, "00:00:02:00"],
+    ]);
+    expect(items.every((i) => i.frameRate === 23.976 && i.frameRateFrom === "richiesto")).toBe(
+      true,
+    );
+  });
+
+  it("23.976 is set as 24000/1001, the rate After Effects renders at", async () => {
+    await run(() =>
+      prImportTool.handler(
+        { files: [series("Clip A", 24)], numberedStills: true, frameRate: 23.976 },
+        transport,
+      ),
+    );
+    const clip = project.items.root.kids.find((k) => k.name === "Clip A_0000.png")!;
+    expect(clip.frameRate).toBe(24000 / 1001);
+  });
+
+  it("without frameRate: the active sequence's rate", async () => {
+    const res = await run(() =>
+      prImportTool.handler({ files: [series("Clip A", 50)], numberedStills: true }, transport),
+    );
+    const [clip] = result(res).imported as Imported;
+    expect(clip).toMatchObject({
+      frameRate: 25,
+      frameRateFrom: "sequenza attiva",
+      durationTC: "00:00:02:00",
+    });
+    expect(clip!.warning).toBeUndefined();
+  });
+
+  it("without frameRate nor an active sequence: Premiere's own rate, and a warning", async () => {
+    project.activeSequence = null;
+    const res = await run(() =>
+      prImportTool.handler({ files: [series("Clip A", 30)], numberedStills: true }, transport),
+    );
+    const [clip] = result(res).imported as Imported;
+    expect(clip!.frameRateFrom).toBe("preferenza di Premiere");
+    expect(clip!.warning).toContain("Passa frameRate");
+  });
+});
+
+describe("pr_media_release / pr_media_refresh: After Effects writes the files again (2026-11-15)", () => {
+  function clip(nodeId: string) {
+    const walk = (kids: typeof project.items.root.kids): (typeof kids)[number] | null => {
+      for (const k of kids) {
+        if (k.nodeId === nodeId) return k;
+        const hit = walk(k.kids);
+        if (hit) return hit;
+      }
+      return null;
+    };
+    return walk(project.items.root.kids)!;
+  }
+
+  it("release sets the clips offline and leaves the timeline as it was; refresh links them back", async () => {
+    const timeline = v1();
+    const released = await run(() => prMediaReleaseTool.handler({ items: ["n-clip"] }, transport));
+    expect(result(released).count).toBe(1);
+    expect(clip("n-clip").isOffline()).toBe(true);
+    expect(v1()).toEqual(timeline);
+
+    const refreshed = await run(() => prMediaRefreshTool.handler({ items: ["n-clip"] }, transport));
+    expect(result(refreshed)).toMatchObject({ count: 1, relinked: 1, failed: [] });
+    expect(clip("n-clip").isOffline()).toBe(false);
+    expect(clip("n-clip").getMediaPath()).toBe(String.raw`D:\Lavori\Cliente Rossi\Intervista.mov`);
+    expect(clip("n-clip").refreshed).toBe(1);
+    expect(v1()).toEqual(timeline);
+  });
+
+  it("picks the clips by the folder of their files, and refresh alone empties the cache", async () => {
+    const dir = path.join(tmp, "render-B");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "Clip B_0000.png"), "x");
+    writeFileSync(path.join(dir, "Clip B_0001.png"), "x");
+    const imported = await run(() =>
+      prImportTool.handler(
+        { files: [path.join(dir, "Clip B_0000.png")], numberedStills: true },
+        transport,
+      ),
+    );
+    const [item] = result(imported).imported as Array<{ nodeId: string }>;
+    const refreshed = await run(() => prMediaRefreshTool.handler({ folder: dir }, transport));
+    expect(result(refreshed)).toMatchObject({ count: 1, relinked: 0 });
+    expect(clip(item!.nodeId).refreshed).toBe(1);
+    const released = await run(() => prMediaReleaseTool.handler({ folder: dir }, transport));
+    expect(result(released).count).toBe(1);
+    expect(clip("n-clip").isOffline()).toBe(false);
+  });
+
+  it("pr_undo_last after a release links the clips back", async () => {
+    await run(() => prMediaReleaseTool.handler({ items: ["n-clip"] }, transport));
+    await run(() => prUndoLastTool.handler({}, transport));
+    expect(clip("n-clip").isOffline()).toBe(false);
+  });
+
+  it("refuses a call with no clips, and a folder that does not exist", async () => {
+    const none = await prMediaReleaseTool.handler({}, transport);
+    expect((none.structuredContent as { error: { code: string } }).error.code).toBe("INVALID_ARGS");
+    const missing = await prMediaRefreshTool.handler({ folder: path.join(tmp, "nope") }, transport);
+    expect((missing.structuredContent as { error: { code: string } }).error.code).toBe("IO");
+  });
+
+  it("both explain the flow: release, render the changed stretch, refresh", () => {
+    for (const tool of [prMediaReleaseTool, prMediaRefreshTool, prImportTool]) {
+      expect(tool.description).toContain("pr_media_release");
+      expect(tool.description).toContain("pr_media_refresh");
+    }
   });
 });

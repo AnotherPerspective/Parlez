@@ -12,6 +12,9 @@
 //                              when its render engine dropped the connection:
 //                              an ERROR line, no file, and still exit code 0
 //   FAKE_AERENDER_EXT=.mov     write the output under this extension instead
+//   FAKE_AERENDER_LOCKED=1     an output file already there and kept open by
+//                              another program (Premiere, 2026-11-15): error
+//                              793, nothing written, exit code 0
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
@@ -31,6 +34,7 @@ const hang = process.env.FAKE_AERENDER_HANG === "1";
 const noOutput = process.env.FAKE_AERENDER_NO_OUTPUT === "1";
 const engineLost = process.env.FAKE_AERENDER_ENGINE_LOST === "1";
 const ext = process.env.FAKE_AERENDER_EXT;
+const locked = process.env.FAKE_AERENDER_LOCKED === "1";
 
 const pad = (n) => String(n).padStart(2, "0");
 const say = (line) => process.stdout.write(`${line}\n`);
@@ -41,6 +45,17 @@ if (engineLost) {
   say("PROGRESS: Adding specified comp to Render Queue");
   say("aerender ERROR An existing connection was forcibly closed by the remote host.");
   say(": Unable to receive at line 518");
+  process.exit(0);
+}
+if (locked) {
+  if (output) {
+    mkdirSync(path.dirname(output), { recursive: true });
+    writeFileSync(output, "the earlier render");
+  }
+  say(`PROGRESS:  Starting composition "${comp}".`);
+  say(
+    "aerender ERROR: After Effects error: Unable to write to file. Error Code: 793. Restart After Effects.",
+  );
   process.exit(0);
 }
 say(`PROGRESS:  Starting composition "${comp}".`);

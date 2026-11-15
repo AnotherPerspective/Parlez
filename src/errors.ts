@@ -143,12 +143,34 @@ export function outdatedAgentMessage(message: string, panelReloads = false): str
 
 const OUTDATED_MARK = "usa ancora la versione vecchia di Parlez!";
 
+const LOCKED_MARK = "un file di uscita è tenuto aperto da un altro programma";
+
+/** After Effects' error 793 in a render: it could not write an output file. */
+export function mentionsLockedOutput(text: string): boolean {
+  return /\b793\b/.test(text) && /error|errore/i.test(text);
+}
+
+/**
+ * After Effects' error 793 while rendering, in plain Italian. Seen when
+ * Premiere kept the first image of a PNG series open and After Effects
+ * rendered that series again (2026-11-15). Null for any other error.
+ */
+export function lockedOutputMessage(message: string): string | null {
+  if (message.includes(LOCKED_MARK) || !mentionsLockedOutput(message)) return null;
+  return (
+    `Render non riuscito: ${LOCKED_MARK} (di solito Premiere, che tiene aperta la prima immagine ` +
+    "di una sequenza già montata), e After Effects non può riscriverlo. Libera i file con " +
+    "pr_media_release, rifai il render, poi pr_media_refresh. Dettaglio tecnico: " +
+    message
+  );
+}
+
 export function errorResult(
   code: AeErrorCode,
   message: string,
   extra: AeErrorExtra = {},
 ): ToolResult {
-  message = outdatedAgentMessage(message) ?? message;
+  message = outdatedAgentMessage(message) ?? lockedOutputMessage(message) ?? message;
   const envelope = errorEnvelope(code, message, extra);
   const lines = [`[${code}] ${message}`];
   if (envelope.error.hint) lines.push(`hint: ${envelope.error.hint}`);

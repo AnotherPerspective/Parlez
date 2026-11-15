@@ -168,6 +168,24 @@ describe("ae_do failure propagation", () => {
   });
 });
 
+describe("render error 793: an output file kept open by another program (2026-11-15)", () => {
+  it("says so in Italian and points at pr_media_release, keeping the detail, once", async () => {
+    const { errorResult } = await import("../src/errors.js");
+    const raw =
+      "After Effects error: Unable to write to file. Error Code: 793. Restart After Effects.";
+    const res = errorResult("JSX_THROW", raw);
+    const text = res.content[0]!.type === "text" ? res.content[0]!.text : "";
+    expect(text).toContain("un file di uscita è tenuto aperto da un altro programma");
+    expect(text).toContain("pr_media_release");
+    expect(text).toContain(`Dettaglio tecnico: ${raw}`);
+    const again = errorResult("JSX_THROW", text.replace(/^\[JSX_THROW\] /, ""));
+    const againText = again.content[0]!.type === "text" ? again.content[0]!.text : "";
+    expect(againText.match(/tenuto aperto/g)).toHaveLength(1);
+    const plain = errorResult("JSX_THROW", "layer 793 not found").content[0]!;
+    expect(plain.type === "text" ? plain.text : "").not.toContain("tenuto aperto");
+  });
+});
+
 describe("an agent loaded before a Parlez! update (2026-11-15)", () => {
   it("turns 'Function AE.timeIn is undefined' into what to do, keeping the detail", async () => {
     const { errorResult, outdatedAgentMessage } = await import("../src/errors.js");
