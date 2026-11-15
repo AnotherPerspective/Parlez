@@ -400,8 +400,8 @@ describe("the look (2026-10-26 screenshot)", () => {
 
   it("has a minimum size fitting its content, docked or floating, vertical or compact", () => {
     const vertical = openPanel();
-    expect(vertical.minimumSize).toEqual([344, 440]);
-    expect(vertical.preferredSize).toEqual([344, 440]);
+    expect(vertical.minimumSize).toEqual([224, 380]);
+    expect(vertical.preferredSize).toEqual([224, 380]);
     setSetting("layout", "compatta");
     const compact = openPanel();
     expect(compact.minimumSize).toEqual([760, 210]);
@@ -439,7 +439,7 @@ describe("the look (2026-10-26 screenshot)", () => {
     const block = panel.toggle();
     expect(block.type).toBe("iconbutton");
     expect(block.props).toEqual({ style: "toolbutton" });
-    expect(block.preferredSize).toEqual([320, 88]);
+    expect(block.preferredSize).toEqual([200, 56]);
     expect(panel.all().filter((c) => /^(ON|OFF|Accendi|Spegni)$/.test(c.text))).toHaveLength(0);
     expect(panel.all().filter((c) => c.type === "iconbutton" && c !== credit(panel))).toHaveLength(
       1,
@@ -455,9 +455,9 @@ describe("the look (2026-10-26 screenshot)", () => {
   it("each picture comes with its mouse-over and pressed versions, all present", () => {
     const panel = openPanel();
     const image = panel.toggle().image!;
-    expect(path.basename(image.normal)).toBe("off.png");
-    expect(path.basename(image.rollover)).toBe("off-over.png");
-    expect(path.basename(image.pressed)).toBe("off-down.png");
+    expect(path.basename(image.normal)).toBe("off-small.png");
+    expect(path.basename(image.rollover)).toBe("off-over-small.png");
+    expect(path.basename(image.pressed)).toBe("off-down-small.png");
     for (const f of [image.normal, image.rollover, image.pressed]) expect(existsSync(f)).toBe(true);
     expect(path.resolve(path.dirname(image.normal))).toBe(path.resolve(PANEL_IMAGES_DIR));
   });
@@ -643,17 +643,17 @@ describe("undocking: never collapsed (AE 26.5, 2026-10-27)", () => {
     expect(once).toHaveLength(1);
     panel.size = [24, 24];
     settle();
-    expect(panel.size).toEqual([344, 440]);
+    expect(panel.size).toEqual([224, 380]);
   });
 
   it("does the same when shown and from the timer", () => {
     const panel = openPanel();
     panel.size = [20, 30];
     (panel.onShow as () => void)();
-    expect(panel.size).toEqual([344, 440]);
+    expect(panel.size).toEqual([224, 380]);
     panel.size = [20, 30];
     refresh();
-    expect(panel.size).toEqual([344, 440]);
+    expect(panel.size).toEqual([224, 380]);
   });
 
   it("leaves a narrow column the user docked it in alone", () => {
@@ -1345,5 +1345,53 @@ describe("«Riavvia», the last resort", () => {
 describe("the watchdog and the rest agree", () => {
   it("names the startup script as install-agent writes it", () => {
     expect(PANEL_SRC).toContain(`"${AGENT_STUB_FILENAME}"`);
+  });
+});
+
+describe("driven by the sveglia (cep/sveglia)", () => {
+  function installSveglia() {
+    mkdirSync(
+      path.join(
+        tmp,
+        "userData",
+        "Adobe",
+        "CEP",
+        "extensions",
+        "com.anotherperspective.parlez.sveglia",
+      ),
+      { recursive: true },
+    );
+  }
+  const panelPulse = () => (engine.global.AE_MCP_PANEL as { pulse: () => void }).pulse();
+
+  it("with the sveglia installed, the panel books no timer of its own", () => {
+    installSveglia();
+    openPanel();
+    expect(panelSteps()).toHaveLength(0);
+  });
+
+  it("a pulse refreshes it (at most once a second) and ends its own chain", () => {
+    setEnabled("1");
+    const panel = openPanel();
+    expect(panelSteps()).toHaveLength(1);
+    setEnabled("0");
+    panelTimer().lastStepAt = 0;
+    panelPulse();
+    expect(panel.word()).toBe("OFF");
+    expect(panelSteps()).toHaveLength(0);
+    setEnabled("1");
+    panelPulse();
+    expect(panel.word()).toBe("OFF");
+  });
+
+  it("while pulsed, nobody re-books its timer", () => {
+    setEnabled("1");
+    const agent = startAgent() as LiveAgent;
+    openPanel();
+    engine.global.AE_MCP_SVEGLIA_AT = Date.now();
+    stopPanelTimer();
+    agent.state.lastPanelWatchAt = 0;
+    agent.tick();
+    expect(panelSteps()).toHaveLength(0);
   });
 });

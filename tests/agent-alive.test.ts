@@ -10,7 +10,7 @@
 // passing. Staleness is set by moving the agent's last step back, so no test
 // waits on the clock.
 
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -337,5 +337,79 @@ describe("a second evaluation of agent.jsx (the stub run again, a script run by 
     loadAgent(null);
     expect(engine.global.AE_MCP_AGENT).toBe(busy);
     expect(steps()).toHaveLength(0);
+  });
+});
+
+describe("driven by the sveglia (cep/sveglia): nothing booked inside After Effects", () => {
+  function installSveglia() {
+    mkdirSync(
+      path.join(
+        tmp,
+        "userData",
+        "Adobe",
+        "CEP",
+        "extensions",
+        "com.anotherperspective.parlez.sveglia",
+      ),
+      { recursive: true },
+    );
+  }
+  const pulse = (agent: Agent) => (agent as unknown as { pulse: () => string }).pulse();
+
+  it("with the sveglia installed, books no step at load: only a fallback a minute later", () => {
+    installSveglia();
+    loadAgent();
+    expect(steps()).toHaveLength(0);
+    const fallback = engine.app.pendingTasks().filter((t) => t.code.includes("fallback()"));
+    expect(fallback).toHaveLength(1);
+    expect(fallback[0].delay).toBe(60_000);
+  });
+
+  it("a pulse runs one step, cancels any chain of ours and the fallback, and says who answered", () => {
+    installSveglia();
+    const agent = loadAgent();
+    agent.revive("pulsante Riavvia", true);
+    expect(steps()).toHaveLength(1);
+    const ticks = agent.state.ticks;
+    expect(pulse(agent)).toBe("vivo|shotA");
+    expect(agent.state.ticks).toBe(ticks + 1);
+    expect(engine.app.pendingTasks()).toHaveLength(0);
+  });
+
+  it("while pulsed, watch() and late steps book nothing", () => {
+    const agent = loadAgent();
+    const ownStep = steps()[0];
+    pulse(agent);
+    silence(agent);
+    expect(agent.watch("pannello")).toBe(false);
+    // A step of ours that After Effects runs anyway ends there.
+    ownStep.cancelled = false;
+    engine.runPending(isStep);
+    expect(steps()).toHaveLength(0);
+  });
+
+  it("no pulse for a minute: the fallback starts the agent's own chain", () => {
+    installSveglia();
+    loadAgent();
+    engine.runPending((code) => code.includes("fallback()"));
+    expect(steps()).toHaveLength(1);
+  });
+
+  it("a pulse after a long silence is told as a restart from the sveglia", () => {
+    const agent = loadAgent();
+    pulse(agent);
+    agent.state.lastTickAt = Date.now() - 20_000;
+    pulse(agent);
+    const last = agent.state.recent[agent.state.recent.length - 1];
+    expect(last.outcome).toBe("restart");
+    expect((heartbeat(agent).lastRestart as { source: string }).source).toBe("sveglia");
+  });
+
+  it("passes the beat to the panel", () => {
+    const agent = loadAgent();
+    let pulsed = 0;
+    engine.global.AE_MCP_PANEL = { pulse: () => pulsed++, watch: () => false };
+    pulse(agent);
+    expect(pulsed).toBe(1);
   });
 });

@@ -92,6 +92,10 @@
     var READ_ONLY_AGENT_VERSION = 3;
     // The startup script install-agent writes (AGENT_STUB_FILENAME in src/config.ts).
     var AGENT_STUB = "mcp-aftereffects-agent.jsx";
+    // The sveglia (cep/sveglia, SVEGLIA_BUNDLE_ID in src/sveglia-install.ts):
+    // while it pulses, this panel books no timer of its own.
+    var SVEGLIA_BUNDLE_ID = "com.anotherperspective.parlez.sveglia";
+    var DRIVEN_MS = 3000;
     // Same folder and naming as checkpoint.create (src/operations/checkpoint.ts).
     var CHECKPOINT_SUBDIR = "_parlez-checkpoints";
     var CHECKPOINT_LABEL = "pannello";
@@ -500,12 +504,16 @@
     var layout = readLayout();
     var compact = (layout === "compatta");
     var notice = "";
-    var BUTTON_WIDTH = compact ? 76 : 100;
+    // As narrow as "Ripristino" with an even margin (2026-11-15: the panel must
+    // get as narrow as it can).
+    var BUTTON_WIDTH = compact ? 76 : 84;
     // The smallest the panel may get, docked or floating: what its content
     // needs (the ON/OFF picture does not shrink). Without it a floating
     // panel collapsed to the size of its close button (AE 26.5, 2026-10-27).
-    var MIN_SIZE = compact ? [760, 210] : [344, 440];
-    var BLOCK_SIZE = compact ? [200, 56] : [320, 88];
+    // The side column uses the small picture too: the big one (320 px) kept
+    // the panel from getting narrower than about 344 px (2026-11-15).
+    var MIN_SIZE = compact ? [760, 210] : [224, 380];
+    var BLOCK_SIZE = [200, 56];
 
     var ui = { rows: [], lastLook: "", shown: {}, rowsOpen: true };
     var LOOKS = ["on", "off", "busy", "idle"];
@@ -555,7 +563,7 @@
         head.preferredSize = [compact ? BLOCK_SIZE[0] + 10 : BLOCK_SIZE[0], BLOCK_SIZE[1] + 60];
 
         // The block: a picture button (see STABILITY FIRST above).
-        var sizeSuffix = compact ? "-small" : "";
+        var sizeSuffix = "-small";
         ui.images = loadImages(sizeSuffix);
         if (ui.images !== null) {
             ui.block = head.add("iconbutton", undefined, ui.images.off, { style: "toolbutton" });
@@ -974,9 +982,25 @@
         }
     }
 
-    /** A new chain (the old one, if any is left, ends at its next step). */
+    /** Pulses from the sveglia came in the last DRIVEN_MS. */
+    function isDriven(now) {
+        var at = null;
+        try { at = $.global.AE_MCP_SVEGLIA_AT; } catch (eAt) { at = null; }
+        return typeof at === "number" && now - at < DRIVEN_MS;
+    }
+
+    function svegliaInstalled() {
+        try {
+            return new Folder(Folder.userData.fsName + "/Adobe/CEP/extensions/" + SVEGLIA_BUNDLE_ID).exists;
+        } catch (eSv) {
+            return false;
+        }
+    }
+
+    /** A new chain (the old one, if any is left, ends at its next step). Never while the sveglia pulses. */
     function startTimer() {
         if (timer.closed) return false;
+        if (isDriven(new Date().getTime())) return false;
         cancelOwn();
         timer.gen = nextGen();
         timer.lastStepAt = new Date().getTime();
@@ -999,7 +1023,7 @@
     }
 
     function timerLost(now) {
-        return !timer.closed && now - timer.lastStepAt > TIMER_STALE_MS;
+        return !timer.closed && !isDriven(now) && now - timer.lastStepAt > TIMER_STALE_MS;
     }
 
     /** Both timers checked, restarted if stopped. True when one was. Touches no control. */
@@ -1041,6 +1065,25 @@
         timer: timer,
         step: step,
         stop: stopTimer,
+        /**
+         * The sveglia's beat, passed on by the agent: refresh about once a
+         * REFRESH_MS, and let this panel's own chain end (nothing booked).
+         */
+        pulse: function () {
+            var now = new Date().getTime();
+            cancelOwn();
+            timer.gen = nextGen();
+            if (timer.closed || now - timer.lastStepAt < REFRESH_MS) return;
+            timer.lastStepAt = now;
+            try {
+                if (isShown()) {
+                    ensureSize();
+                    refresh();
+                }
+            } catch (eRefresh) {
+                stopTimer();
+            }
+        },
         /** Called by the agent about once a second: re-book this timer if it was lost. */
         watch: function () {
             return timerLost(new Date().getTime()) ? startTimer() : false;
@@ -1121,6 +1164,8 @@
     try {
         app.scheduleTask("$.global.AE_MCP_PANEL.settle()", 300, false);
     } catch (eSettle) { /* the timer checks the size too */ }
-    // Refused now (a modal window up?): the agent re-books it, or the next click.
-    startTimer();
+    // With the sveglia installed its pulses refresh the panel: a timer of our
+    // own would come due under the Home screen. Without it, or refused now (a
+    // modal window up?): the agent re-books it, or the next click.
+    if (!svegliaInstalled()) startTimer();
 })(this);

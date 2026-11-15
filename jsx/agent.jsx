@@ -113,6 +113,15 @@
     var TAKEOVER_STALE_MS = 3000;
     // How often a step looks at the panel's timer.
     var PANEL_WATCH_MS = 1000;
+    // Driven by the sveglia (cep/sveglia): its pulses come every quarter of a
+    // second; past this without one, the agent is on its own again.
+    var DRIVEN_MS = 3000;
+    // With the sveglia installed the agent books no step of its own at load
+    // (one would come due under the Home screen and pop an error). If no
+    // pulse has come by then - the sveglia did not load - it starts its own.
+    var SVEGLIA_WAIT_MS = 60000;
+    // Where install-sveglia puts it (SVEGLIA_BUNDLE_ID in src/sveglia-install.ts).
+    var SVEGLIA_BUNDLE_ID = "com.anotherperspective.parlez.sveglia";
 
     // Own copy of the exception formatter (see serve.jsx): the guard below must
     // be able to report a failure even when an #include did not take.
@@ -344,7 +353,8 @@
             stopped: false,
             restarts: 0,
             lastRestart: null,
-            pendingRestart: null
+            pendingRestart: null,
+            fallbackTaskId: null
         };
 
         // Taking over from an agent of an earlier build that stopped ticking:
@@ -615,8 +625,42 @@
             } finally {
                 // tick() may have been the one to revive (a request calling
                 // in): then the new chain is already booked.
-                if (gen === state.gen && !state.stopped) book(TICK_MS);
+                if (gen === state.gen && !state.stopped && !isDriven(new Date().getTime())) book(TICK_MS);
             }
+        }
+
+        /** Pulses from the sveglia came in the last DRIVEN_MS. */
+        function isDriven(now) {
+            var at = null;
+            try { at = $.global.AE_MCP_SVEGLIA_AT; } catch (eAt) { at = null; }
+            return typeof at === "number" && now - at < DRIVEN_MS;
+        }
+
+        /**
+         * One beat given by the sveglia (cep/sveglia), from outside After
+         * Effects, only while its main window is free of modal windows. The
+         * agent's own chain stops: with no step of ours booked, none can come
+         * due under a modal window - which is what made After Effects show an
+         * error and drop every timer. Answers "<state>|<id>" for the sveglia.
+         */
+        function pulse() {
+            var now = new Date().getTime();
+            try { $.global.AE_MCP_SVEGLIA_AT = now; } catch (eAt) { /* not ExtendScript */ }
+            try { if (state.taskId !== null) app.cancelTask(state.taskId); } catch (eCancel) { /* already gone */ }
+            state.taskId = null;
+            try { if (state.fallbackTaskId !== null) app.cancelTask(state.fallbackTaskId); } catch (eFall) { /* already gone */ }
+            state.fallbackTaskId = null;
+            state.gen++;
+            if (state.stopped) return "fermo|" + state.id;
+            if (state.pendingRestart === null && state.lastTickAt > 0 && now - state.lastTickAt > STALE_TICK_MS && !state.busy) {
+                state.pendingRestart = { source: "sveglia", since: state.lastTickAt, project: state.lastProject };
+            }
+            tick();
+            try {
+                var panel = $.global.AE_MCP_PANEL;
+                if (panel && typeof panel.pulse === "function") panel.pulse();
+            } catch (ePanel) { /* the panel is closing */ }
+            return "vivo|" + state.id;
         }
 
         /** No step for STALE_TICK_MS (counting from the last revive too), and no request running. */
@@ -635,6 +679,9 @@
             var now = new Date().getTime();
             if (state.busy) return false;
             if (force !== true && !isStale(now)) return false;
+            // The sveglia gives the beat: a chain of ours would only be one
+            // more task to come due under a modal window.
+            if (force !== true && isDriven(now)) return false;
             try { if (state.taskId !== null) app.cancelTask(state.taskId); } catch (eCancel) { /* already dropped */ }
             if (state.pendingRestart === null) {
                 state.pendingRestart = {
@@ -654,6 +701,12 @@
             tick: tick,
             step: step,
             revive: revive,
+            pulse: pulse,
+            /** No pulse since loading: the sveglia is not there, go on alone. */
+            fallback: function () {
+                state.fallbackTaskId = null;
+                if (!isDriven(new Date().getTime()) && state.taskId === null && !state.stopped) book(TICK_MS);
+            },
             /** Revive when stopped; a no-op while the agent ticks. True when it revived. */
             watch: function (source) {
                 return revive(source, false);
@@ -704,7 +757,21 @@
         // Run once now so the instance is registered before the first
         // scheduled step, then keep going for the life of the process.
         tick();
-        book(TICK_MS);
+        state.fallbackTaskId = null;
+        if (svegliaInstalled()) {
+            state.fallbackTaskId = app.scheduleTask("$.global.AE_MCP_AGENT.fallback()", SVEGLIA_WAIT_MS, false);
+        } else {
+            book(TICK_MS);
+        }
+    }
+
+    /** The sveglia's folder in the user's CEP extensions (same path on Windows and macOS). */
+    function svegliaInstalled() {
+        try {
+            return new Folder(normalizePath(Folder.userData.fsName) + "/Adobe/CEP/extensions/" + SVEGLIA_BUNDLE_ID).exists;
+        } catch (eSv) {
+            return false;
+        }
     }
 
     // --- Top-level guard ---------------------------------------------------

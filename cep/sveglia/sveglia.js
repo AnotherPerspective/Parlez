@@ -1,166 +1,146 @@
-// Parlez! "sveglia" (name provisional): the clock that After Effects' modal
-// windows cannot stop.
+// Parlez! "sveglia" (name provisional): the beat of the Parlez! agent, from
+// outside After Effects' scripting engine.
 //
 // Why it exists. On After Effects 26.5 / Windows a scripting timer
-// (app.scheduleTask) that comes due while certain modal windows are up - the
-// project-loading window, the Home screen at startup, Open / Import File -
-// fails with "Cannot run a script while a modal dialog is waiting for
-// response", and After Effects then drops every scripting timer of the
-// session. The Parlez! agent and panel run on those timers, so they stopped
-// for good; inside After Effects only an event in the panel (a click, a
-// resize) brought them back. See "Staying alive" in jsx/agent.jsx.
+// (app.scheduleTask) that comes due while a modal window is up - the
+// project-loading window, the Home screen at startup, Open / Import File,
+// Save As - fails with "Cannot run a script while a modal dialog is waiting
+// for response": After Effects shows that error and drops every scripting
+// timer of the session. The Parlez! agent and panel ran on those timers, so
+// the user saw an error at every heavy project opened and Parlez! stopped
+// (2026-11-14/15). As long as a timer of ours is booked inside After Effects,
+// one will come due under a modal window sooner or later.
 //
-// This page runs in CEP's own browser engine, whose timers After Effects does
-// not touch. Once a second it looks - from outside After Effects - at the
-// agent's heartbeat file. Only when the heartbeat has stopped, and After
-// Effects' main window is not held by a modal window, does it ask the agent
-// (and the panel's timer) to restart: AE_MCP_AGENT.watch() and
-// AE_MCP_PANEL.watch(), which do nothing when they are alive.
+// So the beat comes from here, and nothing is booked inside After Effects.
+// This page runs in CEP's own browser engine, which modal windows do not
+// stop. A small PowerShell loop tells it whether After Effects' main window
+// takes input (a modal window disables it). While it does, four times a
+// second, the page calls AE_MCP_AGENT.pulse(): one step of the agent (serve a
+// waiting request, write the heartbeat), which also refreshes the panel.
+// While a modal window is up nothing is sent at all. Without the window
+// check (not Windows, PowerShell missing) it pulses anyway and backs off
+// after a refused call.
 //
-// Why so careful: every script After Effects refuses because of a modal
-// window becomes an error popup. A first build asked every second and, with
-// the Home screen open, the user got a popup every three seconds
-// (2026-11-15). So: never ask while the agent beats; never ask while the main
-// window is disabled (that is what a modal window does to it, on Windows);
-// and after a refusal wait longer each time (2, 4, 8 ... 60 s).
-//
-// What it touches: reads heartbeat.json in Parlez!'s mailbox, runs one
-// PowerShell line that reads whether After Effects' window is enabled (Windows
-// only, read-only), and sends After Effects the fixed lines in CHECK. No
-// window, no network, no other files, never the project.
+// What it touches: one PowerShell process that reads, every 50 ms, whether
+// After Effects' main window is enabled (read-only, Windows only), and the
+// fixed lines in PULSE sent to After Effects. No window, no network, no
+// files, never the project.
 
 (function () {
-  var PERIOD_MS = 1000;
-  // The agent writes its heartbeat every second.
-  var STALE_MS = 3000;
-  var BACKOFF_MIN_MS = 2000;
+  var PULSE_MS = 250;
+  // A pulse may serve a long request (a render): its answer can take minutes.
+  // One whose answer never came is given up after this (the server's own
+  // limit for a busy agent, HEARTBEAT_BUSY_STALE_MS).
+  var GIVE_UP_MS = 15 * 60000;
   var BACKOFF_MAX_MS = 60000;
-  // A call whose answer never came (After Effects stuck) is given up after this.
-  var GIVE_UP_MS = 15000;
+  // After the main window comes back, let After Effects settle first.
+  var SETTLE_MS = 300;
 
   // Fixed ExtendScript, the same every time: nothing variable is spliced in.
-  // Answers "<state>|<agent id>".
-  var CHECK =
+  // An agent of an earlier build (no pulse) is only asked to check itself.
+  var PULSE =
     "(function () {" +
-    "  var out = 'assente', id = '';" +
     "  try {" +
     "    var a = $.global.AE_MCP_AGENT;" +
-    "    if (a && a.state) id = String(a.state.id);" +
-    "    if (a && typeof a.watch === 'function') out = a.watch('sveglia') === true ? 'riavviato' : 'vivo';" +
-    "    else if (a) out = 'vecchio';" +
-    "  } catch (e1) { out = 'errore'; }" +
-    "  try {" +
-    "    var p = $.global.AE_MCP_PANEL;" +
-    "    if (p && typeof p.watch === 'function') p.watch('sveglia');" +
-    "  } catch (e2) { /* a panel that is closing */ }" +
-    "  return out + '|' + id;" +
+    "    if (a && typeof a.pulse === 'function') return a.pulse();" +
+    "    if (a && typeof a.watch === 'function') { a.watch('sveglia'); return 'vecchio|'; }" +
+    "    return 'assente|';" +
+    "  } catch (e) { return 'errore|'; }" +
     "}())";
 
   var cep = window.__adobe_cep__;
   if (!cep || typeof cep.evalScript !== "function") return;
-  if (typeof require !== "function") return;
 
-  var fs = require("fs");
-  var path = require("path");
-  var os = require("os");
-  var childProcess = require("child_process");
+  // --- Is After Effects' main window free? ------------------------------------
+  // null: unknown (no watcher) - pulse and rely on the back-off.
+  var free = null;
+  var freeSince = 0;
 
-  var MAILBOX = path.join(os.tmpdir(), "mcp-aftereffects", "runtime", "instances");
-  var isWindows = process.platform === "win32";
-
-  var agentId = null;
-  var busyUntil = 0; // a call or a check in flight
-  var nextTryAt = 0;
-  var backoff = BACKOFF_MIN_MS;
-  var aePid = null;
-
-  /** Age of our agent's heartbeat in ms, or -1 when unknown; busy counts as fresh. */
-  function heartbeatAge() {
-    if (agentId === null) return -1;
-    try {
-      var hb = JSON.parse(fs.readFileSync(path.join(MAILBOX, agentId, "heartbeat.json"), "utf8"));
-      if (hb.busy === true) return 0;
-      return Date.now() - Number(hb.ts);
-    } catch {
-      return -1;
-    }
-  }
-
-  /**
-   * After Effects' own pid: this page's process is a child of the CEP engine,
-   * itself a child of AfterFX.exe. Looked up once. Windows only.
-   */
-  function findAePid(done) {
-    if (aePid !== null || !isWindows) return done();
+  function startWatcher() {
+    if (typeof require !== "function") return;
+    var childProcess = require("child_process");
+    if (process.platform !== "win32") return;
+    // This page's process is a child of the CEP engine, itself a child of
+    // AfterFX.exe: that is the window to watch.
     var ps =
-      "$p=(Get-CimInstance Win32_Process -Filter 'ProcessId=" +
+      "$ErrorActionPreference='SilentlyContinue'; " +
+      "Add-Type -Namespace PZ -Name U -MemberDefinition '[DllImport(\"user32.dll\")] public static extern bool IsWindowEnabled(System.IntPtr h);'; " +
+      "$ae=(Get-CimInstance Win32_Process -Filter 'ProcessId=" +
       Number(process.ppid) +
       "').ParentProcessId; " +
-      "if ((Get-Process -Id $p -ErrorAction SilentlyContinue).ProcessName -eq 'AfterFX') { $p }";
-    childProcess.execFile(
+      "$last=''; $h=[IntPtr]::Zero; $n=0; " +
+      "while ($true) { " +
+      "  if ($n % 40 -eq 0) { $p=Get-Process -Id $ae; if (-not $p) { exit } $h=$p.MainWindowHandle } " +
+      "  $n++; " +
+      "  $s = if ($h -ne [IntPtr]::Zero -and [PZ.U]::IsWindowEnabled($h)) { 'free' } else { 'held' }; " +
+      "  if ($s -ne $last) { [Console]::Out.WriteLine($s); [Console]::Out.Flush(); $last=$s } " +
+      "  Start-Sleep -Milliseconds 50 " +
+      "}";
+    var child = childProcess.spawn(
       "powershell.exe",
       ["-NoProfile", "-NonInteractive", "-Command", ps],
-      { windowsHide: true, timeout: 10000 },
-      function (err, out) {
-        var n = parseInt(String(out || "").trim(), 10);
-        if (!err && n > 0) aePid = n;
-        done();
+      {
+        windowsHide: true,
       },
     );
+    var buffer = "";
+    child.stdout.on("data", function (chunk) {
+      buffer += String(chunk);
+      var lines = buffer.split(/\r?\n/);
+      buffer = lines.pop();
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (line === "free" && free !== true) {
+          free = true;
+          freeSince = Date.now();
+        } else if (line === "held") {
+          free = false;
+        }
+      }
+    });
+    child.on("exit", function () {
+      free = null;
+    });
+    window.addEventListener("beforeunload", function () {
+      try {
+        child.kill();
+      } catch {
+        /* already gone */
+      }
+    });
   }
 
-  /** done(true) when After Effects' main window takes input (no modal window over it). */
-  function windowFree(done) {
-    if (!isWindows || aePid === null) return done(true);
-    var ps =
-      "Add-Type -Namespace PZ -Name U -MemberDefinition '[DllImport(\"user32.dll\")] public static extern bool IsWindowEnabled(System.IntPtr h);'; " +
-      "$h=(Get-Process -Id " +
-      Number(aePid) +
-      " -ErrorAction SilentlyContinue).MainWindowHandle; " +
-      "if ($h -and $h -ne 0) { [PZ.U]::IsWindowEnabled($h) } else { 'False' }";
-    childProcess.execFile(
-      "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-Command", ps],
-      { windowsHide: true, timeout: 10000 },
-      function (err, out) {
-        done(!err && String(out || "").trim() === "True");
-      },
-    );
-  }
+  // --- The beat ---------------------------------------------------------------
+  var askedAt = 0;
+  var nextTryAt = 0;
+  var backoff = PULSE_MS;
 
-  function ask() {
-    busyUntil = Date.now() + GIVE_UP_MS;
-    cep.evalScript(CHECK, function (answer) {
-      busyUntil = 0;
+  function beat() {
+    var now = Date.now();
+    if (askedAt !== 0 && now - askedAt < GIVE_UP_MS) return;
+    if (now < nextTryAt) return;
+    if (free === false) return;
+    if (free === true && now - freeSince < SETTLE_MS) return;
+    askedAt = now;
+    cep.evalScript(PULSE, function (answer) {
+      askedAt = 0;
       var text = String(answer || "");
-      var bar = text.indexOf("|");
-      if (bar < 0) {
-        // Refused (a modal window after all): wait longer each time.
-        nextTryAt = Date.now() + backoff;
+      if (text.indexOf("|") < 0) {
+        // Refused: wait longer each time.
         backoff = Math.min(backoff * 2, BACKOFF_MAX_MS);
+        nextTryAt = Date.now() + backoff;
         return;
       }
-      backoff = BACKOFF_MIN_MS;
-      var id = text.substring(bar + 1);
-      if (id.length > 0) agentId = id;
+      backoff = PULSE_MS;
       // No agent yet (the startup script still loading): look again later.
-      if (text.substring(0, bar) === "assente") nextTryAt = Date.now() + 5000;
+      if (text.indexOf("assente|") === 0) nextTryAt = Date.now() + 2000;
     });
   }
 
-  function tick() {
-    var now = Date.now();
-    if (now < busyUntil || now < nextTryAt) return;
-    var age = heartbeatAge();
-    if (age >= 0 && age < STALE_MS) return;
-    busyUntil = now + GIVE_UP_MS;
-    findAePid(function () {
-      windowFree(function (free) {
-        busyUntil = 0;
-        if (free) ask();
-      });
-    });
+  try {
+    startWatcher();
+  } catch {
+    free = null;
   }
-
-  setInterval(tick, PERIOD_MS);
+  setInterval(beat, PULSE_MS);
 })();
