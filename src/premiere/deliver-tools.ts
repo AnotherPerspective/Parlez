@@ -18,6 +18,7 @@ import { rejectedOutputPath } from "../config.js";
 import { errorResult } from "../errors.js";
 import { defineTool, jsonResult, toMcpResult } from "../tools/define-tool.js";
 import { runWithCheckpoint } from "./edit-tools.js";
+import { prPosition } from "./timecode.js";
 
 /** Absolute, and with backslashes on Windows, the form Premiere's exporters expect. */
 function forPremiere(p: string): string {
@@ -105,6 +106,8 @@ const REFRAME_CODE = `
     var found = PR.findSequence(p.sequence);
     if (found.error) return { ok: false, error: found.error };
     var seq = found.seq;
+    var tcErr = PR.timesIn(seq, [p], ["start"], "position");
+    if (tcErr) return { ok: false, error: tcErr };
     var before = PR.projectItemIds();
     var known = {};
     var all = PR.allSequences();
@@ -190,7 +193,7 @@ export const prCaptionsTool = defineTool({
   title: "Premiere: captions from a subtitle file",
   description:
     "Add captions to a Premiere Pro sequence (default the active one) from a subtitle file (.srt, full path), " +
-    "starting at `start` seconds (default 0). Needs confirm: true, only if the user asked: Premiere's " +
+    "starting at `start` (timecode HH:MM:SS:FF; default the start of the sequence). Needs confirm: true, only if the user asked: Premiere's " +
     "scripting cannot take captions out again, so the way back is the restore point taken first (or deleting " +
     "the caption track by hand in Premiere).",
   group: "premiere",
@@ -198,11 +201,7 @@ export const prCaptionsTool = defineTool({
   effect: "write",
   inputShape: {
     srt: z.string().min(1).describe("Full path of the subtitle file (.srt)."),
-    start: z
-      .number()
-      .min(0)
-      .optional()
-      .describe("Where the captions start, in seconds (default 0)."),
+    start: prPosition("Where the captions start (default: the start of the sequence).").optional(),
     sequence: z
       .string()
       .optional()

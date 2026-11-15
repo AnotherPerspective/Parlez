@@ -22,12 +22,15 @@ import { z } from "zod";
 import { errorResult } from "../errors.js";
 import { defineTool } from "../tools/define-tool.js";
 import { runWithCheckpoint } from "./edit-tools.js";
+import { prPosition } from "./timecode.js";
 
 const MOGRT_CODE = `
     var p = payload;
     var found = PR.findSequence(p.sequence);
     if (found.error) return { ok: false, error: found.error };
     var seq = found.seq;
+    var tcErr = PR.timesIn(seq, [p], ["time"], "position");
+    if (tcErr) return { ok: false, error: tcErr };
     var sid = String(seq.sequenceID);
     var nTracks = PR.safe(function () { return seq.videoTracks.numTracks; }, 0);
     if (p.track < 1 || p.track > nTracks) {
@@ -91,7 +94,7 @@ export const prMogrtAddTool = defineTool({
   name: "pr_mogrt_add",
   title: "Premiere: add a title template",
   description:
-    "Put a Motion Graphics template (.mogrt file) on a Premiere Pro sequence at `time` (seconds) on video track " +
+    "Put a Motion Graphics template (.mogrt file) on a Premiere Pro sequence at `time` (timecode HH:MM:SS:FF) on video track " +
     "`track` (1 = V1). `texts` sets text parameters by name - only templates made in After Effects expose " +
     "them; the result lists the editable parameters (empty for Premiere-made titles, whose text the user " +
     "changes in the Essential Graphics panel). Premiere also adds the template's media to the project. A " +
@@ -101,7 +104,7 @@ export const prMogrtAddTool = defineTool({
   effect: "write",
   inputShape: {
     file: z.string().min(1).describe("Full path of the .mogrt file."),
-    time: z.number().min(0).describe("Where, in seconds."),
+    time: prPosition("Where the title goes."),
     track: z.number().int().min(1).max(99).optional().describe("Video track, 1 = V1 (default 2)."),
     texts: z
       .record(z.string(), z.string())

@@ -130,7 +130,8 @@ describe("pr_markers", () => {
     const r = result(res);
     expect(r.added).toMatchObject([
       { name: "Stacco", comment: "musica", start: 5, end: 5, color: 3 },
-      { name: "Titolo", start: 7, end: 8.5 },
+      // 1.5 s is 37.5 frames at the fake's 25 fps: on the frame grid, 38.
+      { name: "Titolo", start: 7, end: 8.52 },
     ]);
     expect(names()).toEqual(["Inizio", "Stacco", "Titolo", "Titolo"]);
     const cp = (res.structuredContent as { checkpoint: { file: string; created: boolean } })

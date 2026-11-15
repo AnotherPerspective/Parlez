@@ -123,6 +123,158 @@ PR.fps = function (seq) {
     return null;
 };
 
+// --- Timecode (Anthony, 2026-11-15: Parlez! works in timecode) -------------
+//
+// Every time a pr_* tool takes may be the sequence's timecode "HH:MM:SS:FF"
+// (";" before FF in drop-frame), the one the user reads in the timeline: it
+// becomes a frame number, then ticks (frame x ticks per frame), with no
+// seconds in between. Positions on the timeline count from the sequence's
+// start timecode (seq.zeroPoint): at 01:00:00:00, "01:00:01:00" is one second
+// in. Lengths (durations, source in/out) count from 00:00:00:00. A number is
+// still taken as seconds, for compatibility. Answers carry the timecode and
+// the frame number next to the seconds.
+
+/** { tpf, base, drop }: ticks per frame, nominal frames per second, drop-frame. */
+PR.rate = function (seq) {
+    var tpf = PR.frameTicks(seq);
+    if (tpf === null) return null;
+    var base = Math.round(PR.TICKS_PER_SECOND / tpf);
+    // videoDisplayFormat: 102 = 29.97 drop-frame, 106 = 59.94 drop-frame.
+    var fmt = PR.safe(function () { return Number(seq.getSettings().videoDisplayFormat); }, NaN);
+    var drop = (fmt === 102 || fmt === 106) && (base === 30 || base === 60);
+    return { tpf: tpf, base: base, drop: drop };
+};
+
+/** The sequence's start timecode, in ticks (0 when unreadable). */
+PR.zeroTicks = function (seq) {
+    var z = PR.safe(function () { return Number(seq.zeroPoint); }, NaN);
+    return (typeof z === "number" && !isNaN(z) && z > 0) ? z : 0;
+};
+
+/** Frames dropped each minute (not every tenth) in drop-frame timecode. */
+PR.dropPerMinute = function (base) {
+    return Math.round(base / 15);
+};
+
+/** "HH:MM:SS:FF" -> frames from 00:00:00:00; { error } when it is not a timecode of this rate. */
+PR.tcToFrames = function (tc, rate) {
+    var m = /^(\d{1,2})[:;](\d{2})[:;](\d{2})([:;])(\d{2})$/.exec(String(tc));
+    if (!m) return { error: "\"" + tc + "\" non e' un timecode: scrivi HH:MM:SS:FF." };
+    var h = Number(m[1]);
+    var mi = Number(m[2]);
+    var s = Number(m[3]);
+    var f = Number(m[5]);
+    if (mi > 59 || s > 59) return { error: "\"" + tc + "\": minuti e secondi vanno da 00 a 59." };
+    if (f >= rate.base) {
+        return { error: "\"" + tc + "\": a " + rate.base + " fotogrammi al secondo i fotogrammi vanno da 00 a " + (rate.base - 1) + "." };
+    }
+    var frames = ((h * 60 + mi) * 60 + s) * rate.base + f;
+    if (rate.drop) {
+        var d = PR.dropPerMinute(rate.base);
+        var minutes = h * 60 + mi;
+        if (s === 0 && f < d && mi % 10 !== 0) {
+            return { error: "\"" + tc + "\" non esiste in drop-frame: al minuto " + mi + " si salta da ;00 a ;" + (d < 10 ? "0" : "") + d + "." };
+        }
+        frames -= d * (minutes - Math.floor(minutes / 10));
+    }
+    return { frames: frames };
+};
+
+/** Frames from 00:00:00:00 -> "HH:MM:SS:FF" (";" before FF in drop-frame). */
+PR.framesToTc = function (frames, rate) {
+    var n = Math.round(frames);
+    var neg = n < 0;
+    if (neg) n = -n;
+    if (rate.drop) {
+        var d = PR.dropPerMinute(rate.base);
+        var perMinute = rate.base * 60 - d;
+        var perTen = perMinute * 10 + d;
+        var tens = Math.floor(n / perTen);
+        var rest = n % perTen;
+        n += d * 9 * tens;
+        if (rest > d) n += d * Math.floor((rest - d) / perMinute);
+    }
+    var f = n % rate.base;
+    var totalS = Math.floor(n / rate.base);
+    var s = totalS % 60;
+    var totalM = Math.floor(totalS / 60);
+    var mi = totalM % 60;
+    var h = Math.floor(totalM / 60);
+    function two(v) { return (v < 10 ? "0" : "") + String(v); }
+    return (neg ? "-" : "") + two(h) + ":" + two(mi) + ":" + two(s) + (rate.drop ? ";" : ":") + two(f);
+};
+
+/**
+ * A time from a tool, as seconds exactly on the frame grid. `kind`:
+ * "position" (on the timeline: a timecode counts from the start timecode) or
+ * "length" (a duration or a point in the source: from 00:00:00:00).
+ * Returns { seconds } or { error }.
+ */
+PR.timeIn = function (seq, value, kind) {
+    if (typeof value === "number") return { seconds: PR.snap(seq, value) };
+    var rate = PR.rate(seq);
+    if (rate === null) return { error: "Non riesco a leggere i fotogrammi al secondo della sequenza: usa i secondi." };
+    var r = PR.tcToFrames(value, rate);
+    if (r.error) return r;
+    var ticks = r.frames * rate.tpf;
+    if (kind === "position") {
+        var zero = PR.zeroTicks(seq);
+        ticks -= zero;
+        if (ticks < 0) {
+            return { error: "\"" + value + "\" viene prima dell'inizio della sequenza, che parte da " +
+                PR.framesToTc(Math.round(zero / rate.tpf), rate) + "." };
+        }
+    }
+    return { seconds: ticks / PR.TICKS_PER_SECOND };
+};
+
+/**
+ * Convert, in place, every time field of every object in `list` (seconds or
+ * timecode) to seconds on the frame grid. Returns an error text, or null.
+ */
+PR.timesIn = function (seq, list, fields, kind) {
+    for (var i = 0; i < list.length; i++) {
+        var o = list[i];
+        if (o === null || typeof o !== "object") continue;
+        for (var k = 0; k < fields.length; k++) {
+            var v = o[fields[k]];
+            if (typeof v !== "number" && typeof v !== "string") continue;
+            var r = PR.timeIn(seq, v, kind);
+            if (r.error) return fields[k] + ": " + r.error;
+            o[fields[k]] = r.seconds;
+        }
+    }
+    return null;
+};
+
+/** { tc, frame } for seconds on this sequence (frame counted from its start); null when unreadable. */
+PR.tcOut = function (seq, seconds, kind) {
+    if (typeof seconds !== "number") return null;
+    var rate = PR.rate(seq);
+    if (rate === null) return null;
+    var frame = Math.round(seconds * PR.TICKS_PER_SECOND / rate.tpf);
+    var shown = (kind === "position") ? frame + Math.round(PR.zeroTicks(seq) / rate.tpf) : frame;
+    return { tc: PR.framesToTc(shown, rate), frame: frame };
+};
+
+/**
+ * Add "<field>TC" and "<field>Frame" next to each time field of `obj`
+ * (`fields`: { name: "position" | "length" }). Returns obj.
+ */
+PR.withTimecode = function (seq, obj, fields) {
+    if (obj === null || typeof obj !== "object") return obj;
+    for (var k in fields) {
+        if (!fields.hasOwnProperty(k)) continue;
+        var t = PR.tcOut(seq, obj[k], fields[k]);
+        if (t === null) continue;
+        obj[k + "TC"] = t.tc;
+        obj[k + "Frame"] = t.frame;
+    }
+    return obj;
+};
+
+PR.CLIP_TIMES = { start: "position", end: "position", inPoint: "length", outPoint: "length" };
+
 /** "bin", "sequence", "clip", "file" or "root" for a project item. */
 PR.itemKind = function (item) {
     if (PR.safe(function () { return item.isSequence(); }, false) === true) return "sequence";
@@ -174,7 +326,7 @@ PR.listItems = function (root, max) {
 };
 
 PR.sequenceSummary = function (seq) {
-    return {
+    var s = {
         name: PR.safe(function () { return String(seq.name); }, null),
         sequenceID: PR.safe(function () { return String(seq.sequenceID); }, null),
         width: PR.safe(function () { return Number(seq.frameSizeHorizontal); }, null),
@@ -184,6 +336,13 @@ PR.sequenceSummary = function (seq) {
         videoTracks: PR.safe(function () { return seq.videoTracks.numTracks; }, null),
         audioTracks: PR.safe(function () { return seq.audioTracks.numTracks; }, null)
     };
+    PR.withTimecode(seq, s, { duration: "length" });
+    var rate = PR.rate(seq);
+    if (rate !== null) {
+        s.startTimecode = PR.framesToTc(Math.round(PR.zeroTicks(seq) / rate.tpf), rate);
+        s.dropFrame = rate.drop;
+    }
+    return s;
 };
 
 PR.allSequences = function () {
@@ -703,14 +862,14 @@ PR.timelineItems = function (seq) {
             for (var i = 0; i < c; i++) {
                 var item = PR.safe(function () { return clips[i]; }, null);
                 if (item === null) continue;
-                out.push({
+                out.push(PR.withTimecode(seq, {
                     nodeId: PR.safe(function () { return String(item.nodeId); }, null),
                     kind: kind,
                     track: t + 1,
                     start: PR.seconds(PR.safe(function () { return item.start; }, null)),
                     end: PR.seconds(PR.safe(function () { return item.end; }, null)),
                     item: item
-                });
+                }, { start: "position", end: "position" }));
             }
         }
     }
@@ -752,14 +911,19 @@ PR.trackEnd = function (seq, n) {
 
 /** Plain description of a clip on the timeline, for answers. */
 PR.placed = function (e) {
-    return {
+    var out = {
         nodeId: e.nodeId,
         name: PR.safe(function () { return String(e.item.name); }, null),
         kind: e.kind,
         track: e.track,
+        startTC: e.startTC,
+        endTC: e.endTC,
+        startFrame: e.startFrame,
+        endFrame: e.endFrame,
         start: e.start,
         end: e.end
     };
+    return out;
 };
 
 /** Name of the clip on video track n that `time` falls strictly inside, or null. */

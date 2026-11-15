@@ -182,6 +182,55 @@ describe("pr_clip_edit", () => {
     ]);
   });
 
+  it("takes the timeline's timecode, from the sequence's start timecode, and answers in timecode", async () => {
+    (seq as unknown as { zeroPoint: string }).zeroPoint = String(3600 * 254016000000);
+    const res = await run(() =>
+      prClipEditTool.handler(
+        {
+          sequence: "Bozza",
+          clips: [
+            { nodeId: id(8), moveTo: "01:00:20:00" },
+            { nodeId: id(4), end: "01:00:07:00" },
+          ],
+        },
+        transport,
+      ),
+    );
+    expect(v1().map((x) => [x[1], x[2]])).toEqual([
+      [0, 4],
+      [4, 7],
+      [20, 24],
+    ]);
+    const changed = result(res).changed as Array<Record<string, unknown>>;
+    expect(changed[0]).toMatchObject({
+      start: 20,
+      startTC: "01:00:20:00",
+      startFrame: 500,
+      endTC: "01:00:24:00",
+    });
+  });
+
+  it("refuses a timecode before the start of the sequence, or with too many frames", async () => {
+    (seq as unknown as { zeroPoint: string }).zeroPoint = String(3600 * 254016000000);
+    const early = await run(() =>
+      prClipEditTool.handler(
+        { sequence: "Bozza", clips: [{ nodeId: id(8), moveTo: "00:00:20:00" }] },
+        transport,
+      ),
+    );
+    expect(early.isError).toBe(true);
+    expect(JSON.stringify(early)).toMatch(
+      /prima dell'inizio della sequenza, che parte da 01:00:00:00/,
+    );
+    const frames = await run(() =>
+      prClipEditTool.handler(
+        { sequence: "Bozza", clips: [{ nodeId: id(8), moveTo: "01:00:20:25" }] },
+        transport,
+      ),
+    );
+    expect(JSON.stringify(frames)).toMatch(/da 00 a 24/);
+  });
+
   it("refuses a move across or onto another clip, confirm or not (Premiere 26.3.2 breaks the track)", async () => {
     for (const moveTo of [2, 20]) {
       const res = await run(() =>

@@ -22,6 +22,7 @@ import { rejectedOutputPath } from "../config.js";
 import { errorResult } from "../errors.js";
 import { defineTool, jsonResult, toMcpResult } from "../tools/define-tool.js";
 import type { ImageContent } from "../tools/types.js";
+import { prPosition } from "./timecode.js";
 
 /** Premiere's own presets, under its install folder (Windows layout; macOS untested). */
 function systemPreset(platform: NodeJS.Platform, file: string): string {
@@ -61,15 +62,24 @@ const EXPORT_CODE = `
     var found = PR.findSequence(p.sequence);
     if (found.error) return { ok: false, error: found.error };
     var seq = found.seq;
+    var tcErr = PR.timesIn(seq, [p], ["frame"], "position");
+    if (tcErr) return { ok: false, error: tcErr };
     var oldIn = seq.getInPointAsTime().ticks;
     var oldOut = seq.getOutPointAsTime().ticks;
     var result = null;
     var error = null;
     try {
         if (p.frame !== null) {
-            var fps = PR.fps(seq);
-            seq.setInPoint(String(Math.round(p.frame * PR.TICKS_PER_SECOND)));
-            seq.setOutPoint(String(Math.round((p.frame + 1 / fps) * PR.TICKS_PER_SECOND)));
+            var inTicks = PR.snapTicks(seq, p.frame);
+            var tpf = PR.frameTicks(seq);
+            if (inTicks === null || tpf === null) {
+                var fps = PR.fps(seq);
+                seq.setInPoint(String(Math.round(p.frame * PR.TICKS_PER_SECOND)));
+                seq.setOutPoint(String(Math.round((p.frame + 1 / fps) * PR.TICKS_PER_SECOND)));
+            } else {
+                seq.setInPoint(String(inTicks));
+                seq.setOutPoint(String(inTicks + tpf));
+            }
         }
         result = String(seq.exportAsMediaDirect(p.out, p.preset, p.range));
     } catch (e) {
@@ -89,14 +99,14 @@ export const prFrameTool = defineTool({
   name: "pr_frame",
   title: "Premiere: look at a frame",
   description:
-    "Render one frame of a Premiere Pro sequence (default the active one) at `time` seconds as a PNG and " +
+    "Render one frame of a Premiere Pro sequence (default the active one) at `time` (timecode HH:MM:SS:FF) as a PNG and " +
     "show it, so you can see the cut. The sequence's in/out points are set to that frame for the render and " +
     "put back right after; nothing else in the project changes. The PNG is saved in a temp folder.",
   group: "premiere",
   blockedInReadOnly: false,
   effect: "read",
   inputShape: {
-    time: z.number().min(0).describe("Which frame, in seconds from the start of the sequence."),
+    time: prPosition("Which frame."),
     sequence: z
       .string()
       .optional()

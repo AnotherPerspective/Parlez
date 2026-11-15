@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import { defineTool } from "../tools/define-tool.js";
 import { runWithCheckpoint } from "./edit-tools.js";
+import { prLength, prPosition } from "./timecode.js";
 
 const SEQUENCE_CREATE_CODE = `
     var p = payload;
@@ -85,6 +86,8 @@ const TIMELINE_ADD_CODE = `
     var found = PR.findSequence(p.sequence);
     if (found.error) return { ok: false, error: found.error };
     var seq = found.seq;
+    var tcErr = PR.timesIn(seq, p.clips, ["time"], "position") || PR.timesIn(seq, p.clips, ["sourceIn", "sourceOut"], "length");
+    if (tcErr) return { ok: false, error: tcErr };
     var sid = String(seq.sequenceID);
     var i;
     var c;
@@ -210,7 +213,7 @@ export const prTimelineAddTool = defineTool({
     "Put project clips (nodeIds from pr_project_info) on a Premiere Pro sequence's video track (1-based, " +
     "default V1; linked audio follows on its own). Without `time` a clip goes at the end of that track. " +
     'mode "overwrite" (default) lays it over what is there; "insert" pushes everything after it later. ' +
-    "sourceIn / sourceOut take only that piece of the clip (seconds into the source). " +
+    "sourceIn / sourceOut take only that piece of the clip (timecode into the source, from 00:00:00:00). Times are timecode HH:MM:SS:FF; answers give timecode and frame next to seconds. " +
     "Overwriting where there are clips already needs confirm: true, only if the user asked. A restore point " +
     "is taken first; pr_undo_last removes every clip this call put down.",
   group: "premiere",
@@ -225,23 +228,13 @@ export const prTimelineAddTool = defineTool({
       .array(
         z.object({
           nodeId: z.string().describe("Project item nodeId."),
-          time: z
-            .number()
-            .min(0)
-            .optional()
-            .describe("Where, in seconds. Omit: at the end of the track."),
+          time: prPosition("Where the clip goes. Omit: at the end of the track.").optional(),
           track: z.number().int().min(1).max(99).optional().describe("Video track, 1 = V1."),
           mode: z.enum(["overwrite", "insert"]).optional(),
-          sourceIn: z
-            .number()
-            .min(0)
-            .optional()
-            .describe("Use the source from here (seconds into the clip)."),
-          sourceOut: z
-            .number()
-            .min(0)
-            .optional()
-            .describe("Use the source up to here (seconds into the clip)."),
+          sourceIn: prLength("Use the source from here (into the clip).").optional(),
+          sourceOut: prLength(
+            "Use the source up to here (into the clip); the frame at sourceOut is not included.",
+          ).optional(),
         }),
       )
       .min(1)

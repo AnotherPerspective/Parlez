@@ -15,12 +15,15 @@ import { z } from "zod";
 import { errorResult } from "../errors.js";
 import { defineTool } from "../tools/define-tool.js";
 import { runWithCheckpoint } from "./edit-tools.js";
+import { prPosition } from "./timecode.js";
 
 const CLIP_EDIT_CODE = `
     var p = payload;
     var found = PR.findSequence(p.sequence);
     if (found.error) return { ok: false, error: found.error };
     var seq = found.seq;
+    var tcErr = PR.timesIn(seq, p.clips, ["start", "end", "moveTo"], "position");
+    if (tcErr) return { ok: false, error: tcErr };
     var sid = String(seq.sequenceID);
     var i;
     var c;
@@ -110,7 +113,7 @@ export const prClipEditTool = defineTool({
   title: "Premiere: trim, move, switch clips",
   description:
     "Change clips already on a Premiere Pro timeline (track item nodeIds from pr_sequence_info): `start` / " +
-    "`end` trim where the clip begins and ends on the timeline (seconds); `moveTo` moves it so it begins " +
+    "`end` trim where the clip begins and ends on the timeline (timecode HH:MM:SS:FF); `moveTo` moves it so it begins " +
     "there, only through empty space (Premiere 26.3.2 breaks a clip moved across or onto others: to reorder, " +
     "remove it and put it back with pr_timeline_add); `enabled` switches it off or on. The clip's audio " +
     "(same source, same position) is trimmed and moved with it, so they stay in sync. A restore point is " +
@@ -127,13 +130,9 @@ export const prClipEditTool = defineTool({
       .array(
         z.object({
           nodeId: z.string().describe("Track item nodeId, from pr_sequence_info."),
-          start: z
-            .number()
-            .min(0)
-            .optional()
-            .describe("New start on the timeline (trims the head)."),
-          end: z.number().min(0).optional().describe("New end on the timeline (trims the tail)."),
-          moveTo: z.number().min(0).optional().describe("Move the clip so it begins here."),
+          start: prPosition("New start on the timeline (trims the head).").optional(),
+          end: prPosition("New end on the timeline (trims the tail).").optional(),
+          moveTo: prPosition("Move the clip so it begins here.").optional(),
           enabled: z.boolean().optional().describe("false switches the clip off, true on."),
         }),
       )
@@ -234,6 +233,8 @@ const RAZOR_CODE = `
     }
     var fps = PR.fps(seq);
     if (typeof fps !== "number" || fps <= 0) return { ok: false, error: "Non riesco a leggere i fotogrammi al secondo della sequenza." };
+    var tcErr = PR.timesIn(seq, [p], ["time"], "position");
+    if (tcErr) return { ok: false, error: tcErr };
     var tc = PR.timecode(p.time, fps);
     app.enableQE();
     var qs = qe.project.getActiveSequence();
@@ -269,14 +270,14 @@ export const prRazorTool = defineTool({
   name: "pr_razor",
   title: "Premiere: cut clips at a time",
   description:
-    "Cut (razor) every clip that crosses `time` (seconds) on the ACTIVE Premiere Pro sequence, video and " +
+    "Cut (razor) every clip that crosses `time` (timecode HH:MM:SS:FF) on the ACTIVE Premiere Pro sequence, video and " +
     "audio together. Uses Premiere's undocumented QE scripting. Needs confirm: true, only if the user asked: " +
     "pr_undo_last cannot join the pieces again, only the restore point taken first can.",
   group: "premiere",
   blockedInReadOnly: true,
   effect: "destructive",
   inputShape: {
-    time: z.number().min(0).describe("Where to cut, in seconds."),
+    time: prPosition("Where to cut."),
     sequence: z
       .string()
       .optional()

@@ -241,6 +241,10 @@ describe("pr_* tools against the fake project", () => {
         height: 1080,
         fps: 25,
         duration: 10,
+        durationTC: "00:00:10:00",
+        durationFrame: 250,
+        startTimecode: "00:00:00:00",
+        dropFrame: false,
         videoTracks: 1,
         audioTracks: 0,
       },
@@ -268,8 +272,10 @@ describe("pr_* tools against the fake project", () => {
       name: "Montaggio",
       fps: 25,
       playhead: 2.5,
+      playheadTC: "00:00:02:13",
       inPoint: 0,
       outPoint: 10,
+      outPointTC: "00:00:10:00",
     });
     const video = result.video as Array<Record<string, unknown>>;
     expect(video[0]).toMatchObject({

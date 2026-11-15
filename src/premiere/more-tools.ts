@@ -12,6 +12,7 @@ import { z } from "zod";
 import { errorResult } from "../errors.js";
 import { defineTool, toMcpResult } from "../tools/define-tool.js";
 import { runWithCheckpoint } from "./edit-tools.js";
+import { prLength } from "./timecode.js";
 
 const UNDO_NOTE = "pr_undo_last (o il bottone Annulla del pannello) annulla tutta questa richiesta";
 
@@ -257,6 +258,8 @@ const TRANSITION_CODE = `
     var found = PR.findSequence(p.sequence);
     if (found.error) return { ok: false, error: found.error };
     var seq = found.seq;
+    var tcErr = PR.timesIn(seq, p.items, ["duration"], "length");
+    if (tcErr) return { ok: false, error: tcErr };
     var sid = String(seq.sequenceID);
     var fps = PR.fps(seq);
     // QE works on the active sequence only.
@@ -300,7 +303,7 @@ export const prTransitionTool = defineTool({
   description:
     "Add a transition at the start (default) or end of clips on a Premiere Pro timeline (track item nodeIds " +
     "from pr_sequence_info): video clips get Cross Dissolve, audio clips Constant Power, unless `name` says " +
-    "another Premiere transition. `duration` in seconds (default 1). Makes the sequence active (Premiere's " +
+    "another Premiere transition. `duration` as a timecode length (default 00:00:01:00). Makes the sequence active (Premiere's " +
     "QE scripting needs it). A restore point is taken first; pr_undo_last removes the transitions.",
   group: "premiere",
   blockedInReadOnly: true,
@@ -315,7 +318,7 @@ export const prTransitionTool = defineTool({
         z.object({
           nodeId: z.string().describe("Track item nodeId."),
           at: z.enum(["start", "end"]).optional(),
-          duration: z.number().min(0.04).max(60).optional(),
+          duration: prLength("How long the transition lasts (default 00:00:01:00).").optional(),
           name: z.string().optional().describe('Premiere transition name, e.g. "Dip to Black".'),
         }),
       )

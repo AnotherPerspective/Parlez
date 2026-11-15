@@ -19,6 +19,7 @@ import { defineTool, toMcpResult } from "../tools/define-tool.js";
 import type { ToolResult } from "../tools/types.js";
 import { ensurePremiereCheckpoint } from "./checkpoint.js";
 import { isPremierePaused, isPremiereReadOnly } from "./transport.js";
+import { prLength, prPosition } from "./timecode.js";
 
 /**
  * Run a changing request behind a restore point. When the copy cannot be
@@ -77,6 +78,9 @@ const MARKERS_CODE = `
     var found = PR.findSequence(p.sequence);
     if (found.error) return { ok: false, error: found.error };
     var seq = found.seq;
+    var tcErr = PR.timesIn(seq, p.add, ["time"], "position") || PR.timesIn(seq, p.add, ["duration"], "length") ||
+        PR.timesIn(seq, p.update, ["time"], "position") || PR.timesIn(seq, p.update, ["duration"], "length");
+    if (tcErr) return { ok: false, error: tcErr };
     var sid = String(seq.sequenceID);
     var steps = [];
     var added = [];
@@ -89,7 +93,7 @@ const MARKERS_CODE = `
     function entry(marker) {
         var s = PR.markerState(marker);
         s.guid = PR.safe(function () { return String(marker.guid); }, null);
-        return s;
+        return PR.withTimecode(seq, s, { start: "position", end: "position" });
     }
     for (i = 0; i < p.remove.length; i++) {
         m = PR.markerByGuid(seq, p.remove[i]);
@@ -138,7 +142,7 @@ export const prMarkersTool = defineTool({
   title: "Premiere sequence markers",
   description:
     "Add, change or remove markers on a Premiere Pro sequence (default: the active one), in one request. " +
-    "Times in seconds. `add` creates markers (name, comment, colour, optional duration); `update` changes " +
+    "Times in timecode HH:MM:SS:FF of the sequence (answers give timecode and frame next to seconds). `add` creates markers (name, comment, colour, optional duration); `update` changes " +
     "markers by guid (from pr_sequence_info); `remove` deletes markers by guid and needs confirm: true, " +
     "passed only when the user asked to delete them. A restore point is taken first; pr_undo_last takes " +
     "the whole request back (Premiere's own Ctrl+Z does not).",
@@ -153,12 +157,8 @@ export const prMarkersTool = defineTool({
     add: z
       .array(
         z.object({
-          time: z.number().min(0).describe("Where, in seconds from the start of the sequence."),
-          duration: z
-            .number()
-            .min(0)
-            .optional()
-            .describe("Length in seconds (0 or omitted: a point)."),
+          time: prPosition("Where the marker goes."),
+          duration: prLength("Length (00:00:00:00 or omitted: a point).").optional(),
           name: z.string().max(500).optional(),
           comment: z.string().max(5000).optional(),
           color: MARKER_COLOR.optional(),
@@ -170,8 +170,8 @@ export const prMarkersTool = defineTool({
       .array(
         z.object({
           guid: z.string().describe("The marker's guid, from pr_sequence_info."),
-          time: z.number().min(0).optional(),
-          duration: z.number().min(0).optional(),
+          time: prPosition("New position.").optional(),
+          duration: prLength("New length.").optional(),
           name: z.string().max(500).optional(),
           comment: z.string().max(5000).optional(),
           color: MARKER_COLOR.optional(),

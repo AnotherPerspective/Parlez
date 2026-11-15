@@ -188,8 +188,17 @@ export const prSequenceInfoTool = defineTool({
         out.playhead = PR.seconds(PR.safe(function () { return seq.getPlayerPosition(); }, null));
         out.inPoint = PR.seconds(PR.safe(function () { return seq.getInPointAsTime(); }, null));
         out.outPoint = PR.seconds(PR.safe(function () { return seq.getOutPointAsTime(); }, null));
+        PR.withTimecode(seq, out, { playhead: "position", inPoint: "position", outPoint: "position" });
         out.video = PR.tracks(PR.safe(function () { return seq.videoTracks; }, null), maxClips);
         out.audio = PR.tracks(PR.safe(function () { return seq.audioTracks; }, null), maxClips);
+        // Timecode next to the seconds of every clip (start/end on the timeline, in/out in the source).
+        var groups = [out.video, out.audio];
+        for (var gi = 0; gi < groups.length; gi++) {
+            for (var ti = 0; groups[gi] && ti < groups[gi].length; ti++) {
+                var cl = groups[gi][ti].clips;
+                for (var ci = 0; cl && ci < cl.length; ci++) PR.withTimecode(seq, cl[ci], PR.CLIP_TIMES);
+            }
+        }
         if (${jsxVal(args.markers !== false)}) {
             var m = PR.markers(PR.safe(function () { return seq.markers; }, null), 1000);
             out.markers = m.markers;
