@@ -349,6 +349,12 @@ export const MAX_LAUNCH_ATTEMPTS = 3;
 export const INSTANCES_DIRNAME = "instances";
 export const INSTANCES_DIR = path.join(RUNTIME_DIR, INSTANCES_DIRNAME);
 export const HEARTBEAT_FILENAME = "heartbeat.json";
+/**
+ * Written in the instance directory by a Parlez! panel whose Riavvia loads
+ * the agent's code again (jsx/panel.jsx PANEL_NOTE). Absent: the panel in
+ * After Effects is older, and only reopening After Effects loads new code.
+ */
+export const PANEL_NOTE_FILENAME = "panel.json";
 
 export function instanceDirFor(id: string): string {
   return path.join(INSTANCES_DIR, id);

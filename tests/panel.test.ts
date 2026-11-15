@@ -14,13 +14,14 @@ import {
 } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   AGENT_JSX,
   AGENT_STUB_FILENAME,
   PANEL_IMAGES_DIR,
   PANEL_JSX,
+  PANEL_NOTE_FILENAME,
   PAUSE_SETTINGS_KEY,
   PAUSE_SETTINGS_SECTION,
   READ_ONLY_SETTINGS_KEY,
@@ -1335,7 +1336,7 @@ describe("«Riavvia», the last resort", () => {
     expect(panel.says()).toContain("non collegato");
     restartButton(panel).onClick!();
     expect((engine.global.AE_MCP_AGENT as Agent).state.id).toBe("dallo-stub");
-    expect(panel.says()).toContain("Parlez! ricaricato");
+    expect(panel.says()).toContain("Riavvio in corso");
   });
 
   it("without the startup script, says to reinstall", () => {
@@ -1357,6 +1358,155 @@ describe("«Riavvia», the last resort", () => {
     restartButton(panel).onClick!();
     expect(engine.global.AE_MCP_AGENT).toBe(earlier);
     expect(panel.says()).toContain("risponde già");
+  });
+});
+
+describe("«Riavvia» always ends with an outcome (2026-11-15: «tra un attimo» and then nothing)", () => {
+  const followTasks = () =>
+    engine.app.pendingTasks().filter((t) => t.code.includes("AE_MCP_PANEL.follow("));
+  const runFollow = () => engine.runPending((code) => code.includes("AE_MCP_PANEL.follow("));
+  let clock = 0;
+  const later = (ms: number) => {
+    clock += ms;
+    vi.setSystemTime(clock);
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    clock = Date.UTC(2026, 10, 15, 20, 0, 0);
+    vi.setSystemTime(clock);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function stoppedAgentAndPanel() {
+    setEnabled("1");
+    const agent = startAgent() as LiveAgent;
+    const panel = openPanel();
+    later(12_000);
+    silenceHeartbeat(agent);
+    refresh();
+    expect(panel.color()).toEqual(GREY);
+    engine.app.dropAllTasks();
+    return { agent, panel };
+  }
+
+  it("a bar with the seconds left while it waits", () => {
+    const { panel } = stoppedAgentAndPanel();
+    restartButton(panel).onClick!();
+    expect(panel.says()).toMatch(/Riavvio in corso □{10} al massimo 10 s/);
+    expect(followTasks()).toHaveLength(1);
+    later(4000);
+    runFollow();
+    expect(panel.says()).toMatch(/Riavvio in corso ■{4}□{6} al massimo 6 s/);
+    expect(followTasks()).toHaveLength(1);
+  });
+
+  it("«è ripartito» and the block back to green as soon as the agent steps", () => {
+    const { panel } = stoppedAgentAndPanel();
+    restartButton(panel).onClick!();
+    later(300);
+    runAgent();
+    later(300);
+    runFollow();
+    expect(panel.says()).toContain("Parlez! è ripartito (agente v4, codice di prima).");
+    expect(panel.says()).not.toContain("Riavvio in corso");
+    expect(panel.color()).toEqual(GREEN);
+    expect(followTasks()).toHaveLength(0);
+  });
+
+  it("with the sveglia too: a pulse that comes first says it", () => {
+    const { panel } = stoppedAgentAndPanel();
+    restartButton(panel).onClick!();
+    later(1500);
+    (engine.global.AE_MCP_AGENT as { pulse: () => string }).pulse();
+    expect(panel.says()).toContain("Parlez! è ripartito");
+    expect(followTasks()).toHaveLength(0);
+  });
+
+  it("«non è ripartito: chiudi e riapri After Effects» when the agent never steps", () => {
+    const { panel } = stoppedAgentAndPanel();
+    restartButton(panel).onClick!();
+    for (let i = 0; i < 20; i++) {
+      for (const t of agentSteps()) t.cancelled = true;
+      later(500);
+      runFollow();
+    }
+    expect(panel.says()).toContain("Parlez! non è ripartito: chiudi e riapri After Effects.");
+    expect(followTasks()).toHaveLength(0);
+  });
+
+  it("a reloaded agent says «codice ricaricato»", () => {
+    setEnabled("1");
+    const dir = path.join(tmp, "userData", "Adobe", "After Effects", "26.5", "Scripts", "Startup");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      path.join(dir, AGENT_STUB_FILENAME),
+      "$.global.AE_MCP_AGENT = { state: { id: 'nuovo', agentVersion: 4, lastTickAt: new Date().getTime() } };",
+      "utf8",
+    );
+    const panel = openPanel();
+    later(500);
+    restartButton(panel).onClick!();
+    expect(panel.says()).toContain("Parlez! è ripartito (agente v4, codice ricaricato).");
+  });
+});
+
+describe("a refresh that throws stops the panel only when it is closed", () => {
+  function breakRefresh(message: string) {
+    const real = engine.app.project;
+    let broken = true;
+    Object.defineProperty(engine.app, "project", {
+      configurable: true,
+      get() {
+        if (broken) throw new Error(message);
+        return real;
+      },
+    });
+    return () => {
+      broken = false;
+    };
+  }
+
+  it("a project still loading: the timer goes on, the panel says why, then comes back to green", () => {
+    setEnabled("1");
+    startAgent();
+    const panel = openPanel();
+    const heal = breakRefresh("Cannot run a script while a modal dialog is waiting for response");
+    runPanel();
+    expect(panelTimer().closed).toBe(false);
+    expect(panelSteps()).toHaveLength(1);
+    expect(panel.says()).toContain("Il pannello non riesce ad aggiornarsi");
+    heal();
+    runPanel();
+    expect(panel.color()).toEqual(GREEN);
+  });
+
+  it("gives up after many failures in a row, and a click brings it back", () => {
+    setEnabled("1");
+    startAgent();
+    const panel = openPanel();
+    const heal = breakRefresh("boh");
+    for (let i = 0; i < 40; i++) runPanel();
+    expect(panelTimer().closed).toBe(true);
+    expect(panelSteps()).toHaveLength(0);
+    heal();
+    panelTimer().lastStepAt = Date.now() - 60_000;
+    panel.toggle().onClick!();
+    expect(panelTimer().closed).toBe(false);
+    expect(panelSteps()).toHaveLength(1);
+  });
+});
+
+describe("the panel tells the server that its Riavvia reloads the code", () => {
+  it("writes panel.json in the agent's mailbox, once", () => {
+    setEnabled("1");
+    const agent = startAgent();
+    openPanel();
+    const note = JSON.parse(readFileSync(path.join(agent.state.dir, PANEL_NOTE_FILENAME), "utf8"));
+    expect(note.reloads).toBe(true);
+    expect(PANEL_SRC).toContain(`"${PANEL_NOTE_FILENAME}"`);
   });
 });
 

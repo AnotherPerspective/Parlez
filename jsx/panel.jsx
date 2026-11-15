@@ -107,6 +107,18 @@
     var RESTART_CHARS = 40;
     // Restarts after a shorter silence are left out of the list.
     var RESTART_LIST_MS = 10000;
+    // After Riavvia: an outcome within RESTART_WAIT_MS, checked every
+    // FOLLOW_MS, with a bar of BAR_STEPS squares meanwhile. "Tra un attimo"
+    // with no outcome made Anthony think the button was broken (2026-11-15).
+    var RESTART_WAIT_MS = 10000;
+    var FOLLOW_MS = 500;
+    var BAR_STEPS = 10;
+    // Read by the server (src/config.ts PANEL_NOTE_FILENAME): this panel's
+    // Riavvia loads the code again, so "premi Riavvia" is advice that works.
+    var PANEL_NOTE = "panel.json";
+    // Refreshes that throw for another reason than a closed panel, in a row,
+    // before the timer gives up.
+    var MAX_REFRESH_FAILURES = 30;
     // The signature at the bottom right opens this page in the user's own
     // browser when clicked. That is the user opening a page, not this program going on
     // the internet: nothing here connects anywhere, the click hands the
@@ -756,6 +768,26 @@
         put("mailbox.enabled", ui.mailbox, "enabled", agent !== null && agent.dir !== null);
         put("checkpointFolder.enabled", ui.checkpointFolder, "enabled", !!app.project.file);
         put("checkpoint.enabled", ui.checkpoint, "enabled", !!app.project.file);
+
+        notePanel(agent);
+        followUpdate(now);
+    }
+
+    /**
+     * Once per mailbox: a note that this panel's Riavvia reloads the code.
+     * Without it (a panel loaded before 0.2) the server says to reopen After
+     * Effects instead of "premi Riavvia", which would not help (2026-11-15).
+     */
+    function notePanel(agent) {
+        if (agent === null || agent.dir === null || ui.notedDir === agent.dir) return;
+        try {
+            var f = new File(agent.dir + "/" + PANEL_NOTE);
+            f.encoding = "UTF-8";
+            if (!f.open("w")) return;
+            f.write('{"reloads":true,"ts":' + String(new Date().getTime()) + "}");
+            f.close();
+            ui.notedDir = agent.dir;
+        } catch (eNote) { /* the server then gives the safe advice */ }
     }
 
     /**
@@ -814,7 +846,86 @@
      * again, which replaces a silent agent of an earlier build and leaves a
      * live one alone. Returns what to tell the user.
      */
+    // --- Following a restart ------------------------------------------------
+    var follow = null;
+    var followSeq = 0;
+
+    /** The live agent's state when it stepped at or after `at`, else null. */
+    function tickedSince(at) {
+        var live = null;
+        try { live = $.global.AE_MCP_AGENT || null; } catch (eLive) { live = null; }
+        if (live === null || !live.state) return null;
+        var st = live.state;
+        if (typeof st.lastTickAt === "number" && st.lastTickAt >= at) return st;
+        if (typeof st.lastHeartbeatAt === "number" && st.lastHeartbeatAt >= at) return st;
+        return null;
+    }
+
+    function progressBar(done, total) {
+        var s = "";
+        for (var i = 0; i < total; i++) s += (i < done) ? "\u25A0" : "\u25A1";
+        return s;
+    }
+
+    function followText(now) {
+        var left = follow.until - now;
+        if (left < 0) left = 0;
+        var done = Math.round(((RESTART_WAIT_MS - left) / RESTART_WAIT_MS) * BAR_STEPS);
+        return "Riavvio in corso " + progressBar(done, BAR_STEPS) + " al massimo " +
+            String(Math.ceil(left / 1000)) + " s";
+    }
+
+    function cancelFollow() {
+        if (follow === null) return;
+        try {
+            if (follow.taskId !== null) app.cancelTask(follow.taskId);
+        } catch (eCancel) { /* already gone */ }
+        follow = null;
+    }
+
+    function bookFollow() {
+        if (follow === null) return;
+        follow.taskId = null;
+        // A task of our own even with the sveglia: if the restart failed, no
+        // pulse reaches the panel, and the outcome must still be said.
+        try {
+            follow.taskId = app.scheduleTask("$.global.AE_MCP_PANEL.follow(" + follow.token + ")", FOLLOW_MS, false);
+        } catch (eBook) { /* the next refresh says it */ }
+    }
+
+    /** Wait for the agent to step again, at most RESTART_WAIT_MS. Returns the first message. */
+    function startFollow(reloaded, since) {
+        cancelFollow();
+        var now = new Date().getTime();
+        followSeq++;
+        follow = { at: since, until: now + RESTART_WAIT_MS, reloaded: reloaded === true, token: followSeq, taskId: null };
+        bookFollow();
+        return followText(now);
+    }
+
+    /** At every refresh while a restart is followed: the bar, or how it ended. */
+    function followUpdate(now) {
+        if (follow === null) return;
+        var st = tickedSince(follow.at);
+        if (st !== null) {
+            var v = (typeof st.agentVersion === "number") ? st.agentVersion : 1;
+            var how = follow.reloaded ? "codice ricaricato" : "codice di prima";
+            cancelFollow();
+            say("Parlez! \u00e8 ripartito (agente v" + v + ", " + how + ").");
+            return;
+        }
+        if (now >= follow.until) {
+            cancelFollow();
+            say("Parlez! non \u00e8 ripartito: chiudi e riapri After Effects.");
+            return;
+        }
+        say(followText(now));
+    }
+
     function restartAgent() {
+        // The agent may step while its code loads: count from the click.
+        var clickAt = new Date().getTime();
+        cancelFollow();
         startTimer();
         var agent = null;
         try { agent = $.global.AE_MCP_AGENT || null; } catch (eAgent) { agent = null; }
@@ -834,13 +945,13 @@
             try { $.global.AE_MCP_AGENT_RELOAD = false; } catch (eFlag3) { /* nothing */ }
             var fresh = null;
             try { fresh = $.global.AE_MCP_AGENT || null; } catch (eFresh) { fresh = null; }
-            if (fresh !== null && fresh !== agent) return "Parlez! ricaricato: tra un attimo il riquadro torna colorato.";
+            if (fresh !== null && fresh !== agent) return startFollow(true, clickAt);
             if (fresh === null) return "Parlez! non \u00e8 ripartito: riavvia After Effects.";
         }
         if (agent !== null && typeof agent.revive === "function") {
             var ok = false;
             try { ok = agent.revive("pulsante Riavvia", true) === true; } catch (eRevive) { ok = false; }
-            if (ok) return "Riavvio in corso: tra un attimo il riquadro torna colorato.";
+            if (ok) return startFollow(false, clickAt);
             if (agent.state && agent.state.busy === true) return "Parlez! sta eseguendo una richiesta: aspetta che finisca.";
             return "After Effects non accetta il riavvio adesso: chiudi le finestre di dialogo aperte e riprova.";
         }
@@ -854,7 +965,15 @@
         var now = null;
         try { now = $.global.AE_MCP_AGENT || null; } catch (eNow) { now = null; }
         if (now === null) return "Parlez! non \u00e8 ripartito: riavvia After Effects.";
-        return (now === agent) ? "Parlez! risponde gi\u00e0: niente da riavviare." : "Parlez! caricato di nuovo: tra un attimo il riquadro torna colorato.";
+        if (now === agent) return "Parlez! risponde gi\u00e0: niente da riavviare.";
+        return startFollow(true, clickAt);
+    }
+
+    /** A click on a panel the timer had given up on: the panel is there after all. */
+    function reopen() {
+        if (!timer.closed) return;
+        timer.closed = false;
+        timer.failures = 0;
     }
 
     /**
@@ -863,6 +982,7 @@
      * information, so the click does nothing else, and says so.
      */
     function wokeByClick() {
+        reopen();
         var woke = false;
         try { woke = wake("clic nel pannello"); } catch (eWake) { woke = false; }
         if (!woke) return false;
@@ -884,6 +1004,7 @@
             try { ui.block.active = false; } catch (eFocus) { /* no focus to drop */ }
         };
         ui.restart.onClick = function () {
+            reopen();
             say(restartAgent());
             refresh();
             // A new message can change the height: keep the signature at the bottom.
@@ -975,7 +1096,7 @@
     // $.global, so a step booked by an earlier opening never matches this
     // one's. A refresh that throws means the controls are gone - a docked
     // panel that was closed - and stops the chain for good.
-    var timer = { gen: 0, taskId: null, lastStepAt: new Date().getTime(), closed: false };
+    var timer = { gen: 0, taskId: null, lastStepAt: new Date().getTime(), closed: false, failures: 0 };
 
     function nextGen() {
         var g = 1;
@@ -1032,6 +1153,45 @@
         timer.closed = true;
         timer.gen = 0;
         cancelOwn();
+        cancelFollow();
+    }
+
+    /**
+     * A refresh threw. Only "Object is invalid" means the panel was closed
+     * (ScriptUI's error for controls that are gone); anything else - a
+     * project still loading, say - used to stop the panel for good while the
+     * agent went on beating (2026-11-15: the block stayed grey). Then the
+     * timer goes on, and the panel says what is wrong; it gives up after
+     * MAX_REFRESH_FAILURES in a row. True when the timer stopped.
+     */
+    function refreshFailed(e) {
+        var msg = "";
+        try { msg = (e && e.message) ? String(e.message) : ""; } catch (eMsg) { msg = ""; }
+        try { $.global.AE_MCP_PANEL_LAST_ERROR = msg; } catch (eKeep) { /* diagnostics only */ }
+        timer.failures++;
+        if (msg.toLowerCase().indexOf("invalid") >= 0 || timer.failures >= MAX_REFRESH_FAILURES) {
+            stopTimer();
+            return true;
+        }
+        try {
+            ui.shown = {};
+            say("Il pannello non riesce ad aggiornarsi (" + shorten(msg, 60) + "): se resta cos\u00ec, chiudi e riapri il pannello Parlez!.");
+        } catch (eSay) { /* the next refresh tries again */ }
+        return false;
+    }
+
+    /** One refresh from a timer or a pulse. False when the panel is closed. */
+    function safeRefresh() {
+        try {
+            if (isShown()) {
+                ensureSize();
+                refresh();
+            }
+            timer.failures = 0;
+            return true;
+        } catch (eRefresh) {
+            return !refreshFailed(eRefresh);
+        }
     }
 
     /** The agent's own watch: true when it had stopped and was started again. */
@@ -1063,15 +1223,7 @@
         timer.taskId = null;
         // Shown or hidden: the watchdog works from a background tab too.
         if (!late) watchAgent("pannello");
-        try {
-            if (isShown()) {
-                ensureSize();
-                refresh();
-            }
-        } catch (eRefresh) {
-            stopTimer();
-            return;
-        }
+        if (!safeRefresh()) return;
         if (gen === timer.gen && !timer.closed) book();
     }
 
@@ -1096,28 +1248,21 @@
             timer.gen = nextGen();
             if (timer.closed || now - timer.lastStepAt < REFRESH_MS) return;
             timer.lastStepAt = now;
-            try {
-                if (isShown()) {
-                    ensureSize();
-                    refresh();
-                    settleOnce();
-                }
-            } catch (eRefresh) {
-                stopTimer();
-            }
+            if (safeRefresh() && isShown()) settleOnce();
+        },
+        /** One check of a followed restart (startFollow); an older token ends here. */
+        follow: function (token) {
+            if (follow === null || follow.token !== token || timer.closed) return;
+            follow.taskId = null;
+            if (!safeRefresh()) return;
+            if (follow !== null && follow.token === token) bookFollow();
         },
         /** Called by the agent about once a second: re-book this timer if it was lost. */
         watch: function () {
             return timerLost(new Date().getTime()) ? startTimer() : false;
         },
         refresh: function () {
-            try {
-                if (!isShown()) return;
-                ensureSize();
-                refresh();
-            } catch (eRefresh) {
-                stopTimer();
-            }
+            safeRefresh();
         },
         // Once, shortly after opening: by then After Effects has placed the
         // panel (docked or floating) and its real size is known.

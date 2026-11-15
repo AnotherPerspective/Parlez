@@ -19,6 +19,7 @@ import {
   BUSY_LOCK_PATH,
   HEARTBEAT_FILENAME,
   HEARTBEAT_STALE_MS,
+  PANEL_NOTE_FILENAME,
   PHANTOM_LAUNCH_MS,
   REQUEST_PREFIX,
   RESPONSE_PREFIX,
@@ -80,6 +81,8 @@ class FakeAgent {
   beat: Record<string, unknown> = {};
   /** Answer every request the way serve.jsx does while a panel switch refuses it. */
   refuse: null | "paused" | "readOnly" = null;
+  /** Answer every request as if the generated code threw this. */
+  throwWith: string | null = null;
 
   constructor(private readonly serve: ((request: Record<string, unknown>) => unknown) | null) {}
 
@@ -143,26 +146,36 @@ class FakeAgent {
       }
       this.busy = true;
       await this.heartbeat();
-      const response = this.refuse
+      const response = this.throwWith
         ? {
             id,
             ok: false,
-            phase: "dispatch",
-            [this.refuse]: true,
+            phase: "execute",
             result: null,
-            error: this.refuse,
+            error: this.throwWith,
             stack: null,
             logs: [],
           }
-        : {
-            id,
-            ok: true,
-            phase: "execute",
-            result: this.serve(request),
-            error: null,
-            stack: null,
-            logs: ["served by " + this.id],
-          };
+        : this.refuse
+          ? {
+              id,
+              ok: false,
+              phase: "dispatch",
+              [this.refuse]: true,
+              result: null,
+              error: this.refuse,
+              stack: null,
+              logs: [],
+            }
+          : {
+              id,
+              ok: true,
+              phase: "execute",
+              result: this.serve(request),
+              error: null,
+              stack: null,
+              logs: ["served by " + this.id],
+            };
       if (!this.refuse) this.served.push(request);
       const tmp = path.join(this.dir, `.${RESPONSE_PREFIX}${id}.json.tmp`);
       await fs.writeFile(tmp, JSON.stringify(response), "utf8");
@@ -408,6 +421,51 @@ describe("pull path", () => {
     expect(pull.mode).toBe("pull");
     const push = await new FileIpcTransport({ instance: null }).describeTarget();
     expect(push).toEqual({ mode: "push" });
+  });
+});
+
+describe("pull path: an agent with code from before an update (2026-11-15)", () => {
+  let agent: FakeAgent;
+
+  afterEach(async () => {
+    await agent?.stop();
+  });
+
+  async function callOnce(): Promise<string> {
+    agent.throwWith = "Function AE.timeIn is undefined";
+    const transport = new FileIpcTransport({
+      instance: agent.id,
+      spawn: recordingSpawn(() => {}).spawn,
+    });
+    const res = await transport.execute({
+      code: "return 1;",
+      label: "old_agent",
+      timeoutMs: 5_000,
+    });
+    expect(res.ok).toBe(false);
+    expect(res.errorCode).toBe("JSX_THROW");
+    return res.error ?? "";
+  }
+
+  it("with a panel that cannot reload the code: «chiudi e riapri After Effects»", async () => {
+    agent = new FakeAgent(() => null);
+    await agent.start();
+    const error = await callOnce();
+    expect(error).toContain("chiudi e riapri After Effects");
+    expect(error).not.toContain("premi Riavvia");
+    expect(error).toContain("Dettaglio tecnico: Function AE.timeIn is undefined");
+  });
+
+  it("with a panel that says its Riavvia reloads it: «premi Riavvia»", async () => {
+    agent = new FakeAgent(() => null);
+    await agent.start();
+    await fs.writeFile(
+      path.join(agent.dir, PANEL_NOTE_FILENAME),
+      '{"reloads":true,"ts":1}',
+      "utf8",
+    );
+    const error = await callOnce();
+    expect(error).toContain("premi Riavvia nel pannello Parlez!");
   });
 });
 

@@ -116,17 +116,32 @@ export function errorEnvelope(
  * that the running agent does not have: it was loaded before a Parlez!
  * update, while the server is the new one (2026-11-15: "Function AE.timeIn
  * is undefined" with After Effects left open across the update). Says, in
- * plain Italian, what to do; null for any other error.
+ * plain Italian, what to do; null for any other error, and for a message
+ * already rewritten. `panelReloads`: the panel loaded in After Effects can
+ * reload the code with Riavvia (unknown counts as no).
  */
-export function outdatedAgentMessage(message: string): string | null {
+export function outdatedAgentMessage(message: string, panelReloads = false): string | null {
+  if (message.includes(OUTDATED_MARK)) return null;
   const m = /\b(AE|PR)\.([A-Za-z_]\w*) is (?:undefined|not a function)/.exec(message);
   if (!m) return null;
-  return m[1] === "PR"
-    ? "Premiere usa ancora la versione vecchia di Parlez!: chiudi e riapri il pannello Parlez! in Premiere " +
-        `(oppure riapri Premiere). Dettaglio tecnico: ${message}`
-    : "After Effects usa ancora la versione vecchia di Parlez!: premi Riavvia nel pannello Parlez! " +
-        `(oppure riapri After Effects). Dettaglio tecnico: ${message}`;
+  if (m[1] === "PR") {
+    return (
+      `Premiere ${OUTDATED_MARK}: chiudi e riapri il pannello Parlez! in Premiere ` +
+      `(oppure riapri Premiere). Dettaglio tecnico: ${message}`
+    );
+  }
+  // Riavvia loads the code again only in a panel of 0.2 or later, which says
+  // so in the instance directory (PANEL_NOTE_FILENAME); with an older panel
+  // the button cannot help (2026-11-15), so the advice that always works.
+  return panelReloads
+    ? `After Effects ${OUTDATED_MARK}: premi Riavvia nel pannello Parlez! ` +
+        `(oppure chiudi e riapri After Effects). Dettaglio tecnico: ${message}`
+    : `After Effects ${OUTDATED_MARK}: chiudi e riapri After Effects ` +
+        `(il pannello Parlez! aperto ora è di una versione che non sa ricaricarla). ` +
+        `Dettaglio tecnico: ${message}`;
 }
+
+const OUTDATED_MARK = "usa ancora la versione vecchia di Parlez!";
 
 export function errorResult(
   code: AeErrorCode,

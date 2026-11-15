@@ -171,12 +171,22 @@ describe("ae_do failure propagation", () => {
 describe("an agent loaded before a Parlez! update (2026-11-15)", () => {
   it("turns 'Function AE.timeIn is undefined' into what to do, keeping the detail", async () => {
     const { errorResult, outdatedAgentMessage } = await import("../src/errors.js");
+    // Not knowing the panel: the advice that always works.
     const res = errorResult("JSX_THROW", "Function AE.timeIn is undefined");
     const text = res.content[0]!.type === "text" ? res.content[0]!.text : "";
     expect(text).toContain(
-      "After Effects usa ancora la versione vecchia di Parlez!: premi Riavvia",
+      "After Effects usa ancora la versione vecchia di Parlez!: chiudi e riapri After Effects",
     );
+    expect(text).not.toContain("premi Riavvia");
     expect(text).toContain("Dettaglio tecnico: Function AE.timeIn is undefined");
+    // A panel whose Riavvia reloads the code: press it.
+    const withPanel = outdatedAgentMessage("Function AE.timeIn is undefined", true)!;
+    expect(withPanel).toContain("premi Riavvia nel pannello Parlez!");
+    // Rewritten once only (the transport, then errorResult).
+    const twice = errorResult("JSX_THROW", withPanel);
+    const twiceText = twice.content[0]!.type === "text" ? twice.content[0]!.text : "";
+    expect(twiceText.match(/versione vecchia/g)).toHaveLength(1);
+    expect(twiceText).toContain("premi Riavvia");
     expect(outdatedAgentMessage("PR.timeIn is not a function")).toContain(
       "Premiere usa ancora la versione vecchia",
     );

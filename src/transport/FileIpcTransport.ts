@@ -1,5 +1,5 @@
 import { spawn as nodeSpawn } from "node:child_process";
-import { mkdirSync, promises as fs, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, promises as fs, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import * as path from "node:path";
 import type { Readable } from "node:stream";
@@ -11,6 +11,7 @@ import {
   DEFAULT_TIMEOUT_MS,
   LIVENESS_CHECK_MS,
   MAX_LAUNCH_ATTEMPTS,
+  PANEL_NOTE_FILENAME,
   PULL_ONLY_ENV,
   PHANTOM_LAUNCH_MS,
   POLL_INTERVAL_MS,
@@ -31,7 +32,7 @@ import {
   responsePathFor,
   runtimeDirWarnings,
 } from "../config.js";
-import type { AeErrorCode } from "../errors.js";
+import { type AeErrorCode, outdatedAgentMessage } from "../errors.js";
 import { describeRequest } from "../request-titles.js";
 import type { AeTransport, EvalRequest, EvalResult } from "./AeTransport.js";
 import { type AeDialog, dialogBlockMessage, dialogHint, scanAeDialogs } from "./dialogs.js";
@@ -409,7 +410,7 @@ export class FileIpcTransport implements AeTransport {
       const parsed = await this.tryReadResponse(responsePath);
       if (parsed) {
         await this.safeUnlink(responsePath);
-        return this.toEvalResult(parsed, Date.now() - started);
+        return this.toEvalResult(parsed, Date.now() - started, dir);
       }
       const now = Date.now();
       if (!requestConsumed && now - lastLivenessAt >= LIVENESS_CHECK_MS) {
@@ -832,7 +833,11 @@ export class FileIpcTransport implements AeTransport {
     );
   }
 
-  private toEvalResult(parsed: DispatcherResponse, durationMs: number): EvalResult {
+  private toEvalResult(
+    parsed: DispatcherResponse,
+    durationMs: number,
+    instanceDir?: string,
+  ): EvalResult {
     // The switch went off between our heartbeat check and the agent's tick
     // (or this came in on the push path, which has no heartbeat to check).
     if (!parsed.ok && parsed.paused === true) return pausedFailure(durationMs);
@@ -849,10 +854,16 @@ export class FileIpcTransport implements AeTransport {
       };
     }
     const dispatchFailure = parsed.phase === "dispatch";
+    // An agent with code from before an update: the advice depends on the
+    // panel loaded in that After Effects (errors.ts outdatedAgentMessage).
+    const outdated =
+      !dispatchFailure && instanceDir !== undefined && typeof parsed.error === "string"
+        ? outdatedAgentMessage(parsed.error, panelReloads(instanceDir))
+        : null;
     return {
       ok: false,
       result: null,
-      error: dispatchFailure ? `dispatcher error: ${parsed.error}` : parsed.error,
+      error: dispatchFailure ? `dispatcher error: ${parsed.error}` : (outdated ?? parsed.error),
       errorCode: dispatchFailure ? "DISPATCHER" : "JSX_THROW",
       line: typeof parsed.line === "number" ? parsed.line : null,
       stack: parsed.stack,
@@ -1005,4 +1016,20 @@ export function serializeRequest(request: unknown): string {
   return JSON.stringify(request)
     .replace(/\u2028/g, "\\u2028")
     .replace(/\u2029/g, "\\u2029");
+}
+
+/**
+ * The panel loaded in this After Effects can reload the agent's code with
+ * Riavvia: it left its note in the instance directory (jsx/panel.jsx
+ * notePanel). Unreadable or absent counts as no.
+ */
+export function panelReloads(instanceDir: string): boolean {
+  try {
+    const note = JSON.parse(readFileSync(path.join(instanceDir, PANEL_NOTE_FILENAME), "utf8")) as {
+      reloads?: unknown;
+    };
+    return note.reloads === true;
+  } catch {
+    return false;
+  }
 }
