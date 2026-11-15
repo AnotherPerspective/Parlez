@@ -65,6 +65,8 @@ Options for setup and doctor:
                             to accept the notices)
   --accept                  setup: accept the notices without being asked, for installs run from
                             a script; recorded like a typed answer
+  --only after|premiere     only After Effects (agent, sveglia, panel) or only the Premiere Pro
+                            panel; default: both (provisional name)
 
 Options for install-/uninstall-/…-status of the agent and the panel:
   --version <major.minor>   only that After Effects version folder (e.g. 26.3); default: all present
@@ -86,6 +88,8 @@ interface ParsedArgs {
   all?: boolean;
   /** Only set when given, like `all`. */
   accept?: boolean;
+  /** Only set when given, like `all`. */
+  only?: "after" | "premiere";
   dryRun: boolean;
   unknown: string[];
 }
@@ -102,7 +106,9 @@ export function parseCliArgs(argv: string[]): ParsedArgs {
       parsed.lang = rest[++i] as "it" | "en";
     } else if (arg === "--all") parsed.all = true;
     else if (arg === "--accept") parsed.accept = true;
-    else parsed.unknown.push(arg);
+    else if (arg === "--only" && (rest[i + 1] === "after" || rest[i + 1] === "premiere")) {
+      parsed.only = rest[++i] as "after" | "premiere";
+    } else parsed.unknown.push(arg);
   }
   return parsed;
 }
@@ -129,13 +135,21 @@ export async function runCli(
 
       case "setup":
         return await runSetup(
-          { version: args.version, all: args.all, dryRun: args.dryRun, accept: args.accept },
+          {
+            version: args.version,
+            all: args.all,
+            dryRun: args.dryRun,
+            accept: args.accept,
+            only: args.only,
+          },
           out,
           { lang: detectLang(args.lang) },
         );
 
       case "doctor":
-        return await runDoctor({ version: args.version }, out, { lang: detectLang(args.lang) });
+        return await runDoctor({ version: args.version, only: args.only }, out, {
+          lang: detectLang(args.lang),
+        });
 
       case "install-agent": {
         const report = await installAgent(opts);

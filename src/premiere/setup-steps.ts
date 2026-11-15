@@ -110,6 +110,11 @@ async function supportedPremiere(
   return found.find((p) => p.supported) ?? null;
 }
 
+/** A supported Premiere Pro is installed (for `setup --only premiere`). */
+export async function premiereInstalled(machine: PremiereSetupMachine): Promise<boolean> {
+  return (await findPremiere(machine)).some((p) => p.supported);
+}
+
 /**
  * The setup step. Returns whether anything was (or would be) written; prints
  * nothing when no Premiere Pro is installed.
