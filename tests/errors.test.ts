@@ -167,3 +167,19 @@ describe("ae_do failure propagation", () => {
     expect(structured(res).ok).toBe(true);
   });
 });
+
+describe("an agent loaded before a Parlez! update (2026-11-15)", () => {
+  it("turns 'Function AE.timeIn is undefined' into what to do, keeping the detail", async () => {
+    const { errorResult, outdatedAgentMessage } = await import("../src/errors.js");
+    const res = errorResult("JSX_THROW", "Function AE.timeIn is undefined");
+    const text = res.content[0]!.type === "text" ? res.content[0]!.text : "";
+    expect(text).toContain(
+      "After Effects usa ancora la versione vecchia di Parlez!: premi Riavvia",
+    );
+    expect(text).toContain("Dettaglio tecnico: Function AE.timeIn is undefined");
+    expect(outdatedAgentMessage("PR.timeIn is not a function")).toContain(
+      "Premiere usa ancora la versione vecchia",
+    );
+    expect(outdatedAgentMessage("layer not found")).toBeNull();
+  });
+});

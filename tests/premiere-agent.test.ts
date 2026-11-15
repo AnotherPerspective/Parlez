@@ -300,11 +300,27 @@ describe("pr_* tools against the fake project", () => {
         comment: "attacco",
         start: 0,
         end: 0,
+        startTC: "00:00:00:00",
+        startFrame: 0,
+        endTC: "00:00:00:00",
+        endFrame: 0,
         type: "Comment",
         guid: "m1",
         colorIndex: 1,
       },
-      { name: "Titolo", comment: "", start: 2, end: 3, type: "Comment", guid: "m2", colorIndex: 4 },
+      {
+        name: "Titolo",
+        comment: "",
+        start: 2,
+        end: 3,
+        startTC: "00:00:02:00",
+        startFrame: 50,
+        endTC: "00:00:03:00",
+        endFrame: 75,
+        type: "Comment",
+        guid: "m2",
+        colorIndex: 4,
+      },
     ]);
   });
 

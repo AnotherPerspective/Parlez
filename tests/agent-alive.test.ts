@@ -413,3 +413,27 @@ describe("driven by the sveglia (cep/sveglia): nothing booked inside After Effec
     expect(pulsed).toBe(1);
   });
 });
+
+describe("Riavvia loads the code again (an agent from before a Parlez! update)", () => {
+  it("with AE_MCP_AGENT_RELOAD a live agent is replaced by the new code, same id, list and counters", () => {
+    const old = loadAgent();
+    engine.runPending(isStep);
+    old.state.served = 5;
+    engine.global.AE_MCP_AGENT_RELOAD = true;
+    const fresh = loadAgent();
+    expect(fresh).not.toBe(old);
+    expect(fresh.state.id).toBe(old.state.id);
+    expect(fresh.state.served).toBe(5);
+    expect(old.state.stopped).toBe(true);
+    expect(engine.global.AE_MCP_AGENT_RELOAD).toBe(false);
+    engine.runPending(isStep);
+    expect((heartbeat(fresh).lastRestart as { source: string }).source).toBe(
+      "pulsante Riavvia (codice ricaricato)",
+    );
+  });
+
+  it("without the flag, a live agent is left alone (one agent per process)", () => {
+    const old = loadAgent();
+    expect(loadAgent()).toBe(old);
+  });
+});

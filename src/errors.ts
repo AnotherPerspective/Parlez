@@ -111,11 +111,29 @@ export function errorEnvelope(
 }
 
 /** Build a complete MCP ToolResult for a failure. */
+/**
+ * A function of Parlez!'s own code (AE.* in After Effects, PR.* in Premiere)
+ * that the running agent does not have: it was loaded before a Parlez!
+ * update, while the server is the new one (2026-11-15: "Function AE.timeIn
+ * is undefined" with After Effects left open across the update). Says, in
+ * plain Italian, what to do; null for any other error.
+ */
+export function outdatedAgentMessage(message: string): string | null {
+  const m = /\b(AE|PR)\.([A-Za-z_]\w*) is (?:undefined|not a function)/.exec(message);
+  if (!m) return null;
+  return m[1] === "PR"
+    ? "Premiere usa ancora la versione vecchia di Parlez!: chiudi e riapri il pannello Parlez! in Premiere " +
+        `(oppure riapri Premiere). Dettaglio tecnico: ${message}`
+    : "After Effects usa ancora la versione vecchia di Parlez!: premi Riavvia nel pannello Parlez! " +
+        `(oppure riapri After Effects). Dettaglio tecnico: ${message}`;
+}
+
 export function errorResult(
   code: AeErrorCode,
   message: string,
   extra: AeErrorExtra = {},
 ): ToolResult {
+  message = outdatedAgentMessage(message) ?? message;
   const envelope = errorEnvelope(code, message, extra);
   const lines = [`[${code}] ${message}`];
   if (envelope.error.hint) lines.push(`hint: ${envelope.error.hint}`);

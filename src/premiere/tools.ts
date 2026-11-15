@@ -201,6 +201,10 @@ export const prSequenceInfoTool = defineTool({
         }
         if (${jsxVal(args.markers !== false)}) {
             var m = PR.markers(PR.safe(function () { return seq.markers; }, null), 1000);
+            // Timecode and frame next to the seconds, as pr_markers answers.
+            for (var mi = 0; mi < m.markers.length; mi++) {
+                PR.withTimecode(seq, m.markers[mi], { start: "position", end: "position" });
+            }
             out.markers = m.markers;
             out.markersTruncated = m.truncated;
         }

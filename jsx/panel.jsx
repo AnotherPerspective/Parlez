@@ -818,6 +818,25 @@
         startTimer();
         var agent = null;
         try { agent = $.global.AE_MCP_AGENT || null; } catch (eAgent) { agent = null; }
+        if (agent !== null && agent.state && agent.state.busy === true) return "Parlez! sta eseguendo una richiesta: aspetta che finisca.";
+        // The code loaded again from the startup script, so an agent from
+        // before a Parlez! update takes the new functions (agent.jsx
+        // previousAgent: AE_MCP_AGENT_RELOAD keeps its id, list and counters).
+        var reloadStub = stubFile();
+        if (reloadStub !== null) {
+            try { $.global.AE_MCP_AGENT_RELOAD = true; } catch (eFlag) { /* plain restart below */ }
+            try {
+                $.evalFile(reloadStub);
+            } catch (eReload) {
+                try { $.global.AE_MCP_AGENT_RELOAD = false; } catch (eFlag2) { /* nothing */ }
+                return "Lo script di avvio non si \u00e8 caricato: riavvia After Effects.";
+            }
+            try { $.global.AE_MCP_AGENT_RELOAD = false; } catch (eFlag3) { /* nothing */ }
+            var fresh = null;
+            try { fresh = $.global.AE_MCP_AGENT || null; } catch (eFresh) { fresh = null; }
+            if (fresh !== null && fresh !== agent) return "Parlez! ricaricato: tra un attimo il riquadro torna colorato.";
+            if (fresh === null) return "Parlez! non \u00e8 ripartito: riavvia After Effects.";
+        }
         if (agent !== null && typeof agent.revive === "function") {
             var ok = false;
             try { ok = agent.revive("pulsante Riavvia", true) === true; } catch (eRevive) { ok = false; }

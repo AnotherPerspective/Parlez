@@ -14,7 +14,7 @@ Il salto da 0.1 a 0.2 è voluto: questa versione cambia il modo in cui Parlez! r
   - **la sveglia** (nome provvisorio): una piccola estensione CEP invisibile, senza finestre, dà il ritmo all'agente da fuori, quattro volte al secondo, e solo quando la finestra di After Effects è libera da finestre modali. Dentro After Effects non resta prenotato nessun timer, quindi nessuno può scadere sotto una finestra modale. `parlez setup` la installa nella cartella CEP dell'utente; serve la stessa impostazione di CEP (`PlayerDebugMode`) del pannello di Premiere;
   - senza la sveglia (per esempio sul Mac, non ancora provato) l'agente usa la sua catena di passi, con agente e pannello che si fanno da guardia a vicenda; se After Effects li ferma tutti e due, il primo clic nel pannello li fa ripartire;
   - ogni ripartenza dopo un silenzio lungo compare tra le ultime richieste del pannello e nello storico, con la causa probabile («dopo apertura progetto», «dopo una finestra di dialogo»);
-  - bottone **Riavvia** nel pannello, sempre visibile, come ultima risorsa.
+  - bottone **Riavvia** nel pannello, sempre visibile, come ultima risorsa: ricarica anche il codice di Parlez!, quindi dopo un aggiornamento fatto con After Effects aperto basta un clic. Se il server nuovo trova un After Effects (o un Premiere) con il codice vecchio, lo dice in italiano e spiega cosa fare, invece di dare un errore tecnico.
 - **Premiere Pro**: se una risposta di Premiere al pannello va persa, il giro del pannello riparte da solo invece di fermarsi; se lo script di Parlez! sparisce da Premiere, il pannello lo ricarica da solo.
 
 ### Cambiato

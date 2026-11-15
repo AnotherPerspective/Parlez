@@ -299,18 +299,29 @@
      */
     function previousAgent() {
         var old = $.global.AE_MCP_AGENT;
+        // The panel's Riavvia asks for the code to be loaded again (helpers
+        // included): an agent loaded before a Parlez! update keeps its old
+        // functions in memory until then (2026-11-15: "Function AE.timeIn
+        // is undefined" after an update with After Effects open).
+        var reload = false;
+        try {
+            reload = $.global.AE_MCP_AGENT_RELOAD === true;
+            $.global.AE_MCP_AGENT_RELOAD = false;
+        } catch (eFlag) { reload = false; }
         if (!old) return { takeOver: false, state: null };
         try {
-            if (typeof old.watch === "function") {
+            if (!reload && typeof old.watch === "function") {
                 old.watch("nuovo caricamento dello script di avvio");
                 return null;
             }
             var st = old.state;
             if (!st || st.busy === true) return null;
-            var last = (typeof st.lastHeartbeatAt === "number") ? st.lastHeartbeatAt : 0;
-            if (new Date().getTime() - last < TAKEOVER_STALE_MS) return null;
+            if (!reload) {
+                var last = (typeof st.lastHeartbeatAt === "number") ? st.lastHeartbeatAt : 0;
+                if (new Date().getTime() - last < TAKEOVER_STALE_MS) return null;
+            }
             try { if (typeof old.stop === "function") old.stop(); } catch (eStop) { /* its task is gone already */ }
-            return { takeOver: true, state: st };
+            return { takeOver: true, state: st, reload: reload };
         } catch (eOld) {
             return null;
         }
@@ -377,7 +388,7 @@
             if (typeof old.lastRequestAt === "number") state.lastRequestAt = old.lastRequestAt;
             var lastHb = (typeof old.lastHeartbeatAt === "number") ? old.lastHeartbeatAt : 0;
             state.pendingRestart = {
-                source: "nuovo caricamento dello script di avvio",
+                source: previous.reload ? "pulsante Riavvia (codice ricaricato)" : "nuovo caricamento dello script di avvio",
                 since: lastHb,
                 project: (typeof old.lastProject === "string") ? old.lastProject : null
             };

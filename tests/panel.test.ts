@@ -1335,7 +1335,7 @@ describe("«Riavvia», the last resort", () => {
     expect(panel.says()).toContain("non collegato");
     restartButton(panel).onClick!();
     expect((engine.global.AE_MCP_AGENT as Agent).state.id).toBe("dallo-stub");
-    expect(panel.says()).toContain("Parlez! caricato di nuovo");
+    expect(panel.says()).toContain("Parlez! ricaricato");
   });
 
   it("without the startup script, says to reinstall", () => {
