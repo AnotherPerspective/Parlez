@@ -20,6 +20,7 @@ Il salto da 0.1 a 0.2 è voluto: questa versione cambia il modo in cui Parlez! r
 ### Cambiato
 
 - **Pannello di Premiere Pro come quello di After Effects**: bottoni larghi quanto il riquadro ON/OFF («Annulla» sopra, poi due righe da due), con in più **Ripristino** (salva il progetto e ne fa una copia in `_parlez-checkpoints`), **Elenco** (la cartella dei punti di ripristino) e **Storico** (lo storico delle richieste, ora scritto anche per Premiere in `%APPDATA%\Parlez\storico`); firma piccola come in After Effects.
+- **Test**: i test che parlano con un After Effects vero partono solo con `AE_MCP_E2E=1`, anche quelli di sola lettura; prima `npm test` li mandava all'After Effects aperto, anche mentre qualcuno ci lavorava.
 - **Pannello di After Effects più stretto**: bottoni su tre righe da due, riquadro ON/OFF piccolo anche nella vista verticale; il pannello scende fino a circa 224 pixel di larghezza. Angoli del riquadro arrotondati come il contorno blu che After Effects disegna dopo un clic.
 
 ## [0.1.2] - 2026-11-13

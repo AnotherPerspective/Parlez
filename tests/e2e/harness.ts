@@ -77,6 +77,18 @@ async function isAfterFxRunning(): Promise<boolean> {
  * and prints a skip banner; never throws.
  */
 export async function probeAe(suite: string): Promise<AeProbeResult> {
+  // Opt-in, always (Parlez!, 2026-11-15): a running After Effects is not a
+  // yes. A plain `npm test` sent these probes into the After Effects the
+  // user was working in, and an alert came up.
+  if (process.env.AE_MCP_E2E !== "1") {
+    const reason = "AE_MCP_E2E is not 1";
+    printSkipBanner(suite, "SKIPPING — AE_MCP_E2E not set", [
+      " These suites talk to the After Effects running on this computer.",
+      " Run them only with nobody working in it:",
+      "   PowerShell : $env:AE_MCP_E2E = '1'; npm test",
+    ]);
+    return { ready: false, reason };
+  }
   if (!(await isAfterFxRunning())) {
     const reason =
       "no running After Effects process (probing would boot AE, so we refuse to probe blind)";
