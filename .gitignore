@@ -29,3 +29,6 @@ archivio-privato/
 prove/
 *.aep
 !tests/fixtures/**
+
+# Installatore Windows: cartella di costruzione
+installer/build/

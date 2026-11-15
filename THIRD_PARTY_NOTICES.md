@@ -101,3 +101,21 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+---
+
+## 4. Node.js (only in the Windows installer / solo nell'installatore per Windows)
+
+- Website: https://nodejs.org
+- What the Windows installer (`Parlez-X.Y.Z-setup.exe`) contains: an unmodified `node.exe` from the official Node.js zip for Windows x64, so that users do not have to install Node.js. The npm package and the zip do not contain it.
+- Cosa contiene l'installatore per Windows: un `node.exe` non modificato, dallo zip ufficiale di Node.js per Windows x64, così l'utente non deve installare Node.js. Il pacchetto npm e lo zip non lo contengono.
+
+Node.js is released under the MIT License ("Copyright Node.js contributors. All rights reserved."). It includes third-party components under their own licenses (among them OpenSSL under the Apache License 2.0, ICU, libuv, V8). Their full texts are in Node.js's `LICENSE` file, which the installer puts next to `node.exe` (`node\LICENSE` in the Parlez! folder).
+
+Node.js è distribuito con licenza MIT. Contiene componenti di terzi con le loro licenze (tra cui OpenSSL con licenza Apache 2.0, ICU, libuv, V8): i testi completi sono nel file `LICENSE` di Node.js, che l'installatore mette accanto a `node.exe` (`node\LICENSE` nella cartella di Parlez!).
+
+## 5. Inno Setup (only the Windows installer / solo l'installatore per Windows)
+
+- Website: https://jrsoftware.org/isinfo.php
+- The Windows installer is built with Inno Setup (Copyright (C) 1997-2026 Jordan Russell, Portions Copyright (C) 2000-2026 Martijn Laan), whose license allows distributing the installers it builds, also commercially. No Inno Setup source code is in this repository: only the installer script `installer/parlez.iss`.
+- L'installatore per Windows è costruito con Inno Setup, la cui licenza permette di distribuire gli installatori che produce. Nel repository c'è solo lo script `installer/parlez.iss`, nessun codice di Inno Setup.

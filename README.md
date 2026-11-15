@@ -1,24 +1,26 @@
 <a id="english"></a>
 
-# Parlez! for Adobe® After Effects®
+# Parlez! for Adobe® After Effects® and Adobe® Premiere Pro®
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D24-informational)](package.json)
 
 **English** · [Italiano](#italiano)
 
-Parlez! lets **Claude work inside After Effects**. Tell Claude what you want in plain words ("animate this title with a soft bounce", "check this comp for problems") and Claude does it in the open project while you watch.
+Parlez! lets **Claude work inside After Effects and Premiere Pro**. Tell Claude what you want in plain words ("animate this title with a soft bounce", "check this comp for problems", "put these clips on the timeline") and Claude does it in the open project while you watch.
 
 Free and open source (MIT). It grows out of [mcp-aftereffects](https://github.com/kumoproductions/mcp-aftereffects) by kumo.productions (see [Credits](#credits)).
 
 > [!IMPORTANT]
-> **Testing status.** Parlez! is **tested on After Effects 2026 (26.5) / Windows 10**. macOS, After Effects 2024 and After Effects 2025 are **written to work but not tested yet**. Background rendering (aerender) has not yet succeeded from the program. This is a preview (0.1): try it on a copy of a project first, not on real work.
+> **Testing status.** Parlez! is **tested only on Windows 10, with After Effects 2026 (26.5) and Premiere Pro 2026 (26.3)**. macOS, After Effects 2024 and 2025, Premiere Pro 2024 and 2025 are **written to work but not tested yet**. Background rendering (aerender) has not yet succeeded from the program. This is a preview (0.2): try it on a copy of a project first, not on real work.
 >
 > Before using it, read the **[notices](AVVERTENZE.md#english)**: Parlez! is free and experimental, provided as is, and you use it at your own risk.
 
 ## Download
 
-**[⬇ Download Parlez! beta (zip file)](https://github.com/AnotherPerspective/Parlez/releases/latest/download/Parlez-beta.zip)** — always the latest beta. Every version is on the [Releases](https://github.com/AnotherPerspective/Parlez/releases) page.
+**Windows — [⬇ Download the installer (Parlez-setup.exe)](https://github.com/AnotherPerspective/Parlez/releases/latest/download/Parlez-setup.exe)**, the easiest way: no Node.js to install, no terminal. It lets you choose After Effects, Premiere Pro or both, shows the [notices](AVVERTENZE.md#english) to accept, and at the end shows how to connect Claude. The installer is **not signed**: Windows may say "Windows protected your PC"; click **More info**, then **Run anyway**. To uninstall: Settings → Apps → Parlez! → Uninstall.
+
+**Mac, or Windows by hand — [⬇ Download Parlez! beta (zip file)](https://github.com/AnotherPerspective/Parlez/releases/latest/download/Parlez-beta.zip)**. Both are always the latest beta. Every version is on the [Releases](https://github.com/AnotherPerspective/Parlez/releases) page, with the SHA-256 fingerprints of every file.
 
 The zip holds the package `parlez-0.2.0.tgz`, the two step-by-step guides ([Windows](CHECKLIST-WINDOWS.md) and [Mac](CHECKLIST-MAC.md), in Italian) and a `LEGGIMI.txt` file.
 
@@ -33,8 +35,8 @@ da27828c867a1b6cef3b62ec756a877cd39c8d9044b136c5f316caf59b1c52d1
 
 ## Requirements
 
-- **After Effects 2024, 2025 or 2026**, on Windows or macOS
-- **Node.js 24 or newer** ([nodejs.org](https://nodejs.org), LTS) — check with `node --version`
+- **After Effects 2024, 2025 or 2026** and/or **Premiere Pro 2024, 2025 or 2026**, on Windows or macOS
+- **Node.js 24 or newer** ([nodejs.org](https://nodejs.org), LTS) — check with `node --version`. Not needed with the Windows installer, which brings its own.
 - **Claude Code or Claude Desktop**
 
 ## Setup in three commands
@@ -62,11 +64,19 @@ The sveglia (since 0.2) reads the agent's heartbeat file, runs one PowerShell li
 
 **Window → Parlez!**: a big switch. **OFF (red)**: Claude is stopped and every request is refused — the panel starts OFF. **ON green**: waiting; **yellow**: working; **grey**: the startup script is not answering (usually a dialog is open). **Read only**: Claude can look but not change. Below: the latest requests with their outcome, a full history on file, and a one-click restore point.
 
+## Premiere Pro (since 0.2)
+
+`parlez setup` (or the installer) also puts the **Parlez! panel for Premiere Pro** in your user's CEP extensions folder. Restart Premiere and open **Window → Extensions (Legacy) → Parlez!**: like the After Effects panel it is the connection itself, with the ON/OFF switch and read only; with the panel closed or OFF, Claude is stopped. The panel is not signed, so it needs CEP's debug mode (`PlayerDebugMode`): the installer offers to turn it on, `parlez setup` tells you how.
+
+Claude can read projects and sequences, import files (also numbered image sequences as one clip, e.g. a PNG render from After Effects), place, trim, move and cut clips, add markers, transitions, titles, captions and audio levels, and export. Every time can be given as the sequence timecode `HH:MM:SS:FF`.
+
+**Undo in Premiere:** Premiere's Ctrl+Z does not undo changes made by scripts. Parlez! keeps its own undo: the **Annulla** button in the panel (or asking Claude) undoes the whole last request, and before every change a copy of the saved project goes to `_parlez-checkpoints` next to it.
+
 ## What it does and does not do
 
 It reads and edits projects, comps, layers, keyframes, effects, masks, text, shapes and expressions; shows frames right in the chat and checks the work (automatic audits, comparison against a reference, motion check); offers named easing curves, staggering, expression presets and "recipes" that build a graphic in one step.
 
-For safety: **no internet access, ever**; **confirmations** before anything is deleted, overwritten or renamed (some dangerous commands are refused outright); **restore points** of the `.aep`; **one Ctrl/Cmd+Z** undoes a whole request; **read-only and pause** from the panel; arbitrary ExtendScript is **off** by default.
+For safety: **no internet access, ever**; **confirmations** before anything is deleted, overwritten or renamed (some dangerous commands are refused outright); **restore points** of the `.aep`; **one Ctrl/Cmd+Z** undoes a whole request in After Effects (in Premiere Pro, the panel's **Annulla** button); **read-only and pause** from the panel; arbitrary ExtendScript is **off** by default.
 
 What Claude reads from the project (names, text, file paths, frames) goes to the Claude service you use. For NDA work or unreleased client material, check your Claude plan's data terms first. An optional **privacy mode** strips paths and hides the names you list: see [`docs/riservatezza.md`](docs/riservatezza.md) (Italian).
 
@@ -80,22 +90,24 @@ Developers: advanced options and architecture are in [`docs/TOOLS.md`](docs/TOOL
 
 <a id="italiano"></a>
 
-# Parlez! per Adobe® After Effects®
+# Parlez! per Adobe® After Effects® e Adobe® Premiere Pro®
 
 [English](#english) · **Italiano**
 
-Parlez! fa lavorare **Claude dentro After Effects**. Scrivi a Claude cosa vuoi, in parole normali («anima questo titolo con un rimbalzo morbido», «controlla se in questa composizione c'è qualcosa che non va»), e Claude lo fa nel progetto aperto, mentre tu guardi.
+Parlez! fa lavorare **Claude dentro After Effects e Premiere Pro**. Scrivi a Claude cosa vuoi, in parole normali («anima questo titolo con un rimbalzo morbido», «controlla se in questa composizione c'è qualcosa che non va», «metti queste clip in timeline»), e Claude lo fa nel progetto aperto, mentre tu guardi.
 
 È gratuito e open source (licenza MIT). Nasce da [mcp-aftereffects](https://github.com/kumoproductions/mcp-aftereffects) di kumo.productions (vedi [Crediti](#crediti)).
 
 > [!IMPORTANT]
-> **Stato delle prove.** Parlez! è **provato su After Effects 2026 (26.5) / Windows 10**. Il Mac, After Effects 2024 e After Effects 2025 sono **scritti per funzionare ma non ancora provati**. Il render in sottofondo (aerender) non è ancora riuscito dal programma. È una versione di prova (0.1): usala prima su una copia di un progetto, non sul lavoro vero.
+> **Stato delle prove.** Parlez! è **provato solo su Windows 10, con After Effects 2026 (26.5) e Premiere Pro 2026 (26.3)**. Il Mac, After Effects 2024 e 2025, Premiere Pro 2024 e 2025 sono **scritti per funzionare ma non ancora provati**. Il render in sottofondo (aerender) non è ancora riuscito dal programma. È una versione di prova (0.2): usala prima su una copia di un progetto, non sul lavoro vero.
 >
 > Prima di usarlo leggi le **[avvertenze](AVVERTENZE.md#italiano)**: Parlez! è gratuito e sperimentale, è fornito così com'è e lo usi a tuo rischio.
 
 ## Scarica
 
-**[⬇ Scarica Parlez! beta (file zip)](https://github.com/AnotherPerspective/Parlez/releases/latest/download/Parlez-beta.zip)**: è sempre l'ultima beta. Tutte le versioni sono nella pagina [Releases](https://github.com/AnotherPerspective/Parlez/releases).
+**Windows — [⬇ Scarica l'installatore (Parlez-setup.exe)](https://github.com/AnotherPerspective/Parlez/releases/latest/download/Parlez-setup.exe)**, la strada più semplice: niente Node.js da installare, niente terminale. Fa scegliere After Effects, Premiere Pro o tutti e due, mostra le [avvertenze](AVVERTENZE.md#italiano) da accettare e alla fine spiega come collegare Claude. L'installatore **non è firmato**: Windows può dire «Windows ha protetto il PC»; clicca **Ulteriori informazioni**, poi **Esegui comunque**. Per disinstallare: Impostazioni → App → Parlez! → Disinstalla.
+
+**Mac, oppure Windows a mano — [⬇ Scarica Parlez! beta (file zip)](https://github.com/AnotherPerspective/Parlez/releases/latest/download/Parlez-beta.zip)**. Tutti e due sono sempre l'ultima beta. Tutte le versioni sono nella pagina [Releases](https://github.com/AnotherPerspective/Parlez/releases), con le impronte SHA-256 di ogni file.
 
 Dentro lo zip trovi il pacchetto `parlez-0.2.0.tgz`, le due guide passo passo ([Windows](CHECKLIST-WINDOWS.md) e [Mac](CHECKLIST-MAC.md)) e un file `LEGGIMI.txt`.
 
@@ -112,11 +124,11 @@ Le due sequenze di lettere e numeri devono essere uguali.
 
 ## Cosa serve
 
-| Cosa                                  | Note                                                                                                                                                            |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **After Effects 2024, 2025 o 2026**   | Su Windows o Mac.                                                                                                                                               |
-| **Node.js 24 o più recente**          | Il «motore» che fa girare Parlez!. Si scarica da [nodejs.org](https://nodejs.org) (versione LTS). Per controllare: apri il terminale e scrivi `node --version`. |
-| **Claude Code oppure Claude Desktop** | Il programma dove scrivi a Claude.                                                                                                                              |
+| Cosa                                                                       | Note                                                                                                                                                                                                                           |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **After Effects 2024, 2025 o 2026** e/o **Premiere Pro 2024, 2025 o 2026** | Su Windows o Mac.                                                                                                                                                                                                              |
+| **Node.js 24 o più recente**                                               | Il «motore» che fa girare Parlez!. Si scarica da [nodejs.org](https://nodejs.org) (versione LTS). Per controllare: apri il terminale e scrivi `node --version`. Non serve con l'installatore per Windows, che lo porta con sé. |
+| **Claude Code oppure Claude Desktop**                                      | Il programma dove scrivi a Claude.                                                                                                                                                                                             |
 
 Il terminale su Windows è **PowerShell** (cercalo nel menu Start); sul Mac è **Terminale**.
 
@@ -174,6 +186,14 @@ Dentro After Effects, **Finestra → Parlez!** apre un pannello con un grande in
 - Sotto, le **ultime richieste** in italiano semplice, con l'esito. Lo storico completo è su file (bottone «Storico»).
 - **Ripristino** fa un punto di ripristino del progetto con un clic.
 
+## Premiere Pro (dalla 0.2)
+
+`parlez setup` (o l'installatore) mette anche il **pannello Parlez! per Premiere Pro** nella cartella delle estensioni CEP del tuo utente. Riavvia Premiere e apri **Finestra → Estensioni (versione precedente) → Parlez!**: come quello di After Effects è il collegamento stesso, con l'interruttore ON/OFF e la sola lettura; con il pannello chiuso o su OFF, Claude è fermo. Il pannello non è firmato, quindi serve la modalità debug di CEP (`PlayerDebugMode`): l'installatore propone di accenderla, `parlez setup` spiega come.
+
+Claude può leggere progetti e sequenze, importare file (anche sequenze di immagini numerate come una sola clip, per esempio un render PNG di After Effects), mettere, rifilare, spostare e tagliare clip, aggiungere marker, transizioni, titoli, sottotitoli e volumi, ed esportare. Ogni tempo si può dare come timecode della sequenza `HH:MM:SS:FF`.
+
+**Annulla in Premiere:** il Ctrl+Z di Premiere non annulla le modifiche fatte da script. Parlez! ha il suo annulla: il bottone **Annulla** nel pannello (o chiederlo a Claude) disfa tutta l'ultima richiesta, e prima di ogni modifica una copia del progetto salvato finisce in `_parlez-checkpoints`, accanto al progetto.
+
 ## Cosa fa e cosa non fa
 
 **Fa:**
@@ -187,7 +207,7 @@ Dentro After Effects, **Finestra → Parlez!** apre un pannello con un grande in
 - **Niente internet.** Parlez! non si collega mai a internet: né per font, né per aggiornamenti, né per altro. Parla solo con After Effects, sul tuo computer.
 - **Conferme.** Prima di cancellare, sovrascrivere o rinominare qualcosa, Claude deve chiederti il permesso. Alcuni comandi pericolosi sono vietati del tutto.
 - **Punti di ripristino.** Prima di un lavoro rischioso Claude può fare una copia datata del file `.aep`, per tornare indietro.
-- **Un solo Ctrl+Z.** Ogni richiesta di Claude si annulla con un solo Ctrl+Z (Cmd+Z sul Mac).
+- **Un solo Ctrl+Z.** In After Effects ogni richiesta di Claude si annulla con un solo Ctrl+Z (Cmd+Z sul Mac). In Premiere Pro c'è il bottone **Annulla** del pannello.
 - **Sola lettura e pausa** dal pannello, in ogni momento.
 - **Il codice libero è spento.** La possibilità di far eseguire a Claude script scritti da lui (che potrebbero toccare il resto del computer) è spenta di serie.
 
