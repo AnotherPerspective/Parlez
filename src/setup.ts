@@ -40,7 +40,12 @@ import {
 import { INSTANCES_DIR, PACKAGE_ROOT, PULL_ONLY_ENV, pushPathName } from "./config.js";
 import { installPanel, panelInstallStatus } from "./panel-install.js";
 import type { CommandRunner } from "./premiere/install.js";
-import { premiereDoctorChecks, premiereSetupStep } from "./premiere/setup-steps.js";
+import { MIN_PREMIERE_YEAR } from "./premiere/config.js";
+import {
+  premiereDoctorChecks,
+  premiereInstalled,
+  premiereSetupStep,
+} from "./premiere/setup-steps.js";
 import { svegliaDoctorChecks, svegliaSetupStep } from "./sveglia-steps.js";
 import { isPaused, isReadOnly, instanceLabel, listInstances } from "./transport/instances.js";
 
@@ -85,7 +90,15 @@ export interface SetupOptions {
   dryRun?: boolean;
   /** --accept: the notices are accepted without the prompt, for scripted installs. */
   accept?: boolean;
+  /**
+   * --only (provisional name): "after" = agent, sveglia and panel of After
+   * Effects; "premiere" = the Premiere Pro panel. Absent: both. For the
+   * Windows installer, which offers the two as separate choices.
+   */
+  only?: SetupPart;
 }
+
+export type SetupPart = "after" | "premiere";
 
 export function detectLang(flag?: string): Lang {
   return flag === "en" ? "en" : "it";
@@ -583,6 +596,7 @@ const TEXT = {
       `After Effects ${y} trovato${v ? ` (cartella delle preferenze ${v})` : ", mai aperto su questo computer"}`,
     unsupported: (y: number) =>
       `After Effects ${y} trovato ma non supportato: Parlez! funziona dal ${MIN_AE_YEAR}. Lo salto.`,
+    noPremiere: `Non ho trovato Premiere Pro ${MIN_PREMIERE_YEAR} o più recente.`,
     noAe:
       `Non ho trovato After Effects ${MIN_AE_YEAR} o più recente. Se è installato in una cartella non standard, ` +
       "imposta AE_MCP_EXE con il percorso completo di AfterFX.exe (su Mac: del file .app) e rilancia; " +
@@ -701,6 +715,7 @@ const TEXT = {
       `After Effects ${y} found${v ? ` (preferences folder ${v})` : ", never launched on this computer"}`,
     unsupported: (y: number) =>
       `After Effects ${y} found but not supported: Parlez! works from ${MIN_AE_YEAR} on. Skipping it.`,
+    noPremiere: `No Premiere Pro ${MIN_PREMIERE_YEAR} or newer found.`,
     noAe:
       `No After Effects ${MIN_AE_YEAR} or newer found. If it is installed in a non-standard folder, set ` +
       "AE_MCP_EXE to the full path of AfterFX.exe (on a Mac: of the .app) and run again; or name the " +
@@ -922,8 +937,16 @@ export async function runSetup(
   // First, before looking for After Effects or asking anything else.
   if (!(await acceptNotices(opts, machine, lang, t, out))) return 2;
 
-  const targets = await chooseTargets(opts, machine, t, out, machine.confirm ?? askOnTerminal);
-  if (targets.versions.length === 0) return targets.failure ?? 1;
+  const doAfter = opts.only !== "premiere";
+  const doPremiere = opts.only !== "after";
+  const targets: Targets = doAfter
+    ? await chooseTargets(opts, machine, t, out, machine.confirm ?? askOnTerminal)
+    : { versions: [] };
+  if (doAfter && targets.versions.length === 0) return targets.failure ?? 1;
+  if (!doAfter && !(await premiereInstalled(machine))) {
+    out(`${t.todo}${t.noPremiere}`);
+    return 1;
+  }
 
   let changed = false;
   for (const version of targets.versions) {
@@ -938,17 +961,21 @@ export async function runSetup(
     changed ||= agent.written.length + panel.written.length + panel.removedLegacy.length > 0;
   }
   // The sveglia: one per user, for every After Effects version.
-  changed =
-    (await svegliaSetupStep(machine, lang, opts.dryRun === true, out, {
-      ok: t.ok,
-      note: t.note,
-    })) || changed;
+  if (doAfter) {
+    changed =
+      (await svegliaSetupStep(machine, lang, opts.dryRun === true, out, {
+        ok: t.ok,
+        note: t.note,
+      })) || changed;
+  }
   out("");
   if (opts.dryRun) out(t.dryRun);
   else if (changed) out(t.restart);
   // Premiere Pro, when installed: its panel goes to the user's CEP folder.
   // Prints nothing on a machine without Premiere.
-  await premiereSetupStep(machine, lang, opts.dryRun === true, out, { ok: t.ok, note: t.note });
+  if (doPremiere) {
+    await premiereSetupStep(machine, lang, opts.dryRun === true, out, { ok: t.ok, note: t.note });
+  }
 
   // The scripting checkbox is reported by the final check below, with the
   // way to switch it on: printing it here too would only say it twice.
@@ -964,19 +991,20 @@ export async function runSetup(
   for (const line of cfg.desktopJson.split("\n")) out(`    ${line}`);
   out("");
   out(`— ${t.finalCheck} —`);
-  return runDoctorChecks(targets.versions, out, machine, t);
+  return runDoctorChecks(targets.versions, out, machine, t, opts.only);
 }
 
 export async function runDoctor(
-  opts: Pick<SetupOptions, "version">,
+  opts: Pick<SetupOptions, "version" | "only">,
   out: (line: string) => void,
   machine: SetupEnvironment = {},
 ): Promise<number> {
   const t = TEXT[machine.lang ?? detectLang()];
   out(t.doctorTitle(packageVersion()));
   out("");
+  if (opts.only === "premiere") return runDoctorChecks([], out, machine, t, "premiere");
   const targets = await chooseTargets(opts, machine, t, out);
-  const code = await runDoctorChecks(targets.versions, out, machine, t);
+  const code = await runDoctorChecks(targets.versions, out, machine, t, opts.only);
   return targets.versions.length === 0 ? 1 : code;
 }
 
@@ -986,6 +1014,7 @@ async function runDoctorChecks(
   out: (line: string) => void,
   machine: SetupEnvironment,
   t: Messages,
+  only?: SetupPart,
 ): Promise<number> {
   let todo = 0;
   const line = (ok: boolean, text: string) => {
@@ -1036,10 +1065,13 @@ async function runDoctorChecks(
     else line(false, t.prefUnknown(version, prefsFileFor(root, version), platform === "darwin"));
   }
 
-  const instances = (
-    await listInstances(machine.instancesDir ?? INSTANCES_DIR, machine.now ?? Date.now())
-  ).filter((i) => i.alive);
-  if (instances.length === 0) out(`${t.note}${t.noLive}`);
+  const afterChecks = only !== "premiere";
+  const instances = afterChecks
+    ? (
+        await listInstances(machine.instancesDir ?? INSTANCES_DIR, machine.now ?? Date.now())
+      ).filter((i) => i.alive)
+    : [];
+  if (afterChecks && instances.length === 0) out(`${t.note}${t.noLive}`);
   for (const instance of instances) {
     const label = instanceLabel(instance);
     out(`${t.ok}${t.live(label)}`);
@@ -1054,17 +1086,24 @@ async function runDoctorChecks(
   });
   const push = pushPathName(platform);
   const mac = platform === "darwin";
-  await svegliaDoctorChecks(machine, machine.lang ?? detectLang(), line, out, {
-    ok: t.ok,
-    note: t.note,
-  });
-  await premiereDoctorChecks(machine, machine.lang ?? detectLang(), line, out, {
-    ok: t.ok,
-    note: t.note,
-  });
+  if (afterChecks) {
+    await svegliaDoctorChecks(machine, machine.lang ?? detectLang(), line, out, {
+      ok: t.ok,
+      note: t.note,
+    });
+  }
+  if (only !== "after") {
+    if (only === "premiere" && !(await premiereInstalled(machine))) line(false, t.noPremiere);
+    await premiereDoctorChecks(machine, machine.lang ?? detectLang(), line, out, {
+      ok: t.ok,
+      note: t.note,
+    });
+  }
 
-  out(`${t.note}${agentInstalled ? t.pullAuto(push, mac) : t.pullNone(push, mac)}`);
-  out(`${t.note}${t.mailbox(path.dirname(machine.instancesDir ?? INSTANCES_DIR))}`);
+  if (afterChecks) {
+    out(`${t.note}${agentInstalled ? t.pullAuto(push, mac) : t.pullNone(push, mac)}`);
+    out(`${t.note}${t.mailbox(path.dirname(machine.instancesDir ?? INSTANCES_DIR))}`);
+  }
   out("");
   out(todo === 0 ? t.allGood : t.someTodo);
   return todo === 0 ? 0 : 1;

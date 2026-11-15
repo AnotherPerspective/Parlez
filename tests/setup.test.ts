@@ -706,6 +706,18 @@ describe("cli flags", () => {
     });
     expect(parseCliArgs(["doctor"])).toEqual({ command: "doctor", dryRun: false, unknown: [] });
   });
+
+  it("parses --only after|premiere, and refuses anything else", () => {
+    expect(parseCliArgs(["setup", "--only", "premiere"])).toMatchObject({
+      only: "premiere",
+      unknown: [],
+    });
+    expect(parseCliArgs(["doctor", "--only", "after"])).toMatchObject({
+      only: "after",
+      unknown: [],
+    });
+    expect(parseCliArgs(["setup", "--only", "resolve"]).unknown).toEqual(["--only", "resolve"]);
+  });
 });
 
 describe("Premiere Pro in setup and doctor", () => {
@@ -790,6 +802,96 @@ describe("Premiere Pro in setup and doctor", () => {
     expect(await fs.readFile(path.join(cepDir(), "panel.js"), "utf8")).not.toBe("// old");
     expect(c.text()).toContain("Riavvia After Effects");
     expect(c.text()).toContain("Riavvia Premiere Pro");
+  });
+
+  describe("--only (for the Windows installer, 2026-11-15)", () => {
+    const svegliaDir = () =>
+      path.join(
+        tmp,
+        "AppData",
+        "Roaming",
+        "Adobe",
+        "CEP",
+        "extensions",
+        "com.anotherperspective.parlez.sveglia",
+      );
+    const aeScripts = (m: FakeMachine) => path.join(m.profileRoot, "26.5", "Scripts");
+
+    it("premiere: only the Premiere panel, even with no After Effects on the machine", async () => {
+      const m = premiereMachine("1");
+      await addPremiere(m, 2026);
+      const c = collect();
+      expect(await runSetup({ only: "premiere", accept: true }, c.out, m.env)).toBe(0);
+      expect(await exists(path.join(cepDir(), "CSXS", "manifest.xml"))).toBe(true);
+      expect(await exists(svegliaDir())).toBe(false);
+      expect(c.text()).not.toContain("After Effects 2026");
+      expect(c.text()).toContain("Premiere Pro: pannello Parlez! installato e aggiornato");
+    });
+
+    it("premiere: leaves After Effects alone when it is there", async () => {
+      const m = premiereMachine("1");
+      await addWindowsApp(m, 2026);
+      await addProfile(m, "26.5", "1");
+      await addPremiere(m, 2026);
+      expect(await runSetup({ only: "premiere", accept: true }, collect().out, m.env)).toBe(0);
+      expect(await exists(aeScripts(m))).toBe(false);
+    });
+
+    it("premiere without Premiere: says so and exits 1", async () => {
+      const m = premiereMachine("1");
+      await addWindowsApp(m, 2026);
+      await addProfile(m, "26.5", "1");
+      const c = collect();
+      expect(await runSetup({ only: "premiere", accept: true }, c.out, m.env)).toBe(1);
+      expect(c.text()).toContain("Non ho trovato Premiere Pro");
+      expect(await exists(cepDir())).toBe(false);
+    });
+
+    it("after: agent, sveglia and panel of After Effects, nothing for Premiere", async () => {
+      const m = premiereMachine("1");
+      await addWindowsApp(m, 2026);
+      await addProfile(m, "26.5", "1");
+      await addPremiere(m, 2026);
+      const c = collect();
+      expect(await runSetup({ only: "after", accept: true }, c.out, m.env)).toBe(0);
+      expect(await exists(path.join(aeScripts(m), "ScriptUI Panels", PANEL_FILENAME))).toBe(true);
+      expect(await exists(svegliaDir())).toBe(true);
+      expect(await exists(cepDir())).toBe(false);
+      expect(c.text()).not.toContain("Premiere");
+    });
+
+    it("the doctor checks only the part asked", async () => {
+      const m = premiereMachine("1");
+      await addPremiere(m, 2026);
+      await runSetup({ only: "premiere", accept: true }, collect().out, m.env);
+      const c = collect();
+      expect(await runDoctor({ only: "premiere" }, c.out, m.env)).toBe(0);
+      expect(c.text()).not.toContain("After Effects");
+      const a = collect();
+      expect(await runDoctor({ only: "after" }, a.out, m.env)).toBe(1);
+      expect(a.text()).not.toContain("Premiere");
+    });
+
+    it("never waits for the keyboard with --accept --all, and several After Effects", async () => {
+      const m = premiereMachine("1");
+      await addWindowsApp(m, 2025);
+      await addWindowsApp(m, 2026);
+      await addProfile(m, "25.6", "1");
+      await addProfile(m, "26.5", "1");
+      await addPremiere(m, 2026);
+      let asked = 0;
+      m.env.confirm = async () => {
+        asked++;
+        return false;
+      };
+      m.env.askLine = async () => {
+        asked++;
+        return null;
+      };
+      await fs.rm(path.join(tmp, "AppData", "Roaming", "Parlez"), { recursive: true, force: true });
+      expect(await runSetup({ all: true, accept: true }, collect().out, m.env)).toBe(0);
+      expect(asked).toBe(0);
+    });
   });
 
   it("the doctor reports a stale Premiere panel without changing it", async () => {
