@@ -280,6 +280,14 @@ parlez uninstall-panel
 parlez uninstall-agent
 ```
 
+```bash
+parlez uninstall-sveglia
+```
+
+```bash
+parlez uninstall-premiere-panel
+```
+
 Con Claude Code:
 
 ```bash
@@ -294,7 +302,7 @@ Infine:
 npm uninstall -g parlez
 ```
 
-**Cosa devi vedere**: `removed …` per il pannello e lo script di avvio; `removed 1 package` (o simile) per l'ultimo.
+**Cosa devi vedere**: `removed …` per il pannello, lo script di avvio, la sveglia e il pannello di Premiere (`nothing to remove` se quella parte non era installata); `removed 1 package` (o simile) per l'ultimo.
 
 Rimangono, e puoi toglierli a mano dal Finder se vuoi (menu Vai → **Vai alla cartella…**, incolla il percorso):
 

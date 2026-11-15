@@ -257,6 +257,14 @@ parlez uninstall-panel
 parlez uninstall-agent
 ```
 
+```powershell
+parlez uninstall-sveglia
+```
+
+```powershell
+parlez uninstall-premiere-panel
+```
+
 Con Claude Code:
 
 ```powershell
@@ -271,7 +279,7 @@ Infine:
 npm uninstall -g parlez
 ```
 
-**Cosa devi vedere**: `removed …` per il pannello e lo script di avvio; `removed 1 package` (o simile) per l'ultimo.
+**Cosa devi vedere**: `removed …` per il pannello, lo script di avvio, la sveglia e il pannello di Premiere (`nothing to remove` se quella parte non era installata); `removed 1 package` (o simile) per l'ultimo.
 
 Rimangono, e puoi toglierli a mano da Esplora file (incolla il percorso nella barra degli indirizzi) se vuoi:
 
