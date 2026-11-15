@@ -23,6 +23,12 @@
   // A tick that has not come back after this long means Premiere is busy
   // running a request (or something else).
   var SLOW_TICK_MS = 700;
+  // A tick whose answer has not come this long after may have been dropped by
+  // Premiere (on After Effects a script sent as a modal window opens was
+  // dropped with no answer, 2026-11-15): a cheap ping then tells "busy" from
+  // "lost". The giro used to restart only from the answer, so one lost answer
+  // stopped it for good.
+  var LOST_AFTER_MS = 5000;
   var ROWS = 8;
   var TITLE_CHARS = 30;
   var KEY_ENABLED = "parlez.claudeEnabled";
@@ -296,14 +302,37 @@
       ", " +
       (readFlag(KEY_READ_ONLY) ? "true" : "false") +
       ") : 'missing'";
+    var mine = ++tickGen;
     waitingSince = Date.now();
     cep.evalScript(script, function (result) {
+      // An answer that comes after its tick was given up for lost: the new
+      // giro is already running, this one ends here.
+      if (mine !== tickGen) return;
       waitingSince = 0;
       agent = parse(result);
       refresh();
       window.setTimeout(tick, TICK_MS);
     });
   }
+
+  // The watchdog. Premiere runs scripts one at a time, in order: if the ping
+  // is answered while the tick is still unanswered, the tick's answer is
+  // lost (a long request would have answered first) - start the giro again.
+  var tickGen = 0;
+  var pingSince = 0;
+  function watchdog() {
+    var now = Date.now();
+    if (waitingSince === 0 || now - waitingSince < LOST_AFTER_MS) return;
+    if (pingSince !== 0 && now - pingSince < LOST_AFTER_MS) return;
+    if (!cep || typeof cep.evalScript !== "function") return;
+    var gen = tickGen;
+    pingSince = now;
+    cep.evalScript("1", function () {
+      pingSince = 0;
+      if (gen === tickGen && waitingSince !== 0) tick();
+    });
+  }
+  window.setInterval(watchdog, 1000);
 
   // While a tick is out, keep the light honest (yellow when Premiere is busy).
   window.setInterval(refresh, 500);
