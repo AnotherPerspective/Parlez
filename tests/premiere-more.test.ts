@@ -142,6 +142,46 @@ describe("pr_import", () => {
     expect(result(all).count).toBe(2);
   });
 
+  it("a numbered image series (After Effects PNG render) as one clip, with its duration in timecode", async () => {
+    const dir = path.join(tmp, "render");
+    mkdirSync(dir, { recursive: true });
+    for (let n = 0; n < 60; n++)
+      writeFileSync(path.join(dir, `Clip B_${String(n).padStart(4, "0")}.png`), "x");
+    // After the gap: not part of the series.
+    writeFileSync(path.join(dir, "Clip B_0061.png"), "x");
+    writeFileSync(path.join(dir, "Clip A_0000.png"), "x");
+    const first = path.join(dir, "Clip B_0000.png");
+    const res = await run(() =>
+      prImportTool.handler({ files: [first], numberedStills: true }, transport),
+    );
+    const r = result(res);
+    expect(project.importedAsNumbered.at(-1)).toBe(true);
+    expect(r.imported).toEqual([
+      expect.objectContaining({
+        name: "Clip B_0000.png",
+        frames: 60,
+        frameRate: 25,
+        durationTC: "00:00:02:10",
+        durationSeconds: 2.4,
+      }),
+    ]);
+    // Without the flag: plain files, as before.
+    await run(() => prImportTool.handler({ files: [first] }, transport));
+    expect(project.importedAsNumbered.at(-1)).toBe(false);
+  });
+
+  it("numberedStills needs the first image of a series, not a folder or a name without a number", async () => {
+    const dir = path.join(tmp, "render");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "logo.png"), "x");
+    for (const f of [dir, path.join(dir, "logo.png")]) {
+      const res = await prImportTool.handler({ files: [f], numberedStills: true }, transport);
+      expect((res.structuredContent as { error: { code: string } }).error.code).toBe(
+        "INVALID_ARGS",
+      );
+    }
+  });
+
   it("refuses a missing file and a project that is not .aep, before contacting Premiere", async () => {
     const missing = await prImportTool.handler({ files: [path.join(tmp, "nope.mov")] }, transport);
     expect((missing.structuredContent as { error: { code: string } }).error.code).toBe("IO");

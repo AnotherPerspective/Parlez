@@ -142,6 +142,11 @@ export class FakeItem {
     if (this.media === null) throw new Error("no media");
     return this.media;
   }
+  /** Premiere's interpretation; stills take the import preference's rate (25 here). */
+  frameRate = 25;
+  getFootageInterpretation(): { frameRate: number } {
+    return { frameRate: this.frameRate };
+  }
   /** Source in/out (seconds); null = not set. */
   srcIn: number | null = null;
   srcOut: number | null = null;
@@ -294,7 +299,10 @@ export function fakeProject(projectPath = String.raw`D:\Prove\Prova.prproj`) {
       return seq;
     },
     imported: [] as string[],
-    importFiles(paths: string[], _suppress: boolean, target: FakeItem): boolean {
+    /** The importAsNumberedStills flag of each importFiles call. */
+    importedAsNumbered: [] as boolean[],
+    importFiles(paths: string[], _suppress: boolean, target: FakeItem, numbered = false): boolean {
+      this.importedAsNumbered.push(numbered);
       for (const p of paths) {
         this.imported.push(p);
         target.add(new FakeItem(p.split(/[\\/]/).pop()!, { media: p }));

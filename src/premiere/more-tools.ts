@@ -22,6 +22,32 @@ function forPremiere(p: string): string {
   return process.platform === "win32" ? abs.replace(/\//g, "\\") : abs;
 }
 
+/**
+ * Images in the numbered series that starts at \`first\` ("Clip B_0000.png"):
+ * same name, same extension, same number of digits, consecutive numbers up
+ * to the first gap. Null when \`first\` is a folder or has no number.
+ */
+export async function numberedSeries(first: string): Promise<number | null> {
+  const m = /^(.*?)(\d+)(\.[^.]+)$/.exec(path.basename(first));
+  if (!m) return null;
+  try {
+    if (!(await fs.stat(first)).isFile()) return null;
+  } catch {
+    return null;
+  }
+  const prefix = m[1]!;
+  const digits = m[2]!;
+  const ext = m[3]!;
+  const names = new Set((await fs.readdir(path.dirname(first))).map((n) => n.toLowerCase()));
+  let n = Number(digits);
+  let frames = 0;
+  while (names.has(`${prefix}${String(n).padStart(digits.length, "0")}${ext}`.toLowerCase())) {
+    frames++;
+    n++;
+  }
+  return frames;
+}
+
 const IMPORT_CODE = `
     var p = payload;
     var before = PR.projectItemIds();
@@ -32,7 +58,10 @@ const IMPORT_CODE = `
         if (bin === null) return { ok: false, error: p.bin + ": sul percorso c'e' un elemento che non e' un bin" };
     }
     var results = {};
-    if (p.files.length > 0) results.files = String(app.project.importFiles(p.files, true, bin, false));
+    // importAsNumberedStills: the first file of a numbered series becomes one
+    // clip with every frame (After Effects renders PNG sequences; Premiere
+    // follows when they are written again).
+    if (p.files.length > 0) results.files = String(app.project.importFiles(p.files, true, bin, p.numbered === true));
     if (p.aep !== null) {
         results.afterEffects = (p.comps.length > 0)
             ? String(app.project.importAEComps(p.aep, p.comps, bin))
@@ -40,10 +69,30 @@ const IMPORT_CODE = `
     }
     var ids = PR.newProjectItems(before);
     PR.pushUndo("pr_import", ids.length > 0 ? [{ kind: "project.items.created", nodeIds: ids }] : []);
+    /** Frames counted on disk by the server, the clip's rate as Premiere reads it: duration in timecode. */
+    function stillSeries(item, entry) {
+        var media = String(PR.safe(function () { return item.getMediaPath(); }, "")).split("\\\\").join("/").toLowerCase();
+        var hit = null;
+        for (var s = 0; s < p.series.length; s++) {
+            var first = p.series[s].first.toLowerCase();
+            if (media.length >= first.length && media.substring(media.length - first.length) === first) hit = p.series[s];
+            else if (entry.name !== null && entry.name.toLowerCase() === p.series[s].name.toLowerCase()) hit = p.series[s];
+        }
+        if (hit === null && p.series.length === 1) hit = p.series[0];
+        if (hit === null) return;
+        var fps = PR.safe(function () { return Number(item.getFootageInterpretation().frameRate); }, NaN);
+        entry.frames = hit.frames;
+        entry.frameRate = (typeof fps === "number" && !isNaN(fps) && fps > 0) ? PR.round(fps, 3) : null;
+        entry.durationTC = (entry.frameRate !== null) ? PR.framesToTc(hit.frames, { base: Math.round(fps), drop: false }) : null;
+        entry.durationSeconds = (entry.frameRate !== null) ? PR.round(hit.frames / fps, 3) : null;
+    }
     var items = [];
     for (var i = 0; i < ids.length && i < 300; i++) {
         var f = PR.itemByNodeId(ids[i]);
-        if (f) items.push({ name: PR.safe(function () { return String(f.item.name); }, null), kind: PR.itemKind(f.item), bin: f.bin, nodeId: ids[i] });
+        if (!f) continue;
+        var entry = { name: PR.safe(function () { return String(f.item.name); }, null), kind: PR.itemKind(f.item), bin: f.bin, nodeId: ids[i] };
+        if (p.numbered === true && entry.kind !== "bin") stillSeries(f.item, entry);
+        items.push(entry);
     }
     return { premiere: results, imported: items, count: ids.length, undo: ids.length > 0 ? "${UNDO_NOTE}" : null };
 `;
@@ -55,7 +104,9 @@ export const prImportTool = defineTool({
     "Import into the Premiere Pro project: media files or whole folders (`files`, full paths), and/or " +
     "compositions of an After Effects project (`aeProject`, a .aep; `aeComps` names some, omitted = all of " +
     "them, linked through Dynamic Link). Into `bin` (created when missing) or the project root. A restore " +
-    "point is taken first; pr_undo_last removes everything this call imported.",
+    "point is taken first; pr_undo_last removes everything this call imported. `numberedStills: true`: each " +
+    'file is the first image of a numbered series (e.g. "Clip B_0000.png"), imported as one clip with all its ' +
+    "frames; the answer gives its frames and duration in timecode.",
   group: "premiere",
   blockedInReadOnly: true,
   effect: "write",
@@ -72,6 +123,12 @@ export const prImportTool = defineTool({
       .optional()
       .describe("Composition names; omit for all."),
     bin: z.string().max(500).optional().describe('Destination bin path, e.g. "Girato/Giorno 1".'),
+    numberedStills: z
+      .boolean()
+      .optional()
+      .describe(
+        "Each file is the first image of a numbered series (Clip B_0000.png, _0001, ...): one clip per series.",
+      ),
   },
   handler: async (args, transport) => {
     const files = args.files ?? [];
@@ -90,6 +147,20 @@ export const prImportTool = defineTool({
     if (args.aeProject && path.extname(args.aeProject).toLowerCase() !== ".aep") {
       return errorResult("INVALID_ARGS", "aeProject deve essere un progetto After Effects (.aep).");
     }
+    const series: Array<{ first: string; name: string; frames: number }> = [];
+    if (args.numberedStills === true) {
+      for (const f of files) {
+        const found = await numberedSeries(f);
+        if (found === null) {
+          return errorResult(
+            "INVALID_ARGS",
+            `${path.basename(f)}: per una sequenza di immagini indica il primo file, con il numero prima ` +
+              `dell'estensione (es. "Clip B_0000.png").`,
+          );
+        }
+        series.push({ first: path.basename(f), name: path.basename(f), frames: found });
+      }
+    }
     return runWithCheckpoint(transport, {
       code: IMPORT_CODE,
       payload: {
@@ -97,6 +168,8 @@ export const prImportTool = defineTool({
         aep: args.aeProject ? forPremiere(args.aeProject) : null,
         comps: args.aeComps ?? [],
         bin: args.bin ?? null,
+        numbered: args.numberedStills === true,
+        series,
       },
       label: "pr_import",
       timeoutMs: 300_000,
