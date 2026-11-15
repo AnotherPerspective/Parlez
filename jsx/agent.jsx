@@ -45,10 +45,33 @@
 // historyFile). Labels and titles are operation or tool names chosen by the
 // server; the request's code and payload are never recorded.
 //
-// The agent never calls into the panel: touching user interface from inside
+// The agent never touches the panel's user interface: doing that from inside
 // this scheduled task, while a request runs, is asking for trouble (an
-// earlier build did, to redraw the panel). The panel reads the agent; never
-// the reverse.
+// earlier build did, to redraw the panel). The panel reads the agent. The one
+// thing the agent may call is the panel's `watch`, which only re-books the
+// panel's own timer and touches no control (see "Staying alive" below).
+//
+// Staying alive (Parlez! 0.1.2, AE 26.5 / Windows, 2026-11-14/15). After
+// Effects can drop every pending app.scheduleTask of the session at once:
+// when a task comes due while certain modal windows are up (opening a project,
+// Import File), the task fails with "Cannot run a script while a modal dialog
+// is waiting for response", app.onError hears it once, and from then on no
+// task booked before (nor from inside onError) ever runs again - with no error
+// anywhere we could log. A task booked LATER, from a fresh start (a script run
+// by hand, a click in a panel), runs normally. So:
+//   - no repeating task: each step books the next one-shot step, tagged with
+//     the chain's generation (`state.gen`); revive() starts a new generation
+//     and a step of an older one ends on arrival, so there is never more than
+//     one chain, whoever revives and however often;
+//   - watch(source): revive when no step has run for STALE_TICK_MS and no
+//     request is running. The panel calls it from its own timer and from
+//     every click; a second evaluation of this file calls it too, and the
+//     agent watches the panel's timer the same way. Two timers keep each
+//     other going when only one is lost; when After Effects drops both, the
+//     next click in the panel brings both back;
+//   - the restart is told where the user looks: one line in `recent` (the
+//     panel's list) and in the history file, written when the new chain has
+//     really ticked, with the time it was silent and the likely cause.
 //
 // SECURITY: same trust boundary as the shared mailbox — whoever can write
 // into <runtime>/instances/<id>/ executes code inside this AE. The directory
@@ -75,12 +98,21 @@
 (function agentEntry() {
     // 2: stays out of the render engine (aerender) and knows the pause switch (`paused` / `refused` in the heartbeat).
     // 3: "Sola lettura" (`readOnly`), recent requests (`recent`, `lastRequestAt`, `pending`), history file.
-    var AGENT_VERSION = 3;
+    // 4: one-shot steps with a generation, watch()/revive(), restarts in `recent` and the heartbeat.
+    var AGENT_VERSION = 4;
     var RECENT_MAX = 8;
     var LABEL_MAX = 60;
     var TITLE_MAX = 120;
     var TICK_MS = 250;
     var HEARTBEAT_MS = 1000;
+    // Four missed steps. A false alarm costs nothing but a re-booked step:
+    // the old chain, if it was only late, ends on arrival.
+    var STALE_TICK_MS = 1000;
+    // An agent of an earlier build (no revive) silent this long is replaced by
+    // a second evaluation of this file; the server gives up on it after 5 s.
+    var TAKEOVER_STALE_MS = 3000;
+    // How often a step looks at the panel's timer.
+    var PANEL_WATCH_MS = 1000;
 
     // Own copy of the exception formatter (see serve.jsx): the guard below must
     // be able to report a failure even when an #include did not take.
@@ -217,7 +249,8 @@
         ok: "eseguita",
         error: "errore",
         paused: "rifiutata (pausa)",
-        readonly: "rifiutata (sola lettura)"
+        readonly: "rifiutata (sola lettura)",
+        restart: "ripartito"
     };
 
     /** A label fit for the panel: one line, bounded, never empty. */
@@ -246,11 +279,37 @@
         }
     }
 
+    /**
+     * What a second evaluation of this file (the stub run again, a `-r`, a
+     * script run by hand) does about the agent already in the process: null
+     * to stop here, or the old state to take over from. One agent per
+     * process: two chains would race over the same mailbox. An agent that
+     * knows revive() is revived when it has stopped (a no-op when it is
+     * alive); one of an earlier build is replaced only once it has been
+     * silent for TAKEOVER_STALE_MS and is not serving a request.
+     */
+    function previousAgent() {
+        var old = $.global.AE_MCP_AGENT;
+        if (!old) return { takeOver: false, state: null };
+        try {
+            if (typeof old.watch === "function") {
+                old.watch("nuovo caricamento dello script di avvio");
+                return null;
+            }
+            var st = old.state;
+            if (!st || st.busy === true) return null;
+            var last = (typeof st.lastHeartbeatAt === "number") ? st.lastHeartbeatAt : 0;
+            if (new Date().getTime() - last < TAKEOVER_STALE_MS) return null;
+            try { if (typeof old.stop === "function") old.stop(); } catch (eStop) { /* its task is gone already */ }
+            return { takeOver: true, state: st };
+        } catch (eOld) {
+            return null;
+        }
+    }
+
     function agentMain() {
-        // One agent per process. A second evaluation (a `-r` run of this file,
-        // a second stub) must not install a second poller: two tasks would
-        // race over the same mailbox.
-        if ($.global.AE_MCP_AGENT) return;
+        var previous = previousAgent();
+        if (previous === null) return;
         if (shouldStayOut()) return;
 
         var envId = null;
@@ -275,8 +334,44 @@
             dir: null,
             taskId: null,
             lastHeartbeatAt: 0,
-            lastError: null
+            lastError: null,
+            // Staying alive (see the header).
+            gen: 0,
+            lastTickAt: 0,
+            lastReviveAt: 0,
+            lastPanelWatchAt: 0,
+            lastProject: null,
+            stopped: false,
+            restarts: 0,
+            lastRestart: null,
+            pendingRestart: null
         };
+
+        // Taking over from an agent of an earlier build that stopped ticking:
+        // same id (so the same mailbox, and a server pinned to it keeps
+        // working), same history file and list, same counters.
+        if (previous.takeOver && previous.state) {
+            var old = previous.state;
+            var oldId = sanitizeId(old.id);
+            if (oldId !== null) {
+                state.id = oldId;
+                state.idSource = (old.idSource === "env") ? "env" : "random";
+            }
+            if (typeof old.startedAt === "number") state.startedAt = old.startedAt;
+            if (typeof old.served === "number") state.served = old.served;
+            if (typeof old.refused === "number") state.refused = old.refused;
+            if (typeof old.historyPath === "string") state.historyPath = old.historyPath;
+            if (old.recent && typeof old.recent.length === "number") {
+                for (var r = 0; r < old.recent.length; r++) state.recent.push(old.recent[r]);
+            }
+            if (typeof old.lastRequestAt === "number") state.lastRequestAt = old.lastRequestAt;
+            var lastHb = (typeof old.lastHeartbeatAt === "number") ? old.lastHeartbeatAt : 0;
+            state.pendingRestart = {
+                source: "nuovo caricamento dello script di avvio",
+                since: lastHb,
+                project: (typeof old.lastProject === "string") ? old.lastProject : null
+            };
+        }
 
         function projectInfo() {
             var info = { project: null, projectName: null, dirty: false, numItems: 0 };
@@ -297,6 +392,7 @@
             if (!force && now - state.lastHeartbeatAt < HEARTBEAT_MS) return;
             if (state.dir === null) return;
             var info = projectInfo();
+            state.lastProject = info.project;
             var hb = {
                 id: state.id,
                 idSource: state.idSource,
@@ -318,6 +414,8 @@
                 busy: state.busy,
                 busySince: state.busySince,
                 lastError: state.lastError,
+                restarts: state.restarts,
+                lastRestart: state.lastRestart,
                 ts: now
             };
             writeAtomic(state.dir + "/heartbeat.json", JSON.stringify(hb));
@@ -384,11 +482,69 @@
             }
         }
 
+        /**
+         * Why the agent stopped, as far as it can tell: the project it had
+         * open before the silence against the one open now. Anything else is
+         * most likely a modal window (Save As, Revert's question, Import File):
+         * those are what stop the timers on AE 26.5, and nothing more precise
+         * can be read afterwards.
+         */
+        function restartCause(before, after) {
+            if (after !== null && after !== before) return "dopo apertura progetto";
+            if (after === null && before !== null) return "dopo chiusura progetto";
+            return "dopo una finestra di dialogo";
+        }
+
+        /**
+         * First step of a revived chain: the restart is real now, so say it -
+         * one line in `recent` (the panel's list) and one in the history file.
+         */
+        function announceRestart(now) {
+            var pr = state.pendingRestart;
+            state.pendingRestart = null;
+            var silentMs = (typeof pr.since === "number" && pr.since > 0) ? now - pr.since : 0;
+            var cause = restartCause(pr.project, projectInfo().project);
+            state.restarts++;
+            state.lastRestart = { t: now, cause: cause, source: pr.source, silentMs: silentMs };
+            var entry = {
+                t: now,
+                label: "riavvio",
+                title: cleanLabel("Agente riavviato " + cause, TITLE_MAX),
+                outcome: "restart",
+                ms: silentMs,
+                undoable: false,
+                source: cleanLabel(pr.source)
+            };
+            writeHistory(entry);
+            var next = [];
+            var from = state.recent.length - (RECENT_MAX - 1);
+            for (var i = (from > 0 ? from : 0); i < state.recent.length; i++) next.push(state.recent[i]);
+            next.push(entry);
+            state.recent = next;
+        }
+
+        /** The panel's timer, looked at about once a second. Never throws. */
+        function watchPanel(now) {
+            if (now - state.lastPanelWatchAt < PANEL_WATCH_MS) return;
+            state.lastPanelWatchAt = now;
+            try {
+                var panel = $.global.AE_MCP_PANEL;
+                if (panel && typeof panel.watch === "function") panel.watch("agente");
+            } catch (ePanel) { /* the panel is closing; it is not ours to fix */ }
+        }
+
         function tick() {
             // One request at a time, whatever re-enters this task.
             if (state.busy) return;
             try {
+                var tickAt = new Date().getTime();
+                state.lastTickAt = tickAt;
                 state.ticks++;
+                if (state.pendingRestart !== null) {
+                    try { announceRestart(tickAt); } catch (eAnnounce) { state.pendingRestart = null; }
+                    heartbeat(true);
+                }
+                watchPanel(tickAt);
                 var paused = AE_MCP.isPaused();
                 var readOnly = AE_MCP.isReadOnly();
                 var switchChanged = (paused !== state.paused) || (readOnly !== state.readOnly);
@@ -436,11 +592,74 @@
             }
         }
 
+        /** Book the next step of the current chain. False when After Effects refused. */
+        function book(delay) {
+            state.taskId = null;
+            try {
+                state.taskId = app.scheduleTask("$.global.AE_MCP_AGENT.step(" + state.gen + ")", delay, false);
+                return true;
+            } catch (eBook) {
+                state.lastError = "scheduleTask: " + describeError(eBook);
+                return false;
+            }
+        }
+
+        /** One step of chain `gen`: a step of an older chain ends here. */
+        function step(gen) {
+            if (gen !== state.gen || state.stopped) return;
+            state.taskId = null;
+            try {
+                tick();
+            } finally {
+                // tick() may have been the one to revive (a request calling
+                // in): then the new chain is already booked.
+                if (gen === state.gen && !state.stopped) book(TICK_MS);
+            }
+        }
+
+        /** No step for STALE_TICK_MS (counting from the last revive too), and no request running. */
+        function isStale(now) {
+            if (state.busy || state.stopped) return false;
+            var last = (state.lastTickAt > state.lastReviveAt) ? state.lastTickAt : state.lastReviveAt;
+            return now - last > STALE_TICK_MS;
+        }
+
+        /**
+         * Start a new chain. `force` (the panel's Riavvia button) restarts
+         * even a chain that looks alive, and one stopped on purpose; never
+         * while a request runs. The restart is announced by its first step.
+         */
+        function revive(source, force) {
+            var now = new Date().getTime();
+            if (state.busy) return false;
+            if (force !== true && !isStale(now)) return false;
+            try { if (state.taskId !== null) app.cancelTask(state.taskId); } catch (eCancel) { /* already dropped */ }
+            if (state.pendingRestart === null) {
+                state.pendingRestart = {
+                    source: (typeof source === "string" && source.length > 0) ? source : "?",
+                    since: state.lastTickAt,
+                    project: state.lastProject
+                };
+            }
+            state.stopped = false;
+            state.gen++;
+            state.lastReviveAt = now;
+            return book(1);
+        }
+
         $.global.AE_MCP_AGENT = {
             state: state,
             tick: tick,
-            /** Stop polling (mainly for tests and manual recovery). */
+            step: step,
+            revive: revive,
+            /** Revive when stopped; a no-op while the agent ticks. True when it revived. */
+            watch: function (source) {
+                return revive(source, false);
+            },
+            /** Stop polling (mainly for tests and manual recovery); watch() leaves it stopped. */
             stop: function () {
+                state.stopped = true;
+                state.gen++;
                 try {
                     if (state.taskId !== null) app.cancelTask(state.taskId);
                 } catch (eCancel) { /* ignore */ }
@@ -448,9 +667,9 @@
             }
         };
         // Run once now so the instance is registered before the first
-        // scheduled tick, then keep going for the life of the process.
+        // scheduled step, then keep going for the life of the process.
         tick();
-        state.taskId = app.scheduleTask("$.global.AE_MCP_AGENT.tick()", TICK_MS, true);
+        book(TICK_MS);
     }
 
     // --- Top-level guard ---------------------------------------------------

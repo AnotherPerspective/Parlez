@@ -168,6 +168,8 @@ export interface ScheduledTask {
   delay: number;
   repeat: boolean;
   cancelled: boolean;
+  /** A one-shot task that has run. */
+  done: boolean;
 }
 
 /** app.settings as After Effects keeps it: section → key → string. */
@@ -211,10 +213,25 @@ export function makeApp() {
       app.commands.push(id);
     },
     tasks,
+    /** True: scheduleTask throws, as After Effects may while a modal window is up. */
+    refuseTasks: false,
     scheduleTask(code: string, delay: number, repeat: boolean): number {
-      const task = { id: tasks.length + 1, code, delay, repeat, cancelled: false };
+      if (app.refuseTasks)
+        throw new Error("Cannot run a script while a modal dialog is waiting for response.");
+      const task = { id: tasks.length + 1, code, delay, repeat, cancelled: false, done: false };
       tasks.push(task);
       return task.id;
+    },
+    /**
+     * What After Effects 26.5 did on 2026-11-14/15 when a task came due under
+     * a modal window: every task still pending is gone, silently.
+     */
+    dropAllTasks(): void {
+      for (const t of tasks) if (!t.done) t.cancelled = true;
+    },
+    /** Tasks that would still run. */
+    pendingTasks(): ScheduledTask[] {
+      return tasks.filter((t) => !t.cancelled && !t.done);
     },
     cancelTask(id: number): void {
       const task = tasks.find((t) => t.id === id);
@@ -240,6 +257,12 @@ export interface EsEngine {
   /** What confirm() answers next, and what alert()/confirm() were shown. */
   dialogs: { answer: boolean; shown: string[] };
   run(source: string, thisObj?: unknown, extra?: Record<string, unknown>): unknown;
+  /**
+   * Run, once each and in booking order, the tasks pending right now (not
+   * the ones they book): one-shot tasks are then done. Returns how many ran.
+   * `filter` picks tasks by their code.
+   */
+  runPending(filter?: (code: string) => boolean): number;
 }
 
 export function makeEngine(tempDir: string): EsEngine {
@@ -254,6 +277,9 @@ export function makeEngine(tempDir: string): EsEngine {
     global,
     os: "Windows 10.0",
     getenv: (name: string) => (name in env ? env[name] : null),
+    /** $.evalFile: run another file in this same engine. */
+    evalFile: (file: EsFile | string): unknown =>
+      engine.run(readFileSync(typeof file === "string" ? norm(file) : file.fsName, "utf8")),
   };
   const dialogs = { answer: true, shown: [] as string[] };
   const confirm = (text: string) => {
@@ -263,7 +289,7 @@ export function makeEngine(tempDir: string): EsEngine {
   const alert = (text: string) => {
     dialogs.shown.push(String(text));
   };
-  return {
+  const engine: EsEngine = {
     app,
     global,
     env,
@@ -274,7 +300,19 @@ export function makeEngine(tempDir: string): EsEngine {
       const fn = new Function(...names, source);
       return fn.apply(thisObj, values);
     },
+    runPending(filter) {
+      const due = app.pendingTasks().filter((t) => (filter ? filter(t.code) : true));
+      let ran = 0;
+      for (const t of due) {
+        if (t.cancelled || t.done) continue;
+        if (!t.repeat) t.done = true;
+        this.run(t.code);
+        ran++;
+      }
+      return ran;
+    },
   };
+  return engine;
 }
 
 /**

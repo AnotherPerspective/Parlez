@@ -35,8 +35,21 @@
 // opens, and never removed or rebuilt while it is open. The timer refresh
 // only changes texts and pictures, only when they changed, does nothing
 // while the panel is hidden, and lays the panel out again only when the
-// history goes from empty to not empty. Nothing outside the panel (the
-// agent included) calls into it.
+// history goes from empty to not empty. Nothing outside the panel calls into
+// it, except the agent calling `watch`, which only re-books the timer.
+//
+// The watchdog (Parlez! 0.1.2). After Effects 26.5 can drop every pending
+// app.scheduleTask at once (a task due under certain modal windows: opening a
+// project, Import File - see "Staying alive" in jsx/agent.jsx). So the timer
+// is a chain of one-shot steps with a generation, like the agent's, and each
+// step - shown or hidden - asks the agent to revive if it has gone silent
+// (AE_MCP_AGENT.watch). The agent re-books this timer the same way. When
+// After Effects drops both, nothing in a ScriptUI panel ticks by itself any
+// more: the next click in the panel brings both back, and that click does
+// only this (the panel says so) - its information was stale. A "Riavvia"
+// button (name provisional) shows while the agent does not answer: a forced
+// restart, or, with no agent able to restart itself, the startup script
+// loaded again (what a script run by hand did before).
 //
 // How it talks to the rest. The switches are app.settings entries in the
 // "Parlez" section (claudeEnabled, readOnly; layout is the
@@ -62,14 +75,23 @@
     var KEY_READ_ONLY = "readOnly";
     var KEY_LAYOUT = "layout";
     var TITLE = "Parlez!";
-    // Never under a second (see STABILITY FIRST above).
-    var REFRESH_MS = 1500;
+    // Never under a second (see STABILITY FIRST above). Also the watchdog's
+    // pace: a stopped agent is back within about two of these.
+    var REFRESH_MS = 1000;
     // The agent refreshes its heartbeat every second; the server presumes it
     // gone after five (HEARTBEAT_STALE_MS in src/config.ts).
     var STALE_MS = 5000;
+    // A step this much later than booked means After Effects was blocked for
+    // everyone (a long render, a modal window): the agent's silence proves
+    // nothing yet, judge it at the next step.
+    var LATE_MS = 1000;
+    // The timer counts as lost past this (the agent re-books it then).
+    var TIMER_STALE_MS = 3000;
     // First agent versions that know each switch (jsx/agent.jsx AGENT_VERSION).
     var PAUSE_AGENT_VERSION = 2;
     var READ_ONLY_AGENT_VERSION = 3;
+    // The startup script install-agent writes (AGENT_STUB_FILENAME in src/config.ts).
+    var AGENT_STUB = "mcp-aftereffects-agent.jsx";
     // Same folder and naming as checkpoint.create (src/operations/checkpoint.ts).
     var CHECKPOINT_SUBDIR = "_parlez-checkpoints";
     var CHECKPOINT_LABEL = "pannello";
@@ -77,6 +99,8 @@
     // Edit > Undo.
     var UNDO_COMMAND = 16;
     var TITLE_CHARS = 30;
+    // A restart line has no outcome mark, so its text may run longer.
+    var RESTART_CHARS = 40;
     // The signature at the bottom right opens this page in the user's own
     // browser when clicked. That is the user opening a page, not this program going on
     // the internet: nothing here connects anywhere, the click hands the
@@ -226,7 +250,8 @@
         }
         if (agent.heartbeatAt === 0 || now - agent.heartbeatAt > STALE_MS) {
             return { label: "ON", look: "idle", color: GREY, status: "non risponde",
-                tip: "Lo script di avvio \u00e8 caricato ma il battito non si aggiorna: una finestra di dialogo aperta?" };
+                tip: "Lo script di avvio \u00e8 caricato ma il battito non si aggiorna (una finestra di dialogo aperta?). " +
+                    "Parlez! prova a farlo ripartire da solo; se non riparte, premi Riavvia." };
         }
         if (agent.busy) {
             return { label: "ON", look: "busy", color: YELLOW, status: "sta elaborando" + ro,
@@ -272,6 +297,12 @@
             var e = recent[i];
             if (!e || typeof e.t !== "number") continue;
             var what = (typeof e.title === "string") ? e.title : String(e.label);
+            if (e.outcome === "restart") {
+                // "Riavviato dopo apertura progetto  12 s": how long it was silent.
+                lines.push(clock(e.t).substring(0, 5) + "  " + shorten(what.replace(/^Agente riavviato/, "Riavviato"), RESTART_CHARS) +
+                    "  " + seconds(e.ms));
+                continue;
+            }
             var mark = (typeof e.outcome === "string" && OUTCOME_MARK.hasOwnProperty(e.outcome))
                 ? OUTCOME_MARK[e.outcome] : String(e.outcome);
             var tail = (e.outcome === "ok" || e.outcome === "error") ? "  " + seconds(e.ms) : "";
@@ -537,6 +568,7 @@
         ui.status.alignment = ["fill", "center"];
         setFont(ui.status, "REGULAR", 11);
         setTextColor(ui.status, [0.70, 0.70, 0.70]);
+        // The last resort, shown only while the agent does not answer.
         // In a group with margins: flush with the panel's edge, the blue
         // focus outline of a pressed checkbox was cut off on the left (AE
         // 26.5, 2026-10-28). 10 px lines it up with the history's text.
@@ -547,6 +579,15 @@
         readOnlyRow.margins = [10, 2, 10, 2];
         ui.readOnly = readOnlyRow.add("checkbox", undefined, "Sola lettura");
         ui.readOnly.helpTip = "Claude pu\u00f2 guardare il progetto ma non modificarlo: le richieste che cambierebbero qualcosa vengono rifiutate.";
+        // The last resort, shown only while the agent does not answer: on the
+        // read-only line, at the right, so the block keeps its height.
+        ui.restart = readOnlyRow.add("button", undefined, "Riavvia");
+        ui.restart.alignment = ["right", "center"];
+        ui.restart.preferredSize.width = BUTTON_WIDTH;
+        ui.restart.helpTip = "Fa ripartire Parlez! in questo After Effects, senza toccare il progetto. " +
+            "Di solito riparte da solo: serve solo se resta fermo.";
+        ui.restart.visible = false;
+        ui.restartShown = false;
     });
 
     guard("storico", function () {
@@ -660,6 +701,16 @@
         }
     }
 
+    /** The Riavvia button: like the empty history, laid out again only when it appears or goes. */
+    function showRestart(show) {
+        if (!ui.restart || show === ui.restartShown) return;
+        ui.restart.visible = show;
+        ui.restartShown = show;
+        if (ui.ready) {
+            try { win.layout.layout(true); } catch (eLay) { /* next resize lays it out */ }
+        }
+    }
+
     function refresh() {
         var now = new Date().getTime();
         var enabled = readEnabled();
@@ -690,6 +741,8 @@
             put("counts.text", ui.counts, "text", "eseguite " + agent.served + " \u00b7 rifiutate " + agent.refused + " \u00b7 " + since +
                 " \u00b7 " + agent.id + " v" + agent.version);
         }
+
+        showRestart(enabled === true && state.look === "idle");
 
         current.target = undoTarget(recent);
         put("undo.enabled", ui.undo, "enabled", current.target !== null);
@@ -732,6 +785,66 @@
         }
     }
 
+    // --- Restarting the agent ---------------------------------------------
+    /** The startup script install-agent wrote for this After Effects, or null. */
+    function stubFile() {
+        try {
+            var parts = String(app.version).split(".");
+            var version = parts[0] + "." + String(parseInt(parts[1], 10));
+            var root = (String($.os).indexOf("Windows") >= 0)
+                ? Folder.userData.fsName + "/Adobe/After Effects/"
+                : "~/Library/Preferences/Adobe/After Effects/";
+            var f = new File(root + version + "/Scripts/Startup/" + AGENT_STUB);
+            return f.exists ? f : null;
+        } catch (eStub) {
+            return null;
+        }
+    }
+
+    /**
+     * The Riavvia button. An agent that restarts itself: a forced restart. One
+     * that cannot (an earlier build) or none at all: the startup script loaded
+     * again, which replaces a silent agent of an earlier build and leaves a
+     * live one alone. Returns what to tell the user.
+     */
+    function restartAgent() {
+        startTimer();
+        var agent = null;
+        try { agent = $.global.AE_MCP_AGENT || null; } catch (eAgent) { agent = null; }
+        if (agent !== null && typeof agent.revive === "function") {
+            var ok = false;
+            try { ok = agent.revive("pulsante Riavvia", true) === true; } catch (eRevive) { ok = false; }
+            if (ok) return "Riavvio in corso: tra un attimo il riquadro torna colorato.";
+            if (agent.state && agent.state.busy === true) return "Parlez! sta eseguendo una richiesta: aspetta che finisca.";
+            return "After Effects non accetta il riavvio adesso: chiudi le finestre di dialogo aperte e riprova.";
+        }
+        var stub = stubFile();
+        if (stub === null) return "Non trovo lo script di avvio di Parlez!: reinstallalo e riavvia After Effects.";
+        try {
+            $.evalFile(stub);
+        } catch (eLoad) {
+            return "Lo script di avvio non si \u00e8 caricato: riavvia After Effects.";
+        }
+        var now = null;
+        try { now = $.global.AE_MCP_AGENT || null; } catch (eNow) { now = null; }
+        if (now === null) return "Parlez! non \u00e8 ripartito: riavvia After Effects.";
+        return (now === agent) ? "Parlez! risponde gi\u00e0: niente da riavviare." : "Parlez! caricato di nuovo: tra un attimo il riquadro torna colorato.";
+    }
+
+    /**
+     * Every click starts here. True when the click found the panel's timer or
+     * the agent stopped and started them again: the panel was showing stale
+     * information, so the click does nothing else, and says so.
+     */
+    function wokeByClick() {
+        var woke = false;
+        try { woke = wake("clic nel pannello"); } catch (eWake) { woke = false; }
+        if (!woke) return false;
+        say("Parlez! era fermo e l'ho fatto ripartire. Questo clic non ha fatto altro: ripetilo se serve.");
+        try { refresh(); } catch (eRefresh) { /* the timer will */ }
+        return true;
+    }
+
     // --- Buttons ----------------------------------------------------------
     function toggleClaude() {
         var want = readEnabled() ? "0" : "1";
@@ -740,11 +853,21 @@
     }
     guard("comandi", function () {
         ui.block.onClick = function () {
-            toggleClaude();
+            if (!wokeByClick()) toggleClaude();
             // Nothing stays highlighted after the click.
             try { ui.block.active = false; } catch (eFocus) { /* no focus to drop */ }
         };
+        ui.restart.onClick = function () {
+            say(restartAgent());
+            refresh();
+        };
         ui.readOnly.onClick = function () {
+            if (wokeByClick()) {
+                // Put the box back as it was: the click only woke Parlez! up.
+                ui.shown = {};
+                refresh();
+                return;
+            }
             if (!writeSwitch(KEY_READ_ONLY, ui.readOnly.value ? "1" : "0")) {
                 say("Non riesco a salvare la scelta nelle preferenze di After Effects.");
             }
@@ -752,6 +875,7 @@
             refresh();
         };
         ui.undo.onClick = function () {
+            if (wokeByClick()) return;
             var target = current.target;
             if (target === null) return;
             var what = (typeof target.title === "string") ? target.title : target.label;
@@ -772,16 +896,19 @@
             refresh();
         };
         ui.checkpoint.onClick = function () {
+            if (wokeByClick()) return;
             say(makeCheckpoint().message);
             refresh();
         };
         ui.checkpointFolder.onClick = function () {
+            if (wokeByClick()) return;
             var folder = checkpointFolder();
             if (folder === null) say("Il progetto non \u00e8 ancora stato salvato.");
             else if (!folder.exists) say("Nessun punto di ripristino per questo progetto, per ora.");
             else folder.execute();
         };
         ui.history.onClick = function () {
+            if (wokeByClick()) return;
             var agent = current.agent;
             if (agent !== null && agent.historyPath !== null && new File(agent.historyPath).exists) {
                 new File(agent.historyPath).execute();
@@ -792,6 +919,7 @@
             else say("Nessuna richiesta registrata finora.");
         };
         ui.mailbox.onClick = function () {
+            if (wokeByClick()) return;
             var agent = current.agent;
             if (agent === null || agent.dir === null) return;
             var folder = new Folder(agent.dir);
@@ -800,6 +928,7 @@
         // The layout is chosen for the NEXT opening: rebuilding the controls of
         // an open panel is exactly what this build stays away from.
         ui.layout.onClick = function () {
+            if (wokeByClick()) return;
             var next = compact ? "verticale" : "compatta";
             if (writeSwitch(KEY_LAYOUT, next)) say("Vista " + next + ": chiudi e riapri il pannello per vederla.");
         };
@@ -812,23 +941,111 @@
         say("Non riesco a salvare la scelta nelle preferenze di After Effects.");
     }
 
-    // --- The timer ----------------------------------------------------------
-    // One per After Effects session: a new opening cancels the previous one's
-    // before registering its own. A refresh that throws means the controls
-    // are gone - a docked panel that was closed - and stops it for good.
-    function stopTimer() {
+    // --- The timer: a chain of one-shot steps (see "The watchdog" above) ---
+    // One chain per After Effects session: a new opening stops the previous
+    // one's before starting its own. Generations come from one counter on
+    // $.global, so a step booked by an earlier opening never matches this
+    // one's. A refresh that throws means the controls are gone - a docked
+    // panel that was closed - and stops the chain for good.
+    var timer = { gen: 0, taskId: null, lastStepAt: new Date().getTime(), closed: false };
+
+    function nextGen() {
+        var g = 1;
         try {
-            var registered = $.global.AE_MCP_PANEL;
-            if (registered && registered.taskId !== null && registered.taskId !== undefined) {
-                app.cancelTask(registered.taskId);
-                registered.taskId = null;
-            }
-        } catch (eStop) { /* nothing scheduled */ }
+            if (typeof $.global.AE_MCP_PANEL_GEN === "number") g = $.global.AE_MCP_PANEL_GEN + 1;
+            $.global.AE_MCP_PANEL_GEN = g;
+        } catch (eGen) { /* keep 1 */ }
+        return g;
     }
 
-    stopTimer();
+    function cancelOwn() {
+        try {
+            if (timer.taskId !== null) app.cancelTask(timer.taskId);
+        } catch (eCancel) { /* already dropped */ }
+        timer.taskId = null;
+    }
+
+    function book() {
+        timer.taskId = null;
+        try {
+            timer.taskId = app.scheduleTask("$.global.AE_MCP_PANEL.step(" + timer.gen + ")", REFRESH_MS, false);
+            return true;
+        } catch (eBook) {
+            return false;
+        }
+    }
+
+    /** A new chain (the old one, if any is left, ends at its next step). */
+    function startTimer() {
+        if (timer.closed) return false;
+        cancelOwn();
+        timer.gen = nextGen();
+        timer.lastStepAt = new Date().getTime();
+        return book();
+    }
+
+    function stopTimer() {
+        timer.closed = true;
+        timer.gen = 0;
+        cancelOwn();
+    }
+
+    /** The agent's own watch: true when it had stopped and was started again. */
+    function watchAgent(source) {
+        try {
+            var agent = $.global.AE_MCP_AGENT;
+            if (agent && typeof agent.watch === "function") return agent.watch(source) === true;
+        } catch (eWatch) { /* an agent that cannot be asked */ }
+        return false;
+    }
+
+    function timerLost(now) {
+        return !timer.closed && now - timer.lastStepAt > TIMER_STALE_MS;
+    }
+
+    /** Both timers checked, restarted if stopped. True when one was. Touches no control. */
+    function wake(source) {
+        var woke = false;
+        if (timerLost(new Date().getTime())) woke = startTimer();
+        if (watchAgent(source)) woke = true;
+        return woke;
+    }
+
+    function step(gen) {
+        if (gen !== timer.gen || timer.closed) return;
+        var now = new Date().getTime();
+        var late = now - timer.lastStepAt > REFRESH_MS + LATE_MS;
+        timer.lastStepAt = now;
+        timer.taskId = null;
+        // Shown or hidden: the watchdog works from a background tab too.
+        if (!late) watchAgent("pannello");
+        try {
+            if (isShown()) {
+                ensureSize();
+                refresh();
+            }
+        } catch (eRefresh) {
+            stopTimer();
+            return;
+        }
+        if (gen === timer.gen && !timer.closed) book();
+    }
+
+    // The previous opening's chain: this build's stops itself; an earlier
+    // build's was one repeating task.
+    try {
+        var registered = $.global.AE_MCP_PANEL;
+        if (registered && typeof registered.stop === "function") registered.stop();
+        else if (registered && registered.taskId !== null && registered.taskId !== undefined) app.cancelTask(registered.taskId);
+    } catch (eStop) { /* nothing scheduled */ }
     $.global.AE_MCP_PANEL = {
-        taskId: null,
+        timer: timer,
+        step: step,
+        stop: stopTimer,
+        /** Called by the agent about once a second: re-book this timer if it was lost. */
+        watch: function () {
+            return timerLost(new Date().getTime()) ? startTimer() : false;
+        },
         refresh: function () {
             try {
                 if (!isShown()) return;
@@ -851,10 +1068,19 @@
         } catch (eResize) {
             try { win.layout.resize(); } catch (eResize2) { /* ignore */ }
         }
+        try { wake("pannello ridimensionato"); } catch (eWake) { /* ignore */ }
     };
     win.onShow = function () {
         ensureSize();
+        wake("pannello mostrato");
     };
+    // Any sign of life from the panel is a chance to restart what stopped.
+    // Whether After Effects sends these to a docked panel is not known yet.
+    try {
+        win.onActivate = function () {
+            wake("pannello attivato");
+        };
+    } catch (eActivate) { /* not on this kind of panel */ }
     guard("firma: mouse", function () {
         ui.credit.addEventListener("mouseover", function () {
             setTextColor(ui.credit, WHITE);
@@ -897,7 +1123,6 @@
     try {
         app.scheduleTask("$.global.AE_MCP_PANEL.settle()", 300, false);
     } catch (eSettle) { /* the timer checks the size too */ }
-    try {
-        $.global.AE_MCP_PANEL.taskId = app.scheduleTask("$.global.AE_MCP_PANEL.refresh()", REFRESH_MS, true);
-    } catch (eSchedule) { /* refreshed by the buttons only */ }
+    // Refused now (a modal window up?): the agent re-books it, or the next click.
+    startTimer();
 })(this);

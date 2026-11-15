@@ -18,6 +18,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   AGENT_JSX,
+  AGENT_STUB_FILENAME,
   PANEL_IMAGES_DIR,
   PANEL_JSX,
   PAUSE_SETTINGS_KEY,
@@ -273,9 +274,14 @@ function historyRows(panel: Ctl): string[] {
   return box.children.map((c) => c.text).filter((t) => t && t !== "Ultime richieste");
 }
 
-/** Repeating tasks still scheduled (the one-shot size check runs once and is gone). */
+/**
+ * Steps of a timer chain still booked (the one-shot size check is not one).
+ * Since 0.1.2 no timer repeats: each step books the next.
+ */
 function activeTasks(code: string) {
-  return engine.app.tasks.filter((t) => t.repeat && !t.cancelled && t.code.includes(code));
+  return engine.app
+    .pendingTasks()
+    .filter((t) => t.code.includes(code) && t.code.includes(".step("));
 }
 
 describe("stability: only standard controls, no custom painting (2026-10-26 crashes)", () => {
@@ -477,7 +483,7 @@ describe("the look (2026-10-26 screenshot)", () => {
     startAgent();
     const panel = openPanel();
     const counts = panel.find("statictext", /^eseguite /);
-    expect(counts.text).toMatch(/^eseguite 0 · rifiutate 0 · nessuna richiesta · shotA v3$/);
+    expect(counts.text).toMatch(/^eseguite 0 · rifiutate 0 · nessuna richiesta · shotA v4$/);
     // The signature: in a group that takes all the space left, glued to its
     // bottom-right corner, and that group is the panel's last child.
     const sig = credit(panel);
@@ -848,7 +854,7 @@ describe("history and counters", () => {
     expect(rows[0]).toMatch(/^\d\d:\d\d {2}guarda la composizione {2}✓ {2}\d+(,\d)? s$/);
     expect(rows[1]).toMatch(/crea oggetto nullo {2}✓/);
     expect(panel.says()).toMatch(/eseguite 2 · rifiutate 0 · ultima \d+ s fa/);
-    expect(panel.says()).toContain("· shotA v3");
+    expect(panel.says()).toContain("· shotA v4");
   });
 
   it("marks refusals and shortens long titles", () => {
@@ -1048,5 +1054,306 @@ describe("the panel and the rest agree", () => {
     expect(PANEL_SRC).toContain(`"${PAUSE_SETTINGS_KEY}"`);
     expect(PANEL_SRC).toContain(`"${READ_ONLY_SETTINGS_KEY}"`);
     expect(PANEL_SRC).toContain(`"${DEFAULT_CHECKPOINT_SUBDIR}"`);
+  });
+});
+
+// --- The watchdog (Parlez! 0.1.2) --------------------------------------------
+// After Effects 26.5 dropped every pending scheduleTask when a project opened
+// (2026-11-14/15): the agent and the panel stopped for good. The shim's
+// dropAllTasks() is that; runPending() is time passing.
+
+interface LiveAgent extends Agent {
+  state: Agent["state"] & {
+    lastTickAt: number;
+    lastReviveAt: number;
+    lastHeartbeatAt: number;
+    lastPanelWatchAt: number;
+    restarts: number;
+    recent: Array<{ outcome: string; title: string }>;
+  };
+  watch: (source: string) => boolean;
+}
+
+interface PanelTimer {
+  timer: { gen: number; lastStepAt: number; closed: boolean };
+}
+
+const panelSteps = () => activeTasks("AE_MCP_PANEL");
+const agentSteps = () =>
+  engine.app.pendingTasks().filter((t) => t.code.includes("AE_MCP_AGENT.step("));
+const runPanel = () => engine.runPending((code) => code.includes("AE_MCP_PANEL.step("));
+const runAgent = () => engine.runPending((code) => code.includes("AE_MCP_AGENT.step("));
+const panelTimer = () => (engine.global.AE_MCP_PANEL as PanelTimer).timer;
+
+/** As if the agent had not stepped for `ms`, and After Effects had dropped its tasks. */
+function stopAgent(agent: LiveAgent, ms = 5000) {
+  engine.app.dropAllTasks();
+  agent.state.lastTickAt = Date.now() - ms;
+  agent.state.lastReviveAt = 0;
+}
+
+/** As if the panel's timer had not stepped for `ms`. */
+function stopPanelTimer(ms = 5000) {
+  engine.app.dropAllTasks();
+  panelTimer().lastStepAt = Date.now() - ms;
+}
+
+/** The panel's chain still going while the agent's was lost. */
+function keepPanelTimer(lateBy = 0) {
+  panelTimer().lastStepAt = Date.now() - lateBy;
+  engine.app.scheduleTask(`$.global.AE_MCP_PANEL.step(${panelTimer().gen})`, 1000, false);
+}
+
+/** Make the heartbeat look old, so the panel shows «non risponde». */
+function silenceHeartbeat(agent: LiveAgent) {
+  const file = path.join(agent.state.dir, "heartbeat.json");
+  const hb = JSON.parse(readFileSync(file, "utf8"));
+  hb.ts = Date.now() - 60_000;
+  writeFileSync(file, JSON.stringify(hb), "utf8");
+}
+
+function restartButton(panel: Ctl): Ctl {
+  return panel.find("button", "Riavvia");
+}
+
+describe("the watchdog: a chain of one-shot steps", () => {
+  it("never a repeating task: each step books the next, once a second", () => {
+    openPanel();
+    expect(engine.app.tasks.some((t) => t.repeat)).toBe(false);
+    expect(panelSteps()).toHaveLength(1);
+    expect(panelSteps()[0].delay).toBe(1000);
+    for (let i = 0; i < 4; i++) {
+      expect(runPanel()).toBe(1);
+      expect(panelSteps()).toHaveLength(1);
+    }
+  });
+
+  it("a step booked by an earlier opening never revives that chain", () => {
+    openPanel();
+    const old = panelSteps()[0];
+    openPanel();
+    // After Effects runs the old step after all.
+    old.cancelled = false;
+    runPanel();
+    expect(panelSteps()).toHaveLength(1);
+    runPanel();
+    expect(panelSteps()).toHaveLength(1);
+  });
+});
+
+describe("the watchdog: the panel brings the agent back", () => {
+  it("from its timer, and the list says so", () => {
+    setEnabled("1");
+    const agent = startAgent() as LiveAgent;
+    const panel = openPanel();
+    stopAgent(agent, 6000);
+    keepPanelTimer();
+    runPanel();
+    expect(agentSteps()).toHaveLength(1);
+    runAgent();
+    expect(agent.state.restarts).toBe(1);
+    refresh();
+    expect(historyRows(panel)[0]).toMatch(
+      /^\d\d:\d\d {2}Riavviato dopo una finestra di dialogo {2}\d+ s$/,
+    );
+  });
+
+  it("from a hidden panel too (a docked tab in the background)", () => {
+    setEnabled("1");
+    const agent = startAgent() as LiveAgent;
+    const panel = openPanel();
+    panel.visible = false;
+    stopAgent(agent);
+    keepPanelTimer();
+    runPanel();
+    expect(agentSteps()).toHaveLength(1);
+    expect(panelSteps()).toHaveLength(1);
+  });
+
+  it("not from a late step: After Effects was blocked for everyone, judge at the next one", () => {
+    setEnabled("1");
+    const agent = startAgent() as LiveAgent;
+    openPanel();
+    stopAgent(agent);
+    keepPanelTimer(4000);
+    runPanel();
+    expect(agentSteps()).toHaveLength(0);
+    runPanel();
+    expect(agentSteps()).toHaveLength(1);
+  });
+
+  it("the agent re-books a lost panel timer", () => {
+    setEnabled("1");
+    const agent = startAgent() as LiveAgent;
+    openPanel();
+    stopPanelTimer();
+    expect(panelSteps()).toHaveLength(0);
+    agent.state.lastPanelWatchAt = 0;
+    agent.tick();
+    expect(panelSteps()).toHaveLength(1);
+  });
+
+  it("a closed panel stays closed: nobody re-books its timer", () => {
+    setEnabled("1");
+    const agent = startAgent() as LiveAgent;
+    const panel = openPanel();
+    for (const c of panel.all()) {
+      Object.defineProperty(c, "text", {
+        get: () => "",
+        set() {
+          throw new Error("Object is invalid");
+        },
+      });
+    }
+    setEnabled("0");
+    refresh();
+    expect(panelSteps()).toHaveLength(0);
+    panelTimer().lastStepAt = Date.now() - 60_000;
+    agent.state.lastPanelWatchAt = 0;
+    agent.tick();
+    expect(panelSteps()).toHaveLength(0);
+  });
+});
+
+describe("the watchdog: when After Effects dropped both timers, the next click", () => {
+  it("brings both back and does nothing else, then the switch works again", () => {
+    setEnabled("1");
+    const agent = startAgent() as LiveAgent;
+    const panel = openPanel();
+    stopAgent(agent);
+    panelTimer().lastStepAt = Date.now() - 5000;
+    panel.toggle().onClick!();
+    expect(setting(PAUSE_SETTINGS_KEY)).toBe("1");
+    expect(panel.says()).toContain("Parlez! era fermo e l'ho fatto ripartire");
+    expect(agentSteps()).toHaveLength(1);
+    expect(panelSteps()).toHaveLength(1);
+    runAgent();
+    panel.toggle().onClick!();
+    expect(setting(PAUSE_SETTINGS_KEY)).toBe("0");
+  });
+
+  it("on «Sola lettura» leaves the box as it was", () => {
+    setEnabled("1");
+    const agent = startAgent() as LiveAgent;
+    const panel = openPanel();
+    stopAgent(agent);
+    const box = panel.find("checkbox", "Sola lettura");
+    box.value = true;
+    box.onClick!();
+    expect(setting(READ_ONLY_SETTINGS_KEY)).not.toBe("1");
+    expect(box.value).toBe(false);
+  });
+
+  it("on the other buttons does not open anything", () => {
+    setEnabled("1");
+    const agent = startAgent() as LiveAgent;
+    const panel = openPanel();
+    stopAgent(agent);
+    panel.find("button", "Cassetta").onClick!();
+    expect(EsFolder.executed).toHaveLength(0);
+    panel.find("button", "Cassetta").onClick!();
+    expect(EsFolder.executed).toHaveLength(1);
+  });
+
+  it("a click while everything ticks is just a click", () => {
+    setEnabled("1");
+    startAgent();
+    const panel = openPanel();
+    panel.toggle().onClick!();
+    expect(setting(PAUSE_SETTINGS_KEY)).toBe("0");
+    expect(panel.says()).not.toContain("era fermo");
+  });
+});
+
+describe("«Riavvia», the last resort", () => {
+  it("is hidden while the agent answers, and shows when it does not", () => {
+    setEnabled("1");
+    const agent = startAgent() as LiveAgent;
+    const panel = openPanel();
+    expect(restartButton(panel).visible).toBe(false);
+    silenceHeartbeat(agent);
+    refresh();
+    expect(panel.says()).toContain("non risponde");
+    expect(restartButton(panel).visible).toBe(true);
+  });
+
+  it("is hidden with Claude OFF: nothing to restart for", () => {
+    setEnabled("0");
+    const agent = startAgent() as LiveAgent;
+    const panel = openPanel();
+    silenceHeartbeat(agent);
+    refresh();
+    expect(restartButton(panel).visible).toBe(false);
+  });
+
+  it("forces a restart of an agent that can restart itself", () => {
+    setEnabled("1");
+    const agent = startAgent() as LiveAgent;
+    const panel = openPanel();
+    silenceHeartbeat(agent);
+    refresh();
+    engine.app.dropAllTasks();
+    restartButton(panel).onClick!();
+    expect(panel.says()).toContain("Riavvio in corso");
+    expect(agentSteps()).toHaveLength(1);
+    expect(panelSteps()).toHaveLength(1);
+    runAgent();
+    expect(agent.state.recent[agent.state.recent.length - 1]).toMatchObject({
+      outcome: "restart",
+    });
+  });
+
+  it("says why when a request is running", () => {
+    setEnabled("1");
+    const agent = startAgent() as LiveAgent;
+    const panel = openPanel();
+    agent.state.busy = true;
+    restartButton(panel).onClick!();
+    expect(panel.says()).toContain("sta eseguendo una richiesta");
+  });
+
+  function writeStub(body: string) {
+    const dir = path.join(tmp, "userData", "Adobe", "After Effects", "26.5", "Scripts", "Startup");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, AGENT_STUB_FILENAME), body, "utf8");
+  }
+
+  it("with no agent at all, loads the startup script again", () => {
+    setEnabled("1");
+    writeStub(
+      '$.global.AE_MCP_AGENT = { state: { id: "dallo-stub", agentVersion: 4 }, watch: function () { return false; } };',
+    );
+    const panel = openPanel();
+    expect(panel.says()).toContain("non collegato");
+    restartButton(panel).onClick!();
+    expect((engine.global.AE_MCP_AGENT as Agent).state.id).toBe("dallo-stub");
+    expect(panel.says()).toContain("Parlez! caricato di nuovo");
+  });
+
+  it("without the startup script, says to reinstall", () => {
+    setEnabled("1");
+    const panel = openPanel();
+    restartButton(panel).onClick!();
+    expect(panel.says()).toContain("Non trovo lo script di avvio");
+  });
+
+  it("an agent of an earlier build that cannot restart itself: the startup script, never two agents", () => {
+    setEnabled("1");
+    const earlier = {
+      state: { id: "ae-old999", agentVersion: 3, busy: false, lastHeartbeatAt: Date.now() },
+    };
+    engine.global.AE_MCP_AGENT = earlier;
+    // The real stub loads agent.jsx, which leaves a live agent alone.
+    writeStub("if (!$.global.AE_MCP_AGENT) $.global.AE_MCP_AGENT = { state: { id: 'nuovo' } };");
+    const panel = openPanel();
+    restartButton(panel).onClick!();
+    expect(engine.global.AE_MCP_AGENT).toBe(earlier);
+    expect(panel.says()).toContain("risponde già");
+  });
+});
+
+describe("the watchdog and the rest agree", () => {
+  it("names the startup script as install-agent writes it", () => {
+    expect(PANEL_SRC).toContain(`"${AGENT_STUB_FILENAME}"`);
   });
 });

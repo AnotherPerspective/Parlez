@@ -157,10 +157,10 @@ describe('the one rule: only "1" means Claude may work (the 2026-10-25 defect)',
     expect(shared.isPaused()).toBe(false);
   });
 
-  it("announces agent version 3", () => {
+  it("announces agent version 4", () => {
     const agent = startAgent();
-    expect(agent.state.agentVersion).toBe(3);
-    expect(heartbeat().agentVersion).toBe(3);
+    expect(agent.state.agentVersion).toBe(4);
+    expect(heartbeat().agentVersion).toBe(4);
   });
 });
 
@@ -371,19 +371,31 @@ describe("agent.jsx for the panel's live state", () => {
     expect(heartbeat().pending).toBe(0);
   });
 
-  it("never calls into the panel (an earlier build did, and After Effects crashed)", () => {
+  it("never touches the panel's interface (an earlier build did, and After Effects crashed)", () => {
     setEnabled("1");
     const agent = startAgent();
     let calls = 0;
+    let watched = 0;
     engine.global.AE_MCP_PANEL = {
       onAgent: () => calls++,
       refresh: () => calls++,
+      // The one thing it may call: re-book the panel's timer (no controls).
+      watch: () => watched++,
     };
+    // It looks at the panel about once a second: make this tick the one.
+    (agent.state as unknown as { lastPanelWatchAt: number }).lastPanelWatchAt = 0;
     putRequest("a");
     agent.tick();
     expect(response("a")).toMatchObject({ ok: true });
     expect(calls).toBe(0);
-    expect(readFileSync(AGENT_JSX, "utf8")).not.toContain("AE_MCP_PANEL");
+    expect(watched).toBeGreaterThan(0);
+    const code = readFileSync(AGENT_JSX, "utf8")
+      .split("\n")
+      .filter((line) => !/^\s*(\/\/|\*)/.test(line))
+      .join("\n");
+    const uses = code.match(/AE_MCP_PANEL[\w.]*/g) ?? [];
+    expect(new Set(uses)).toEqual(new Set(["AE_MCP_PANEL"]));
+    expect(code).toContain("panel.watch(");
   });
 
   it("never serves a second request while one is running", () => {
